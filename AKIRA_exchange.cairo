@@ -100,8 +100,8 @@ mod AKIRA_exchange {
         taker_order_signature: u256,
     }
 
-    trait ApplyingTrade {
-        fn apply(self: Trade);
+    trait Applying<T>  {
+        fn apply(self: T);
     }
 
     #[external]
@@ -128,13 +128,18 @@ mod AKIRA_exchange {
             _balance::write((trade.maker_order.price_address, trade.maker_order.maker), _balance::read((trade.maker_order.price_address, trade.maker_order.maker)) - amount_taker);
             _balance::write((trade.taker_order.price_address, trade.taker_order.maker), _balance::read((trade.taker_order.price_address, trade.taker_order.maker)) + amount_taker);
         }
+        user_balance_snapshot(trade.maker_order.maker, trade.maker_order.qty_address, _balance::read((trade.maker_order.qty_address, trade.maker_order.maker)));
+        user_balance_snapshot(trade.maker_order.maker, trade.maker_order.price_address, _balance::read((trade.maker_order.price_address, trade.maker_order.maker)));
+        user_balance_snapshot(trade.taker_order.maker, trade.taker_order.qty_address, _balance::read((trade.taker_order.qty_address, trade.taker_order.maker)));
+        user_balance_snapshot(trade.taker_order.maker, trade.taker_order.price_address, _balance::read((trade.taker_order.price_address, trade.taker_order.maker)));
     }
 
-    impl ApplyingTradeImpl of ApplyingTrade {
+    impl ApplyingTradeImpl of Applying<Trade> {
         fn apply(self: Trade){
             let trade = self;
 
             apply_transaction_started();
+
             order_event(trade.maker_order);
             order_event(trade.taker_order);
 
@@ -156,32 +161,25 @@ mod AKIRA_exchange {
             rebalance_after_trade(trade.maker_order.side, trade, mathing_amount, mathing_amount * matching_price);
         }
     }
-    trait ApplyingDeposit {
-        fn apply(self: Deposit);
-    }
 
-    impl ApplyingDepositImpl of ApplyingDeposit {
+    impl ApplyingDepositImpl of Applying<Deposit> {
         fn apply(self: Deposit){
+            apply_deposit_started();
             _mint(self.maker, self.amount, self.token);
+            user_balance_snapshot(self.maker, self.token, _balance::read((self.token, self.maker)));
         }
     }
 
-    trait ApplyingWithdraw {
-        fn apply(self: Withdraw);
-    }
-
-    impl ApplyingWithdrawImpl of ApplyingWithdraw {
+    impl ApplyingWithdrawImpl of Applying<Withdraw> {
         fn apply(self: Withdraw){
+            apply_withdraw_started();
             _burn(self.maker, self.amount, self.token);
             IERC20Dispatcher { contract_address: self.token }.transfer(self.maker, self.amount);
+            user_balance_snapshot(self.maker, self.token, _balance::read((self.token, self.maker)));
         }
     }
 
-    trait ApplyingEvent{
-        fn apply(self: ExchangeEvent);
-    }
-
-    impl ApplyingEventImpl of ApplyingEvent {
+    impl ApplyingEventImpl of Applying<ExchangeEvent> {
         fn apply(self: ExchangeEvent){
             match self {
                 ExchangeEvent::Deposit(x) => {
@@ -219,7 +217,6 @@ mod AKIRA_exchange {
         let caller = get_caller_address();
         let this = get_contract_address();
         assert(caller == _exchange_address::read(), 'only for exchange');
-        // TODO deserialize
         let mut span = serialized_exchange_events.span();
         let exchange_events: Array<ExchangeEvent> = Serde::<Array<ExchangeEvent>>::deserialize(ref span).unwrap();
         _exchange_events_loop(exchange_events);
@@ -268,53 +265,12 @@ mod AKIRA_exchange {
         _balance::write((token, from), _balance::read((token, from)) - amount);
     }
 
-
-    // #[external]
-    // fn deposit(from: ContractAddress, amount: u256, token: ContractAddress) {
-    //     let caller = get_caller_address();
-    //     let this = get_contract_address();
-    //     assert(caller == _exchange_address::read(), 'only for exchange');
-    //     IERC20Dispatcher { contract_address: token }.transferFrom(from, this, amount);
-    //     _mint(from, amount, token);
-    // }
-    //
-    //
-    // #[external]
-    // fn withdraw_from_exchange(user: ContractAddress, amount: u256, token: ContractAddress) {
-    //     let caller = get_caller_address();
-    //     let this = get_contract_address();
-    //     assert(caller == _exchange_address::read(), 'only for exchange');
-    //     _burn(user, amount, token);
-    //     IERC20Dispatcher { contract_address: token }.transfer(user, amount);
-    // }
-
-    //#[external]
-    //fn apply_withdraw_via_contract(token: ContractAddress) {
-    //    let caller = get_caller_address();
-    //    let this = get_contract_address();
-    //   let block_number = get_block_number();
-    //    _withdraw_block::write(caller, block_number);
-        // TODO send info to backend
-    // }
-
-    // #[external]
-    // fn withdraw_from_contract(amount: u256, token: ContractAddress) {
-    //     let caller = get_caller_address();
-    //     let this = get_contract_address();
-    //     let diff: u64 = 5;
-    //     assert(_withdraw_block::read(caller) != 0, 'first apply');
-    //     let real_diff = get_block_number() - _withdraw_block::read(caller);
-    //     assert(real_diff >= diff, 'wait more blocks');
-    //     _burn(caller, amount, token);
-    //     IERC20Dispatcher { contract_address: token }.transfer(caller, amount);
-    //     _withdraw_block::write(caller, 0);
-    // }
-
-    #[event]
-    fn dfghdfghdfghdfghdsdsfgdfgdfgsdfddfdfggdfgfdfgdfggfghdfghdfdfdghdfg(amount: felt252) {}
-
     #[event]
     fn apply_transaction_started() {}
+    #[event]
+    fn apply_deposit_started() {}
+    #[event]
+    fn apply_withdraw_started() {}
     #[event]
     fn mathing_amount_event(amount: u256) {}
     #[event]
@@ -322,10 +278,8 @@ mod AKIRA_exchange {
     #[event]
     fn price_event(amount: u256) {}
     #[event]
-    fn ev_01(amount: u256) {}
-    #[event]
-    fn ev_02(address: ContractAddress) {}
-    #[event]
     fn order_event(order: Order) {}
+    #[event]
+    fn user_balance_snapshot(user_address: ContractAddress, token: ContractAddress, balance: u256) {}
 
 }
