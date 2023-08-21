@@ -1,0 +1,12 @@
+[package]
+name = "kurosawa_akira"
+version = "0.1.0"
+
+[[target.starknet-contract]]
+sierra = true
+casm = true
+casm-add-pythonic-hints = true
+allowed-libfuncs-list.name = "experimental_v0.1.0"
+
+[dependencies]
+starknet = ">=1.1.0"
