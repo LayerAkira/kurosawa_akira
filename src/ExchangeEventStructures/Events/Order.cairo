@@ -4,6 +4,7 @@ use poseidon::poseidon_hash_span;
 use array::ArrayTrait;
 use array::SpanTrait;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_filled_amount_read;
+use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::ContractState;
 
 #[derive(Copy, Drop, Serde, starknet::Store)]
 struct Order {
@@ -30,6 +31,6 @@ fn get_order_hash(key: Order) -> felt252 {
     hashed_key
 }
 
-fn validate_order(order: Order, order_hash: felt252) -> u256 {
-    order.quantity - _filled_amount_read(order_hash)
+fn validate_order(order: Order, order_hash: felt252, ref state: ContractState) -> u256 {
+    order.quantity - _filled_amount_read(ref state, order_hash)
 }
