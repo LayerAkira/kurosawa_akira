@@ -11,17 +11,18 @@ mod AKIRA_exchange {
     use kurosawa_akira::ExchangeEventStructures::ExchangeEvent::Applying;
     use kurosawa_akira::ExchangeEventStructures::Events::Order::Order;
     use kurosawa_akira::ExchangeEventStructures::Events::DepositEvent::Deposit;
+    use kurosawa_akira::ExchangeEventStructures::Events::DepositEvent::PendingImpl;
+    use kurosawa_akira::ExchangeEventStructures::Events::FundsTraits::PoseidonHashImpl;
 
     #[storage]
     struct Storage {
         _name: felt252,
-        _total_supply: LegacyMap::<ContractAddress, u256>,
+            _total_supply: LegacyMap::<ContractAddress, u256>,
         _balance: LegacyMap::<(ContractAddress, ContractAddress), u256>,
         _exchange_address: ContractAddress,
         _withdraw_block: LegacyMap::<ContractAddress, u64>,
         _filled_amount: LegacyMap::<felt252, u256>,
-    //_pending_deposits: LegacyMap::<felt252, Deposit>,
-    //_deposit_TEST: Deposit,
+        _pending_deposits: LegacyMap::<felt252, Deposit>,
     }
 
     #[constructor]
@@ -29,6 +30,8 @@ mod AKIRA_exchange {
         self._name.write('AKIRA');
         self._exchange_address.write(_exchange_address0);
     }
+
+    //EVENTS LOOP
 
     #[external(v0)]
     fn apply_exchange_events(
@@ -59,6 +62,15 @@ mod AKIRA_exchange {
         };
     }
 
+    // PENDING
+
+    #[external(v0)]
+    fn set_deposit_pending(ref self: ContractState, deposit: Deposit) {
+        deposit.set_pending(ref self);
+    }
+
+    // TOKEN
+
     fn _mint(ref self: ContractState, to: ContractAddress, amount: u256, token: ContractAddress) {
         self._total_supply.write(token, self._total_supply.read(token) + amount);
         self._balance.write((token, to), self._balance.read((token, to)) + amount);
@@ -69,17 +81,26 @@ mod AKIRA_exchange {
         self._balance.write((token, from), self._balance.read((token, from)) - amount);
     }
 
-    #[view]
-    fn totalSupply(ref self: ContractState, token: ContractAddress) -> u256 {
+    // VIEW
+
+    #[external(v0)]
+    fn totalSupply(self: @ContractState, token: ContractAddress) -> u256 {
         self._total_supply.read(token)
     }
 
-    #[view]
+    #[external(v0)]
     fn balanceOf(
-        ref self: ContractState, _address: ContractAddress, token: ContractAddress
+        self: @ContractState, _address: ContractAddress, token: ContractAddress
     ) -> u256 {
         self._balance.read((token, _address))
     }
+
+    #[external(v0)]
+    fn order_poseidon_hash(self: @ContractState, order: Order) -> felt252 {
+        order.get_poseidon_hash()
+    }
+
+    // read and write
 
     fn _balance_write(
         ref self: ContractState, token_user: (ContractAddress, ContractAddress), amount: u256
@@ -100,6 +121,15 @@ mod AKIRA_exchange {
     fn _filled_amount_read(ref self: ContractState, hash: felt252) -> u256 {
         self._filled_amount.read(hash)
     }
+
+    fn _pending_deposits_write(ref self: ContractState, hash: felt252, deposit: Deposit) {
+        self._pending_deposits.write(hash, deposit);
+    }
+
+    fn _pending_deposits_read(ref self: ContractState, hash: felt252) -> Deposit {
+        self._pending_deposits.read(hash)
+    }
+
 
 
     // EVENTS

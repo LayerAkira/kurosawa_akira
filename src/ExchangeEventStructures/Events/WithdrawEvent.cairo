@@ -11,7 +11,7 @@ use kurosawa_akira::utils::erc20::IERC20DispatcherTrait;
 use kurosawa_akira::utils::erc20::IERC20Dispatcher;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::ContractState;
 
-#[derive(Copy, Drop, Serde, starknet::Store)]
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct Withdraw {
     maker: ContractAddress,
     token: ContractAddress,

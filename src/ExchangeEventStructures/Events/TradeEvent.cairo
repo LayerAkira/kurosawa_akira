@@ -1,5 +1,6 @@
 use starknet::ContractAddress;
 use serde::Serde;
+use kurosawa_akira::ExchangeEventStructures::Events::FundsTraits::PoseidonHashImpl;
 use kurosawa_akira::ExchangeEventStructures::Events::Order::Order;
 use kurosawa_akira::ExchangeEventStructures::Events::Order::get_order_hash;
 use kurosawa_akira::ExchangeEventStructures::Events::Order::validate_order;
@@ -32,12 +33,12 @@ fn min(a: u256, b: u256) -> u256 {
     }
 }
 
-#[derive(Copy, Drop, Serde, starknet::Store)]
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct Trade {
     maker_order: Order,
-    maker_order_signature: u256,
+    maker_order_signature: (felt252, felt252),
     taker_order: Order,
-    taker_order_signature: u256,
+    taker_order_signature: (felt252, felt252),
 }
 
 impl ApplyingTradeImpl of Applying<Trade> {
@@ -46,10 +47,10 @@ impl ApplyingTradeImpl of Applying<Trade> {
         emit_apply_transaction_started(ref state, apply_transaction_started {});
         emit_order_event(ref state, order_event { order: trade.maker_order });
         emit_order_event(ref state, order_event { order: trade.taker_order });
-        let maker_order_hash = get_order_hash(trade.maker_order);
-        let taker_order_hash = get_order_hash(trade.taker_order);
-        let maker_amount = validate_order(trade.maker_order, maker_order_hash, ref state);
-        let taker_amount = validate_order(trade.taker_order, taker_order_hash, ref state);
+        let maker_order_hash = trade.maker_order.get_poseidon_hash();
+        let taker_order_hash = trade.taker_order.get_poseidon_hash();
+        let maker_amount = validate_order(trade.maker_order, maker_order_hash, trade.maker_order_signature, ref state);
+        let taker_amount = validate_order(trade.taker_order, taker_order_hash, trade.taker_order_signature, ref state);
         let mathing_amount: u256 = min(taker_amount, maker_amount);
         emit_mathing_amount_event(ref state, mathing_amount_event { amount: mathing_amount });
         let matching_price: u256 = trade.maker_order.price;

@@ -5,8 +5,9 @@ use array::ArrayTrait;
 use array::SpanTrait;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_filled_amount_read;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::ContractState;
+use kurosawa_akira::ExchangeEventStructures::Events::FundsTraits::check_sign;
 
-#[derive(Copy, Drop, Serde, starknet::Store)]
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct Order {
     price: u256,
     quantity: u256,
@@ -31,6 +32,7 @@ fn get_order_hash(key: Order) -> felt252 {
     hashed_key
 }
 
-fn validate_order(order: Order, order_hash: felt252, ref state: ContractState) -> u256 {
+fn validate_order(order: Order, order_hash: felt252, sign: (felt252, felt252), ref state: ContractState) -> u256 {
+    check_sign(order.maker, order_hash, sign);
     order.quantity - _filled_amount_read(ref state, order_hash)
 }
