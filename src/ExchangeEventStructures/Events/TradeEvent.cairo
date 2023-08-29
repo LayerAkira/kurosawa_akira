@@ -2,7 +2,7 @@ use starknet::ContractAddress;
 use serde::Serde;
 use kurosawa_akira::ExchangeEventStructures::Events::FundsTraits::PoseidonHashImpl;
 use kurosawa_akira::ExchangeEventStructures::Events::Order::Order;
-use kurosawa_akira::ExchangeEventStructures::Events::Order::get_order_hash;
+use kurosawa_akira::ExchangeEventStructures::Events::Order::SignedOrder;
 use kurosawa_akira::ExchangeEventStructures::Events::Order::validate_order;
 use kurosawa_akira::ExchangeEventStructures::ExchangeEvent::Applying;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_balance_write;
@@ -35,25 +35,23 @@ fn min(a: u256, b: u256) -> u256 {
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct Trade {
-    maker_order: Order,
-    maker_order_signature: (felt252, felt252),
-    taker_order: Order,
-    taker_order_signature: (felt252, felt252),
+    maker_signed_order: SignedOrder,
+    taker_signed_order: SignedOrder,
 }
 
 impl ApplyingTradeImpl of Applying<Trade> {
     fn apply(self: Trade, ref state: ContractState) {
         let trade = self;
         emit_apply_transaction_started(ref state, apply_transaction_started {});
-        emit_order_event(ref state, order_event { order: trade.maker_order });
-        emit_order_event(ref state, order_event { order: trade.taker_order });
-        let maker_order_hash = trade.maker_order.get_poseidon_hash();
-        let taker_order_hash = trade.taker_order.get_poseidon_hash();
-        let maker_amount = validate_order(trade.maker_order, maker_order_hash, trade.maker_order_signature, ref state);
-        let taker_amount = validate_order(trade.taker_order, taker_order_hash, trade.taker_order_signature, ref state);
+        emit_order_event(ref state, order_event { order: trade.maker_signed_order.order });
+        emit_order_event(ref state, order_event { order: trade.taker_signed_order.order });
+        let maker_order_hash = trade.maker_signed_order.order.get_poseidon_hash();
+        let taker_order_hash = trade.taker_signed_order.order.get_poseidon_hash();
+        let maker_amount = validate_order(trade.maker_signed_order, maker_order_hash, ref state);
+        let taker_amount = validate_order(trade.taker_signed_order, taker_order_hash, ref state);
         let mathing_amount: u256 = min(taker_amount, maker_amount);
         emit_mathing_amount_event(ref state, mathing_amount_event { amount: mathing_amount });
-        let matching_price: u256 = trade.maker_order.price;
+        let matching_price: u256 = trade.maker_signed_order.order.price;
         emit_matching_price_event(ref state, matching_price_event { amount: matching_price });
         _filled_amount_write(
             ref state,
@@ -66,7 +64,7 @@ impl ApplyingTradeImpl of Applying<Trade> {
             _filled_amount_read(ref state, taker_order_hash) + mathing_amount
         );
         rebalance_after_trade(
-            trade.maker_order.side,
+            trade.maker_signed_order.order.side,
             trade,
             mathing_amount,
             mathing_amount * matching_price,
@@ -85,91 +83,91 @@ fn rebalance_after_trade(
     if is_maker_SELL_side {
         _balance_write(
             ref state,
-            (trade.maker_order.qty_address, trade.maker_order.maker),
-            _balance_read(ref state, (trade.maker_order.qty_address, trade.maker_order.maker))
+            (trade.maker_signed_order.order.qty_address, trade.maker_signed_order.order.maker),
+            _balance_read(ref state, (trade.maker_signed_order.order.qty_address, trade.maker_signed_order.order.maker))
                 - amount_maker
         );
         _balance_write(
             ref state,
-            (trade.taker_order.qty_address, trade.taker_order.maker),
-            _balance_read(ref state, (trade.taker_order.qty_address, trade.taker_order.maker))
+            (trade.taker_signed_order.order.qty_address, trade.taker_signed_order.order.maker),
+            _balance_read(ref state, (trade.taker_signed_order.order.qty_address, trade.taker_signed_order.order.maker))
                 + amount_maker
         );
         _balance_write(
             ref state,
-            (trade.maker_order.price_address, trade.maker_order.maker),
-            _balance_read(ref state, (trade.maker_order.price_address, trade.maker_order.maker))
+            (trade.maker_signed_order.order.price_address, trade.maker_signed_order.order.maker),
+            _balance_read(ref state, (trade.maker_signed_order.order.price_address, trade.maker_signed_order.order.maker))
                 + amount_taker
         );
         _balance_write(
             ref state,
-            (trade.taker_order.price_address, trade.taker_order.maker),
-            _balance_read(ref state, (trade.taker_order.price_address, trade.taker_order.maker))
+            (trade.taker_signed_order.order.price_address, trade.taker_signed_order.order.maker),
+            _balance_read(ref state, (trade.taker_signed_order.order.price_address, trade.taker_signed_order.order.maker))
                 - amount_taker
         );
     } else {
         _balance_write(
             ref state,
-            (trade.maker_order.qty_address, trade.maker_order.maker),
-            _balance_read(ref state, (trade.maker_order.qty_address, trade.maker_order.maker))
+            (trade.maker_signed_order.order.qty_address, trade.maker_signed_order.order.maker),
+            _balance_read(ref state, (trade.maker_signed_order.order.qty_address, trade.maker_signed_order.order.maker))
                 + amount_maker
         );
         _balance_write(
             ref state,
-            (trade.taker_order.qty_address, trade.taker_order.maker),
-            _balance_read(ref state, (trade.taker_order.qty_address, trade.taker_order.maker))
+            (trade.taker_signed_order.order.qty_address, trade.taker_signed_order.order.maker),
+            _balance_read(ref state, (trade.taker_signed_order.order.qty_address, trade.taker_signed_order.order.maker))
                 - amount_maker
         );
         _balance_write(
             ref state,
-            (trade.maker_order.price_address, trade.maker_order.maker),
-            _balance_read(ref state, (trade.maker_order.price_address, trade.maker_order.maker))
+            (trade.maker_signed_order.order.price_address, trade.maker_signed_order.order.maker),
+            _balance_read(ref state, (trade.maker_signed_order.order.price_address, trade.maker_signed_order.order.maker))
                 - amount_taker
         );
         _balance_write(
             ref state,
-            (trade.taker_order.price_address, trade.taker_order.maker),
-            _balance_read(ref state, (trade.taker_order.price_address, trade.taker_order.maker))
+            (trade.taker_signed_order.order.price_address, trade.taker_signed_order.order.maker),
+            _balance_read(ref state, (trade.taker_signed_order.order.price_address, trade.taker_signed_order.order.maker))
                 + amount_taker
         );
     }
     emit_user_balance_snapshot(
         ref state,
         user_balance_snapshot {
-            user_address: trade.maker_order.maker,
-            token: trade.maker_order.qty_address,
+            user_address: trade.maker_signed_order.order.maker,
+            token: trade.maker_signed_order.order.qty_address,
             balance: _balance_read(
-                ref state, (trade.maker_order.qty_address, trade.maker_order.maker)
+                ref state, (trade.maker_signed_order.order.qty_address, trade.maker_signed_order.order.maker)
             )
         }
     );
     emit_user_balance_snapshot(
         ref state,
         user_balance_snapshot {
-            user_address: trade.maker_order.maker,
-            token: trade.maker_order.price_address,
+            user_address: trade.maker_signed_order.order.maker,
+            token: trade.maker_signed_order.order.price_address,
             balance: _balance_read(
-                ref state, (trade.maker_order.price_address, trade.maker_order.maker)
+                ref state, (trade.maker_signed_order.order.price_address, trade.maker_signed_order.order.maker)
             )
         }
     );
     emit_user_balance_snapshot(
         ref state,
         user_balance_snapshot {
-            user_address: trade.taker_order.maker,
-            token: trade.taker_order.qty_address,
+            user_address: trade.taker_signed_order.order.maker,
+            token: trade.taker_signed_order.order.qty_address,
             balance: _balance_read(
-                ref state, (trade.taker_order.qty_address, trade.taker_order.maker)
+                ref state, (trade.taker_signed_order.order.qty_address, trade.taker_signed_order.order.maker)
             )
         }
     );
     emit_user_balance_snapshot(
         ref state,
         user_balance_snapshot {
-            user_address: trade.taker_order.maker,
-            token: trade.taker_order.price_address,
+            user_address: trade.taker_signed_order.order.maker,
+            token: trade.taker_signed_order.order.price_address,
             balance: _balance_read(
-                ref state, (trade.taker_order.price_address, trade.taker_order.maker)
+                ref state, (trade.taker_signed_order.order.price_address, trade.taker_signed_order.order.maker)
             )
         }
     );

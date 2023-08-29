@@ -69,6 +69,7 @@ impl PendingImpl of Pending<Deposit> {
         let caller = get_caller_address();
         let contract = get_contract_address();
         assert(caller == self.maker, 'only deposits by user himself');
+        assert(contract == self.receiver, 'only deposits to exchange');
         let pre = IERC20Dispatcher { contract_address: self.token }.balance_of(contract);
         IERC20Dispatcher { contract_address: self.token }
             .transfer_from(self.maker, contract, self.amount);

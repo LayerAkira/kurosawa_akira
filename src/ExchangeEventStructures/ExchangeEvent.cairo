@@ -1,6 +1,6 @@
 use kurosawa_akira::ExchangeEventStructures::Events::DepositEvent::DepositApply;
 use kurosawa_akira::ExchangeEventStructures::Events::DepositEvent::ApplyingDeposit;
-use kurosawa_akira::ExchangeEventStructures::Events::WithdrawEvent::Withdraw;
+use kurosawa_akira::ExchangeEventStructures::Events::WithdrawEvent::SignedWithdraw;
 use kurosawa_akira::ExchangeEventStructures::Events::TradeEvent::Trade;
 use serde::Serde;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::ContractState;
@@ -9,7 +9,7 @@ use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::ContractState;
 enum ExchangeEvent {
     DepositApply: DepositApply,
     Trade: Trade,
-    Withdraw: Withdraw,
+    SignedWithdraw: SignedWithdraw,
 }
 
 trait Applying<T> {
@@ -25,7 +25,7 @@ impl ApplyingEventImpl of Applying<ExchangeEvent> {
             ExchangeEvent::Trade(x) => {
                 x.apply(ref state);
             },
-            ExchangeEvent::Withdraw(x) => {
+            ExchangeEvent::SignedWithdraw(x) => {
                 x.apply(ref state);
             },
         }

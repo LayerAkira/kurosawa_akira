@@ -11,6 +11,7 @@ mod AKIRA_exchange {
     use kurosawa_akira::ExchangeEventStructures::ExchangeEvent::Applying;
     use kurosawa_akira::ExchangeEventStructures::Events::Order::Order;
     use kurosawa_akira::ExchangeEventStructures::Events::DepositEvent::Deposit;
+    use kurosawa_akira::ExchangeEventStructures::Events::WithdrawEvent::Withdraw;
     use kurosawa_akira::ExchangeEventStructures::Events::DepositEvent::PendingImpl;
     use kurosawa_akira::ExchangeEventStructures::Events::FundsTraits::PoseidonHashImpl;
 
@@ -98,6 +99,14 @@ mod AKIRA_exchange {
     #[external(v0)]
     fn order_poseidon_hash(self: @ContractState, order: Order) -> felt252 {
         order.get_poseidon_hash()
+    }
+    #[external(v0)]
+    fn deposit_poseidon_hash(self: @ContractState, deposit: Deposit) -> felt252 {
+        deposit.get_poseidon_hash()
+    }
+    #[external(v0)]
+    fn withdraw_poseidon_hash(self: @ContractState, withdraw: Withdraw) -> felt252 {
+        withdraw.get_poseidon_hash()
     }
 
     // read and write
