@@ -10,6 +10,8 @@ use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_pending_deposits_read;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_mint;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::apply_deposit_started;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::emit_apply_deposit_started;
+use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::deposit_event;
+use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::emit_deposit_event;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::user_balance_snapshot;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::emit_user_balance_snapshot;
 use starknet::info::get_caller_address;
@@ -21,7 +23,7 @@ use starknet::{StorageBaseAddress, SyscallResult};
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::ContractState;
 use starknet::Event;
 use traits::Into;
-#[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Zeroable)]
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct Deposit {
     maker: ContractAddress,
     receiver: ContractAddress,
@@ -30,7 +32,7 @@ struct Deposit {
     salt: felt252,
 }
 
-#[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Zeroable)]
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct DepositApply {
     key: felt252,
     sign: (felt252, felt252),
@@ -38,23 +40,7 @@ struct DepositApply {
 
 impl ZeroableImpl of Zeroable<Deposit> {
     fn is_zero(self: Deposit) -> bool {
-        let mut res: bool = true;
-        if self.maker.into() == 0 {
-            res = false;
-        }
-        if self.receiver.into() == 0 {
-            res = false;
-        }
-        if self.token.into() == 0 {
-            res = false;
-        }
-        if self.amount.into() == 0 {
-            res = false;
-        }
-        if self.salt.into() == 0 {
-            res = false;
-        }
-        res
+        self == self.zero()
     }
     fn zero(self: Deposit) -> Deposit {
         let zero_adress = starknet::contract_address_try_from_felt252(0).unwrap();
@@ -70,10 +56,10 @@ impl PendingImpl of Pending<Deposit> {
         let contract = get_contract_address();
         assert(caller == self.maker, 'only deposits by user himself');
         assert(contract == self.receiver, 'only deposits to exchange');
-        let pre = IERC20Dispatcher { contract_address: self.token }.balance_of(contract);
+        let pre = IERC20Dispatcher { contract_address: self.token }.balanceOf(contract);
         IERC20Dispatcher { contract_address: self.token }
-            .transfer_from(self.maker, contract, self.amount);
-        let fact_received = IERC20Dispatcher { contract_address: self.token }.balance_of(contract)
+            .transferFrom(self.maker, contract, self.amount);
+        let fact_received = IERC20Dispatcher { contract_address: self.token }.balanceOf(contract)
             - pre;
         let key = self.get_poseidon_hash();
         let deposit = _pending_deposits_read(ref state, key);
@@ -93,6 +79,7 @@ impl ApplyingDepositImpl of ApplyingDeposit<DepositApply> {
     fn apply(self: DepositApply, ref state: ContractState) {
         emit_apply_deposit_started(ref state, apply_deposit_started {});
         let deposit = _pending_deposits_read(ref state, self.key);
+        emit_deposit_event(ref state, deposit_event {deposit});
         check_sign(deposit.maker, self.key, self.sign);
         _mint(ref state, deposit.maker, deposit.amount, deposit.token);
         _pending_deposits_write(ref state, self.key, deposit.zero());

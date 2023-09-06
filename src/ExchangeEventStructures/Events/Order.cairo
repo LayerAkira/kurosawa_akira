@@ -12,7 +12,6 @@ struct Order {
     price: u256,
     quantity: u256,
     maker: ContractAddress,
-    order_id: felt252,
     full_fill_only: bool,
     best_level_only: bool,
     post_only: bool,

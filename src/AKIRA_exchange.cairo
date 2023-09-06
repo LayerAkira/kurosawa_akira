@@ -13,6 +13,7 @@ mod AKIRA_exchange {
     use kurosawa_akira::ExchangeEventStructures::Events::DepositEvent::Deposit;
     use kurosawa_akira::ExchangeEventStructures::Events::WithdrawEvent::Withdraw;
     use kurosawa_akira::ExchangeEventStructures::Events::DepositEvent::PendingImpl;
+    use kurosawa_akira::ExchangeEventStructures::Events::DepositEvent::ZeroableImpl;
     use kurosawa_akira::ExchangeEventStructures::Events::FundsTraits::PoseidonHashImpl;
 
     #[storage]
@@ -109,6 +110,11 @@ mod AKIRA_exchange {
         withdraw.get_poseidon_hash()
     }
 
+    #[external(v0)]
+    fn check_deposit_pending_status(self: @ContractState, deposit: Deposit) -> bool {
+        !self._pending_deposits.read(deposit.get_poseidon_hash()).is_zero()
+    }
+
     // read and write
 
     fn _balance_write(
@@ -153,8 +159,9 @@ mod AKIRA_exchange {
         matching_price_event: matching_price_event,
         price_event: price_event,
         order_event: order_event,
+        deposit_event: deposit_event,
         user_balance_snapshot: user_balance_snapshot,
-        fdghdfghdfghdfghdfghdf: fdghdfghdfghdfghdfghdf,
+        fdghdfghdfghdfghdfghdffgf: fdghdfghdfghdfghdfghdffgf,
     }
     #[derive(Drop, starknet::Event)]
     struct apply_transaction_started {}
@@ -210,6 +217,13 @@ mod AKIRA_exchange {
         self.emit(Event::order_event(_order_event));
     }
     #[derive(Drop, starknet::Event)]
+    struct deposit_event {
+        deposit: Deposit
+    }
+    fn emit_deposit_event(ref self: ContractState, _deposit_event: deposit_event) {
+        self.emit(Event::deposit_event(_deposit_event));
+    }
+    #[derive(Drop, starknet::Event)]
     struct user_balance_snapshot {
         user_address: ContractAddress,
         token: ContractAddress,
@@ -221,5 +235,5 @@ mod AKIRA_exchange {
         self.emit(Event::user_balance_snapshot(_user_balance_snapshot));
     }
     #[derive(Drop, starknet::Event)]
-    struct fdghdfghdfghdfghdfghdf {}
+    struct fdghdfghdfghdfghdfghdffgf {}
 }
