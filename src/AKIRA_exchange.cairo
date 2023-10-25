@@ -25,22 +25,31 @@ mod AKIRA_exchange {
         _withdraw_block: LegacyMap::<ContractAddress, u64>,
         _filled_amount: LegacyMap::<felt252, u256>,
         _pending_deposits: LegacyMap::<felt252, Deposit>,
+        _WRAPPED_NATIVE_CHAIN_COIN: ContractAddress,
+        _cur_gas_price: u256,
+        _pow_of_decimals: LegacyMap::<ContractAddress, u256>,
     }
 
     #[constructor]
-    fn constructor(ref self: ContractState, _exchange_address0: ContractAddress) {
+    fn constructor(ref self: ContractState, _exchange_address0: ContractAddress, WRAPPED_NATIVE_CHAIN_COIN: ContractAddress,
+    ETH: ContractAddress, BTC: ContractAddress, USDC: ContractAddress) {
         self._name.write('AKIRA');
         self._exchange_address.write(_exchange_address0);
+        self._WRAPPED_NATIVE_CHAIN_COIN.write(WRAPPED_NATIVE_CHAIN_COIN);
+        self._pow_of_decimals.write(ETH, 1000000000000000000);
+        self._pow_of_decimals.write(BTC, 100000000);
+        self._pow_of_decimals.write(USDC, 1000000);
     }
 
     //EVENTS LOOP
 
     #[external(v0)]
     fn apply_exchange_events(
-        ref self: ContractState, serialized_exchange_events: Array::<felt252>
+        ref self: ContractState, serialized_exchange_events: Array::<felt252>, cur_gas_price: u256
     ) {
         let caller = get_caller_address();
         assert(caller == self._exchange_address.read(), 'only for exchange');
+        self._cur_gas_price.write(cur_gas_price);
         let mut span = serialized_exchange_events.span();
         let exchange_events: Array<ExchangeEvent> = Serde::<Array<ExchangeEvent>>::deserialize(
             ref span
@@ -145,7 +154,18 @@ mod AKIRA_exchange {
         self._pending_deposits.read(hash)
     }
 
-
+    fn _exchange_address_read(ref self: ContractState) -> ContractAddress {
+        self._exchange_address.read()
+    }
+    fn _WRAPPED_NATIVE_CHAIN_COIN_read(ref self: ContractState) -> ContractAddress {
+        self._WRAPPED_NATIVE_CHAIN_COIN.read()
+    }
+    fn _cur_gas_price_read(ref self: ContractState) -> u256 {
+        self._cur_gas_price.read()
+    }
+    fn _pow_of_decimals_read(ref self: ContractState, token: ContractAddress) -> u256 {
+        self._pow_of_decimals.read(token)
+    }
 
     // EVENTS
 
@@ -161,7 +181,7 @@ mod AKIRA_exchange {
         order_event: order_event,
         deposit_event: deposit_event,
         user_balance_snapshot: user_balance_snapshot,
-        fdghdfghdfghdfghdfghdffgf: fdghdfghdfghdfghdfghdffgf,
+        fdghdfghdfghdfghdfghdffgfdgggg: fdghdfghdfghdfghdfghdffgfdgggg,
     }
     #[derive(Drop, starknet::Event)]
     struct apply_transaction_started {}
@@ -235,5 +255,5 @@ mod AKIRA_exchange {
         self.emit(Event::user_balance_snapshot(_user_balance_snapshot));
     }
     #[derive(Drop, starknet::Event)]
-    struct fdghdfghdfghdfghdfghdffgf {}
+    struct fdghdfghdfghdfghdfghdffgfdgggg {}
 }

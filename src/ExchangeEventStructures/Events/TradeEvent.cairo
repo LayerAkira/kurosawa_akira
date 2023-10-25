@@ -9,6 +9,7 @@ use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_balance_write;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_balance_read;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_filled_amount_write;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_filled_amount_read;
+use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_pow_of_decimals_read;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::apply_transaction_started;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::emit_apply_transaction_started;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::mathing_amount_event;
@@ -63,13 +64,30 @@ impl ApplyingTradeImpl of Applying<Trade> {
             taker_order_hash,
             _filled_amount_read(ref state, taker_order_hash) + mathing_amount
         );
+
+        let qty_decimals: u256 = _pow_of_decimals_read(ref state, trade.maker_signed_order.order.qty_address);
+
+        let mathing_cost: u256 = (matching_price * mathing_amount) / qty_decimals;
+
         rebalance_after_trade(
             trade.maker_signed_order.order.side,
             trade,
             mathing_amount,
-            mathing_amount * matching_price,
+            mathing_cost,
             ref state
         );
+        if trade.maker_signed_order.order.side == true {
+            apply_order_fee(ref state, trade.maker_signed_order.order.maker, trade.maker_signed_order.order.fee,
+                mathing_cost, trade.maker_signed_order.order.price_address, true);
+            apply_order_fee(ref state, trade.taker_signed_order.order.maker, trade.taker_signed_order.order.fee,
+                mathing_amount, trade.taker_signed_order.order.qty_address, false);
+        }
+        else {
+            apply_order_fee(ref state, trade.maker_signed_order.order.maker, trade.maker_signed_order.order.fee,
+                mathing_amount, trade.maker_signed_order.order.qty_address, true);
+            apply_order_fee(ref state, trade.taker_signed_order.order.maker, trade.taker_signed_order.order.fee,
+                mathing_cost, trade.taker_signed_order.order.price_address, false);
+        }
     }
 }
 

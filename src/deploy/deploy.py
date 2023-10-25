@@ -50,7 +50,11 @@ async def deploy(contract_name, raw_calldata, net_type):
 
 async def main():
     contract_name = "AKIRA_exchange"
-    raw_calldata = [0x166db0a0758b72c6c89bf5ac6942aeaa0ee281eaae34f06bee74ce29ae4cd36]  # 0x166db0a0758b72c6c89bf5ac6942aeaa0ee281eaae34f06bee74ce29ae4cd36
+    # 0x166db0a0758b72c6c89bf5ac6942aeaa0ee281eaae34f06bee74ce29ae4cd36
+    raw_calldata = [0x166db0a0758b72c6c89bf5ac6942aeaa0ee281eaae34f06bee74ce29ae4cd36, 0x049D36570D4e46f48e99674bd3fcc84644DdD6b96F7C741B1562B82f9e004dC7,
+                    0x049D36570D4e46f48e99674bd3fcc84644DdD6b96F7C741B1562B82f9e004dC7,
+                    0x012D537DC323c439dC65C976FAD242D5610d27cFb5F31689a0a319b8BE7f3d56,
+                    0x005A643907b9a4Bc6a55E9069C4fD5fd1f5C79a22470690f75556C4736e34426]
     net_type = "testnet"
     await deploy(contract_name, raw_calldata, net_type)
 

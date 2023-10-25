@@ -10,3 +10,4 @@ allowed-libfuncs-list.name = "all"
 
 [dependencies]
 starknet = ">=2.0.0"
+alexandria_math = { git = "https://github.com/keep-starknet-strange/alexandria.git" }

@@ -43,9 +43,9 @@ impl ZeroableImpl of Zeroable<Deposit> {
         self == self.zero()
     }
     fn zero(self: Deposit) -> Deposit {
-        let zero_adress = starknet::contract_address_try_from_felt252(0).unwrap();
+        let zero_address = starknet::contract_address_try_from_felt252(0).unwrap();
         let zero_u256: u256 = 0;
-        Deposit{maker: zero_adress, receiver: zero_adress, token: zero_adress, amount: zero_u256, salt: 0}
+        Deposit{maker: zero_address, receiver: zero_address, token: zero_address, amount: zero_u256, salt: 0}
     }
 }
 

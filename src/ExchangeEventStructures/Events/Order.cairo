@@ -6,6 +6,7 @@ use array::SpanTrait;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_filled_amount_read;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::ContractState;
 use kurosawa_akira::ExchangeEventStructures::Events::FundsTraits::check_sign;
+use kurosawa_akira::FeeLogic::OrderFee::OrderFee;
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct Order {
@@ -19,6 +20,8 @@ struct Order {
     qty_address: ContractAddress,
     price_address: ContractAddress,
     order_type: bool,
+    fee: OrderFee,
+    number_of_swaps_allowed: u256,
     salt: felt252,
 }
 
