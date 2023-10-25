@@ -23,6 +23,9 @@ use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::emit_order_event;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::user_balance_snapshot;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::emit_user_balance_snapshot;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::ContractState;
+use kurosawa_akira::FeeLogic::OrderFee::apply_order_fee;
+use kurosawa_akira::utils::erc20::IERC20DispatcherTrait;
+use kurosawa_akira::utils::erc20::IERC20Dispatcher;
 use starknet::Store;
 
 
