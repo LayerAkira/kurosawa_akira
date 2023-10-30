@@ -181,7 +181,6 @@ mod AKIRA_exchange {
         order_event: order_event,
         deposit_event: deposit_event,
         user_balance_snapshot: user_balance_snapshot,
-        fdghdfghdfghdfghdfghdffgfdggggj: fdghdfghdfghdfghdfghdffgfdggggj,
     }
     #[derive(Drop, starknet::Event)]
     struct apply_transaction_started {}
@@ -254,6 +253,4 @@ mod AKIRA_exchange {
     ) {
         self.emit(Event::user_balance_snapshot(_user_balance_snapshot));
     }
-    #[derive(Drop, starknet::Event)]
-    struct fdghdfghdfghdfghdfghdffgfdggggj {}
 }

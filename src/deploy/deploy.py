@@ -27,10 +27,10 @@ async def deploy(contract_name, raw_calldata, net_type):
             chain=StarknetChainId.TESTNET,
     )
 
-    casm_class = CasmClassSchema().loads(Path(f"../../target/dev/kurosawa_akira_{contract_name}.casm.json").read_text())
+    casm_class = CasmClassSchema().loads(Path(f"../../target/dev/kurosawa_akira_{contract_name}.compiled_contract_class.json").read_text())
     casm_class_hash = compute_casm_class_hash(casm_class)
     declare_transaction = await deployer_account.sign_declare_v2_transaction(
-            compiled_contract=Path(f"../../target/dev/kurosawa_akira_{contract_name}.sierra.json").read_text(),
+            compiled_contract=Path(f"../../target/dev/kurosawa_akira_{contract_name}.contract_class.json").read_text(),
             compiled_class_hash=casm_class_hash, max_fee=int(1e14))
     print(f"declare_transaction: {hex(declare_transaction.calculate_hash(chain_id=StarknetChainId.TESTNET))}")
     resp = await deployer_account.client.declare(transaction=declare_transaction)
@@ -46,6 +46,9 @@ async def deploy(contract_name, raw_calldata, net_type):
     await deployer_account.client.wait_for_tx(resp.transaction_hash)
     address = contract_deployment.address
     print(f"Contract address: {hex(address)}")
+    file_path = "./contract_address"
+    with open(file_path, 'w') as file:
+        file.write(hex(address))
 
 
 async def main():
