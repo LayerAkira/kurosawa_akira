@@ -19,7 +19,7 @@ mod AKIRA_exchange {
     #[storage]
     struct Storage {
         _name: felt252,
-            _total_supply: LegacyMap::<ContractAddress, u256>,
+        _total_supply: LegacyMap::<ContractAddress, u256>,
         _balance: LegacyMap::<(ContractAddress, ContractAddress), u256>,
         _exchange_address: ContractAddress,
         _withdraw_block: LegacyMap::<ContractAddress, u64>,
@@ -28,6 +28,8 @@ mod AKIRA_exchange {
         _WRAPPED_NATIVE_CHAIN_COIN: ContractAddress,
         _cur_gas_price: u256,
         _pow_of_decimals: LegacyMap::<ContractAddress, u256>,
+        _block_of_requested_cancellation: LegacyMap::<felt252, u64>,
+        _waiting_gap_of_block_qty: u64,
     }
 
     #[constructor]
@@ -39,6 +41,7 @@ mod AKIRA_exchange {
         self._pow_of_decimals.write(ETH, 1000000000000000000);
         self._pow_of_decimals.write(BTC, 100000000);
         self._pow_of_decimals.write(USDC, 1000000);
+        self._waiting_gap_of_block_qty.write(10);
     }
 
     //EVENTS LOOP
@@ -51,9 +54,9 @@ mod AKIRA_exchange {
         assert(caller == self._exchange_address.read(), 'only for exchange');
         self._cur_gas_price.write(cur_gas_price);
         let mut span = serialized_exchange_events.span();
-        let exchange_events: Array<ExchangeEvent> = Serde::<Array<ExchangeEvent>>::deserialize(
-            ref span
-        )
+        let exchange_events: Array<ExchangeEvent> = Serde::<
+            Array<ExchangeEvent>
+        >::deserialize(ref span)
             .unwrap();
         _exchange_events_loop(ref self, exchange_events);
     }
@@ -80,6 +83,16 @@ mod AKIRA_exchange {
         deposit.set_pending(ref self);
     }
 
+    #[external(v0)]
+    fn request_cancellation_pending_deposit(ref self: ContractState, deposit: Deposit) {
+        deposit.request_cancellation_pending(ref self);
+    }
+
+    #[external(v0)]
+    fn cancel_pending_deposit(ref self: ContractState, deposit: Deposit) {
+        deposit.cancel_pending(ref self);
+    }
+
     // TOKEN
 
     fn _mint(ref self: ContractState, to: ContractAddress, amount: u256, token: ContractAddress) {
@@ -100,9 +113,7 @@ mod AKIRA_exchange {
     }
 
     #[external(v0)]
-    fn balanceOf(
-        self: @ContractState, _address: ContractAddress, token: ContractAddress
-    ) -> u256 {
+    fn balanceOf(self: @ContractState, _address: ContractAddress, token: ContractAddress) -> u256 {
         self._balance.read((token, _address))
     }
 
@@ -166,6 +177,17 @@ mod AKIRA_exchange {
     fn _pow_of_decimals_read(ref self: ContractState, token: ContractAddress) -> u256 {
         self._pow_of_decimals.read(token)
     }
+    fn _pending_deposits_block_of_requested_cancellation_write(ref self: ContractState, hash: felt252, block_number: u64) {
+        self._block_of_requested_cancellation.write(hash, block_number);
+    }
+    fn _pending_deposits_block_of_requested_cancellation_read(ref self: ContractState, hash: felt252) -> u64 {
+        self._block_of_requested_cancellation.read(hash)
+    }
+    fn _waiting_gap_of_block_qty_read(ref self: ContractState) -> u64 {
+        self._waiting_gap_of_block_qty.read()
+    }
+
+
 
     // EVENTS
 
@@ -181,6 +203,7 @@ mod AKIRA_exchange {
         order_event: order_event,
         deposit_event: deposit_event,
         user_balance_snapshot: user_balance_snapshot,
+        request_cancel_pending_deposit: request_cancel_pending_deposit,
     }
     #[derive(Drop, starknet::Event)]
     struct apply_transaction_started {}
@@ -252,5 +275,14 @@ mod AKIRA_exchange {
         ref self: ContractState, _user_balance_snapshot: user_balance_snapshot
     ) {
         self.emit(Event::user_balance_snapshot(_user_balance_snapshot));
+    }
+    #[derive(Drop, starknet::Event)]
+    struct request_cancel_pending_deposit {
+        deposit: Deposit
+    }
+    fn emit_request_cancel_pending_deposit(
+        ref self: ContractState, _request_cancel_pending_deposit: request_cancel_pending_deposit
+    ) {
+        self.emit(Event::request_cancel_pending_deposit(_request_cancel_pending_deposit));
     }
 }

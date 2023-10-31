@@ -13,6 +13,8 @@ use starknet::ContractAddress;
 
 trait Pending<T> {
     fn set_pending(self: T, ref state: ContractState) -> felt252;
+    fn request_cancellation_pending(self: T, ref state: ContractState);
+    fn cancel_pending(self: T, ref state: ContractState);
 }
 
 trait Zeroable<T> {
