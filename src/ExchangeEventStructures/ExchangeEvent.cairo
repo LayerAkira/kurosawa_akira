@@ -19,15 +19,9 @@ trait Applying<T> {
 impl ApplyingEventImpl of Applying<ExchangeEvent> {
     fn apply(self: ExchangeEvent, ref state: ContractState) {
         match self {
-            ExchangeEvent::DepositApply(x) => {
-                x.apply(ref state);
-            },
-            ExchangeEvent::Trade(x) => {
-                x.apply(ref state);
-            },
-            ExchangeEvent::SignedWithdraw(x) => {
-                x.apply(ref state);
-            },
+            ExchangeEvent::DepositApply(x) => { x.apply(ref state); },
+            ExchangeEvent::Trade(x) => { x.apply(ref state); },
+            ExchangeEvent::SignedWithdraw(x) => { x.apply(ref state); },
         }
     }
 }

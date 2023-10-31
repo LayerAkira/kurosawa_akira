@@ -91,8 +91,7 @@ impl PendingImpl of Pending<Deposit> {
         let block_number = get_block_number();
         _pending_deposits_block_of_requested_cancellation_write(ref state, key, block_number);
         emit_request_cancel_pending_deposit(
-            ref state,
-            request_cancel_pending_deposit{deposit: self}
+            ref state, request_cancel_pending_deposit { deposit: self }
         )
     }
 

@@ -33,8 +33,14 @@ mod AKIRA_exchange {
     }
 
     #[constructor]
-    fn constructor(ref self: ContractState, _exchange_address0: ContractAddress, WRAPPED_NATIVE_CHAIN_COIN: ContractAddress,
-    ETH: ContractAddress, BTC: ContractAddress, USDC: ContractAddress) {
+    fn constructor(
+        ref self: ContractState,
+        _exchange_address0: ContractAddress,
+        WRAPPED_NATIVE_CHAIN_COIN: ContractAddress,
+        ETH: ContractAddress,
+        BTC: ContractAddress,
+        USDC: ContractAddress
+    ) {
         self._name.write('AKIRA');
         self._exchange_address.write(_exchange_address0);
         self._WRAPPED_NATIVE_CHAIN_COIN.write(WRAPPED_NATIVE_CHAIN_COIN);
@@ -177,16 +183,19 @@ mod AKIRA_exchange {
     fn _pow_of_decimals_read(ref self: ContractState, token: ContractAddress) -> u256 {
         self._pow_of_decimals.read(token)
     }
-    fn _pending_deposits_block_of_requested_cancellation_write(ref self: ContractState, hash: felt252, block_number: u64) {
+    fn _pending_deposits_block_of_requested_cancellation_write(
+        ref self: ContractState, hash: felt252, block_number: u64
+    ) {
         self._block_of_requested_cancellation.write(hash, block_number);
     }
-    fn _pending_deposits_block_of_requested_cancellation_read(ref self: ContractState, hash: felt252) -> u64 {
+    fn _pending_deposits_block_of_requested_cancellation_read(
+        ref self: ContractState, hash: felt252
+    ) -> u64 {
         self._block_of_requested_cancellation.read(hash)
     }
     fn _waiting_gap_of_block_qty_read(ref self: ContractState) -> u64 {
         self._waiting_gap_of_block_qty.read()
     }
-
 
 
     // EVENTS

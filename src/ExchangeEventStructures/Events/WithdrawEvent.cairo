@@ -33,7 +33,8 @@ impl ApplyingWithdrawImpl of Applying<SignedWithdraw> {
         let hash = self.withdraw.get_poseidon_hash();
         check_sign(self.withdraw.maker, hash, self.sign);
         _burn(ref state, self.withdraw.maker, self.withdraw.amount, self.withdraw.token);
-        IERC20Dispatcher { contract_address: self.withdraw.token }.transfer(self.withdraw.maker, self.withdraw.amount);
+        IERC20Dispatcher { contract_address: self.withdraw.token }
+            .transfer(self.withdraw.maker, self.withdraw.amount);
         emit_user_balance_snapshot(
             ref state,
             user_balance_snapshot {

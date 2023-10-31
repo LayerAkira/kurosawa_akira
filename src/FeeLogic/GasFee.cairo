@@ -21,7 +21,9 @@ struct GasFee {
 const WEI_IN_ETH: u256 = 1000000000000000000;
 
 
-fn validate_and_apply_gas_fee(ref state: ContractState, user: ContractAddress, gas_fee: GasFee, cur_gas_price: u256) {
+fn validate_and_apply_gas_fee(
+    ref state: ContractState, user: ContractAddress, gas_fee: GasFee, cur_gas_price: u256
+) {
     if cur_gas_price == 0 {
         return;
     }
@@ -35,9 +37,9 @@ fn validate_and_apply_gas_fee(ref state: ContractState, user: ContractAddress, g
         _burn(ref state, user, spend_native, gas_fee.fee_token);
         _mint(ref state, _exchange_address_read(ref state), spend_native, gas_fee.fee_token);
         return;
-    }
-    else if ((gas_fee.fee_token == wrapped_native_token) & gas_fee.external_call)  {
-        IERC20Dispatcher { contract_address: gas_fee.fee_token }.transferFrom(user, _exchange_address_read(ref state), spend_native);
+    } else if ((gas_fee.fee_token == wrapped_native_token) & gas_fee.external_call) {
+        IERC20Dispatcher { contract_address: gas_fee.fee_token }
+            .transferFrom(user, _exchange_address_read(ref state), spend_native);
         return;
     }
     let spend_converted = (spend_native * gas_fee.conversion_rate - 1) / WEI_IN_ETH + 1;
@@ -46,7 +48,8 @@ fn validate_and_apply_gas_fee(ref state: ContractState, user: ContractAddress, g
         _mint(ref state, _exchange_address_read(ref state), spend_converted, gas_fee.fee_token);
         return;
     }
-    IERC20Dispatcher { contract_address: gas_fee.fee_token }.transferFrom(user, _exchange_address_read(ref state), spend_converted);
+    IERC20Dispatcher { contract_address: gas_fee.fee_token }
+        .transferFrom(user, _exchange_address_read(ref state), spend_converted);
 }
 
 impl ZeroableImpl of Zeroable<GasFee> {
@@ -56,6 +59,12 @@ impl ZeroableImpl of Zeroable<GasFee> {
     fn zero(self: GasFee) -> GasFee {
         let zero_address = starknet::contract_address_try_from_felt252(0).unwrap();
         let zero_u256: u256 = 0;
-        GasFee{gas_per_swap: zero_u256, fee_token: zero_address, max_gas_price: zero_u256, conversion_rate: zero_u256, external_call: false}
+        GasFee {
+            gas_per_swap: zero_u256,
+            fee_token: zero_address,
+            max_gas_price: zero_u256,
+            conversion_rate: zero_u256,
+            external_call: false
+        }
     }
 }

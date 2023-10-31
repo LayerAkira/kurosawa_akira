@@ -68,28 +68,49 @@ impl ApplyingTradeImpl of Applying<Trade> {
             _filled_amount_read(ref state, taker_order_hash) + mathing_amount
         );
 
-        let qty_decimals: u256 = _pow_of_decimals_read(ref state, trade.maker_signed_order.order.qty_address);
+        let qty_decimals: u256 = _pow_of_decimals_read(
+            ref state, trade.maker_signed_order.order.qty_address
+        );
 
         let mathing_cost: u256 = (matching_price * mathing_amount) / qty_decimals;
 
         rebalance_after_trade(
-            trade.maker_signed_order.order.side,
-            trade,
-            mathing_amount,
-            mathing_cost,
-            ref state
+            trade.maker_signed_order.order.side, trade, mathing_amount, mathing_cost, ref state
         );
         if trade.maker_signed_order.order.side == true {
-            apply_order_fee(ref state, trade.maker_signed_order.order.maker, trade.maker_signed_order.order.fee,
-                mathing_cost, trade.maker_signed_order.order.price_address, true);
-            apply_order_fee(ref state, trade.taker_signed_order.order.maker, trade.taker_signed_order.order.fee,
-                mathing_amount, trade.taker_signed_order.order.qty_address, false);
-        }
-        else {
-            apply_order_fee(ref state, trade.maker_signed_order.order.maker, trade.maker_signed_order.order.fee,
-                mathing_amount, trade.maker_signed_order.order.qty_address, true);
-            apply_order_fee(ref state, trade.taker_signed_order.order.maker, trade.taker_signed_order.order.fee,
-                mathing_cost, trade.taker_signed_order.order.price_address, false);
+            apply_order_fee(
+                ref state,
+                trade.maker_signed_order.order.maker,
+                trade.maker_signed_order.order.fee,
+                mathing_cost,
+                trade.maker_signed_order.order.price_address,
+                true
+            );
+            apply_order_fee(
+                ref state,
+                trade.taker_signed_order.order.maker,
+                trade.taker_signed_order.order.fee,
+                mathing_amount,
+                trade.taker_signed_order.order.qty_address,
+                false
+            );
+        } else {
+            apply_order_fee(
+                ref state,
+                trade.maker_signed_order.order.maker,
+                trade.maker_signed_order.order.fee,
+                mathing_amount,
+                trade.maker_signed_order.order.qty_address,
+                true
+            );
+            apply_order_fee(
+                ref state,
+                trade.taker_signed_order.order.maker,
+                trade.taker_signed_order.order.fee,
+                mathing_cost,
+                trade.taker_signed_order.order.price_address,
+                false
+            );
         }
     }
 }
@@ -105,50 +126,74 @@ fn rebalance_after_trade(
         _balance_write(
             ref state,
             (trade.maker_signed_order.order.qty_address, trade.maker_signed_order.order.maker),
-            _balance_read(ref state, (trade.maker_signed_order.order.qty_address, trade.maker_signed_order.order.maker))
+            _balance_read(
+                ref state,
+                (trade.maker_signed_order.order.qty_address, trade.maker_signed_order.order.maker)
+            )
                 - amount_maker
         );
         _balance_write(
             ref state,
             (trade.taker_signed_order.order.qty_address, trade.taker_signed_order.order.maker),
-            _balance_read(ref state, (trade.taker_signed_order.order.qty_address, trade.taker_signed_order.order.maker))
+            _balance_read(
+                ref state,
+                (trade.taker_signed_order.order.qty_address, trade.taker_signed_order.order.maker)
+            )
                 + amount_maker
         );
         _balance_write(
             ref state,
             (trade.maker_signed_order.order.price_address, trade.maker_signed_order.order.maker),
-            _balance_read(ref state, (trade.maker_signed_order.order.price_address, trade.maker_signed_order.order.maker))
+            _balance_read(
+                ref state,
+                (trade.maker_signed_order.order.price_address, trade.maker_signed_order.order.maker)
+            )
                 + amount_taker
         );
         _balance_write(
             ref state,
             (trade.taker_signed_order.order.price_address, trade.taker_signed_order.order.maker),
-            _balance_read(ref state, (trade.taker_signed_order.order.price_address, trade.taker_signed_order.order.maker))
+            _balance_read(
+                ref state,
+                (trade.taker_signed_order.order.price_address, trade.taker_signed_order.order.maker)
+            )
                 - amount_taker
         );
     } else {
         _balance_write(
             ref state,
             (trade.maker_signed_order.order.qty_address, trade.maker_signed_order.order.maker),
-            _balance_read(ref state, (trade.maker_signed_order.order.qty_address, trade.maker_signed_order.order.maker))
+            _balance_read(
+                ref state,
+                (trade.maker_signed_order.order.qty_address, trade.maker_signed_order.order.maker)
+            )
                 + amount_maker
         );
         _balance_write(
             ref state,
             (trade.taker_signed_order.order.qty_address, trade.taker_signed_order.order.maker),
-            _balance_read(ref state, (trade.taker_signed_order.order.qty_address, trade.taker_signed_order.order.maker))
+            _balance_read(
+                ref state,
+                (trade.taker_signed_order.order.qty_address, trade.taker_signed_order.order.maker)
+            )
                 - amount_maker
         );
         _balance_write(
             ref state,
             (trade.maker_signed_order.order.price_address, trade.maker_signed_order.order.maker),
-            _balance_read(ref state, (trade.maker_signed_order.order.price_address, trade.maker_signed_order.order.maker))
+            _balance_read(
+                ref state,
+                (trade.maker_signed_order.order.price_address, trade.maker_signed_order.order.maker)
+            )
                 - amount_taker
         );
         _balance_write(
             ref state,
             (trade.taker_signed_order.order.price_address, trade.taker_signed_order.order.maker),
-            _balance_read(ref state, (trade.taker_signed_order.order.price_address, trade.taker_signed_order.order.maker))
+            _balance_read(
+                ref state,
+                (trade.taker_signed_order.order.price_address, trade.taker_signed_order.order.maker)
+            )
                 + amount_taker
         );
     }
@@ -158,7 +203,8 @@ fn rebalance_after_trade(
             user_address: trade.maker_signed_order.order.maker,
             token: trade.maker_signed_order.order.qty_address,
             balance: _balance_read(
-                ref state, (trade.maker_signed_order.order.qty_address, trade.maker_signed_order.order.maker)
+                ref state,
+                (trade.maker_signed_order.order.qty_address, trade.maker_signed_order.order.maker)
             )
         }
     );
@@ -168,7 +214,8 @@ fn rebalance_after_trade(
             user_address: trade.maker_signed_order.order.maker,
             token: trade.maker_signed_order.order.price_address,
             balance: _balance_read(
-                ref state, (trade.maker_signed_order.order.price_address, trade.maker_signed_order.order.maker)
+                ref state,
+                (trade.maker_signed_order.order.price_address, trade.maker_signed_order.order.maker)
             )
         }
     );
@@ -178,7 +225,8 @@ fn rebalance_after_trade(
             user_address: trade.taker_signed_order.order.maker,
             token: trade.taker_signed_order.order.qty_address,
             balance: _balance_read(
-                ref state, (trade.taker_signed_order.order.qty_address, trade.taker_signed_order.order.maker)
+                ref state,
+                (trade.taker_signed_order.order.qty_address, trade.taker_signed_order.order.maker)
             )
         }
     );
@@ -188,7 +236,8 @@ fn rebalance_after_trade(
             user_address: trade.taker_signed_order.order.maker,
             token: trade.taker_signed_order.order.price_address,
             balance: _balance_read(
-                ref state, (trade.taker_signed_order.order.price_address, trade.taker_signed_order.order.maker)
+                ref state,
+                (trade.taker_signed_order.order.price_address, trade.taker_signed_order.order.maker)
             )
         }
     );

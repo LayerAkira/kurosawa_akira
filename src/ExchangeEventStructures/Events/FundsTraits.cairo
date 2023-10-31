@@ -36,7 +36,8 @@ impl PoseidonHashImpl<T, impl TSerde: Serde<T>, impl TDestruct: Destruct<T>> of 
 }
 
 fn check_sign(account: ContractAddress, hash: felt252, sign: (felt252, felt252)) {
-    let selector = 0x028420862938116cb3bbdbedee07451ccc54d4e9412dbef71142ad1980a30941; // is_valid_signature
+    let selector =
+        0x028420862938116cb3bbdbedee07451ccc54d4e9412dbef71142ad1980a30941; // is_valid_signature
     let (x, y) = sign;
     let mut calldata = ArrayTrait::new();
     calldata.append(hash);

@@ -16,8 +16,14 @@ struct OrderFee {
 }
 
 
-fn apply_order_fee(ref state: ContractState, user: ContractAddress, order_fee: OrderFee, feeable_qty: u256,
-    fee_token: ContractAddress, is_maker: bool) {
+fn apply_order_fee(
+    ref state: ContractState,
+    user: ContractAddress,
+    order_fee: OrderFee,
+    feeable_qty: u256,
+    fee_token: ContractAddress,
+    is_maker: bool
+) {
     assert(order_fee.trade_fee.fee_token == fee_token, 'wrong fee token');
     apply_fixed_fee_involved(ref state, user, order_fee.trade_fee, feeable_qty);
     if !order_fee.router_fee.is_zero() {
@@ -25,7 +31,8 @@ fn apply_order_fee(ref state: ContractState, user: ContractAddress, order_fee: O
         apply_fixed_fee_involved(ref state, user, order_fee.router_fee, feeable_qty);
     }
     if (!is_maker & !order_fee.gas_fee.is_zero()) {
-        validate_and_apply_gas_fee(ref state, user, order_fee.gas_fee, _cur_gas_price_read(ref state));
+        validate_and_apply_gas_fee(
+            ref state, user, order_fee.gas_fee, _cur_gas_price_read(ref state)
+        );
     }
-
 }
