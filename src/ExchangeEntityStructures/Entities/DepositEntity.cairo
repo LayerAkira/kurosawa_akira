@@ -107,6 +107,7 @@ impl PendingImpl of Pending<Deposit> {
                 + _waiting_gap_of_block_qty_read(ref state) <= block_number,
             'early_cnsl'
         );
+        IERC20Dispatcher { contract_address: self.token }.transfer(self.maker, self.amount);
         _block_of_requested_action_write(ref state, key, 0);
         _pending_deposits_write(ref state, key, self.zero());
     }
