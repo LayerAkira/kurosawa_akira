@@ -35,5 +35,6 @@ fn validate_order(
     signed_order: SignedOrder, order_hash: felt252, ref state: ContractState
 ) -> u256 {
     check_sign(signed_order.order.maker, order_hash, signed_order.sign);
+    assert(signed_order.order.quantity > _filled_amount_read(ref state, order_hash), 'fill_amnt_fail');
     signed_order.order.quantity - _filled_amount_read(ref state, order_hash)
 }
