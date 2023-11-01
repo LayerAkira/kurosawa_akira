@@ -1,6 +1,6 @@
 use starknet::ContractAddress;
 use serde::Serde;
-use kurosawa_akira::ExchangeEventStructures::ExchangeEvent::Applying;
+use kurosawa_akira::ExchangeEntityStructures::ExchangeEntity::Applying;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_burn;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_balance_read;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::apply_withdraw_started;
@@ -10,8 +10,8 @@ use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::emit_user_balance_snapshot;
 use kurosawa_akira::utils::erc20::IERC20DispatcherTrait;
 use kurosawa_akira::utils::erc20::IERC20Dispatcher;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::ContractState;
-use kurosawa_akira::ExchangeEventStructures::Events::FundsTraits::check_sign;
-use kurosawa_akira::ExchangeEventStructures::Events::FundsTraits::PoseidonHashImpl;
+use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::check_sign;
+use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::PoseidonHashImpl;
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct Withdraw {

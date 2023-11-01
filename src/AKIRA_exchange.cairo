@@ -7,14 +7,14 @@ mod AKIRA_exchange {
     use serde::Serde;
     use option::OptionTrait;
     use array::ArrayTrait;
-    use kurosawa_akira::ExchangeEventStructures::ExchangeEvent::ExchangeEvent;
-    use kurosawa_akira::ExchangeEventStructures::ExchangeEvent::Applying;
-    use kurosawa_akira::ExchangeEventStructures::Events::Order::Order;
-    use kurosawa_akira::ExchangeEventStructures::Events::DepositEvent::Deposit;
-    use kurosawa_akira::ExchangeEventStructures::Events::WithdrawEvent::Withdraw;
-    use kurosawa_akira::ExchangeEventStructures::Events::DepositEvent::PendingImpl;
-    use kurosawa_akira::ExchangeEventStructures::Events::DepositEvent::ZeroableImpl;
-    use kurosawa_akira::ExchangeEventStructures::Events::FundsTraits::PoseidonHashImpl;
+    use kurosawa_akira::ExchangeEntityStructures::ExchangeEntity::ExchangeEntity;
+    use kurosawa_akira::ExchangeEntityStructures::ExchangeEntity::Applying;
+    use kurosawa_akira::ExchangeEntityStructures::Entities::Order::Order;
+    use kurosawa_akira::ExchangeEntityStructures::Entities::DepositEntity::Deposit;
+    use kurosawa_akira::ExchangeEntityStructures::Entities::WithdrawEntity::Withdraw;
+    use kurosawa_akira::ExchangeEntityStructures::Entities::DepositEntity::PendingImpl;
+    use kurosawa_akira::ExchangeEntityStructures::Entities::DepositEntity::ZeroableImpl;
+    use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::PoseidonHashImpl;
 
     #[storage]
     struct Storage {
@@ -50,34 +50,34 @@ mod AKIRA_exchange {
         self._waiting_gap_of_block_qty.write(10);
     }
 
-    //EVENTS LOOP
+    //ENTITIES LOOP
 
     #[external(v0)]
-    fn apply_exchange_events(
-        ref self: ContractState, serialized_exchange_events: Array::<felt252>, cur_gas_price: u256
+    fn apply_exchange_entities(
+        ref self: ContractState, serialized_exchange_entities: Array::<felt252>, cur_gas_price: u256
     ) {
         let caller = get_caller_address();
         assert(caller == self._exchange_address.read(), 'only for exchange');
         self._cur_gas_price.write(cur_gas_price);
-        let mut span = serialized_exchange_events.span();
-        let exchange_events: Array<ExchangeEvent> = Serde::<
-            Array<ExchangeEvent>
+        let mut span = serialized_exchange_entities.span();
+        let exchange_entities: Array<ExchangeEntity> = Serde::<
+            Array<ExchangeEntity>
         >::deserialize(ref span)
             .unwrap();
-        _exchange_events_loop(ref self, exchange_events);
+        _exchange_entities_loop(ref self, exchange_entities);
     }
 
-    fn _exchange_events_loop(
-        ref contract_state: ContractState, exchange_events: Array::<ExchangeEvent>
+    fn _exchange_entities_loop(
+        ref contract_state: ContractState, exchange_entities: Array::<ExchangeEntity>
     ) {
         let mut current_index = 0;
-        let last_ind = exchange_events.len();
+        let last_ind = exchange_entities.len();
         loop {
             if (current_index == last_ind) {
                 break true;
             }
-            let event: ExchangeEvent = *exchange_events[current_index];
-            event.apply(ref contract_state);
+            let entity: ExchangeEntity = *exchange_entities[current_index];
+            entity.apply(ref contract_state);
             current_index += 1;
         };
     }

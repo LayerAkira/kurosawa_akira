@@ -1,10 +1,10 @@
 use starknet::ContractAddress;
 use serde::Serde;
-use kurosawa_akira::ExchangeEventStructures::Events::FundsTraits::PoseidonHashImpl;
-use kurosawa_akira::ExchangeEventStructures::Events::Order::Order;
-use kurosawa_akira::ExchangeEventStructures::Events::Order::SignedOrder;
-use kurosawa_akira::ExchangeEventStructures::Events::Order::validate_order;
-use kurosawa_akira::ExchangeEventStructures::ExchangeEvent::Applying;
+use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::PoseidonHashImpl;
+use kurosawa_akira::ExchangeEntityStructures::Entities::Order::Order;
+use kurosawa_akira::ExchangeEntityStructures::Entities::Order::SignedOrder;
+use kurosawa_akira::ExchangeEntityStructures::Entities::Order::validate_order;
+use kurosawa_akira::ExchangeEntityStructures::ExchangeEntity::Applying;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_balance_write;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_balance_read;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_filled_amount_write;

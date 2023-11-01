@@ -1,4 +1,4 @@
 mod AKIRA_exchange;
-mod ExchangeEventStructures;
+mod ExchangeEntityStructures;
 mod FeeLogic;
 mod utils;

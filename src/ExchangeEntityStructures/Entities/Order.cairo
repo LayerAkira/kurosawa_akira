@@ -5,7 +5,7 @@ use array::ArrayTrait;
 use array::SpanTrait;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_filled_amount_read;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::ContractState;
-use kurosawa_akira::ExchangeEventStructures::Events::FundsTraits::check_sign;
+use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::check_sign;
 use kurosawa_akira::FeeLogic::OrderFee::OrderFee;
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]

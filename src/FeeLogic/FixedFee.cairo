@@ -5,7 +5,7 @@ use kurosawa_akira::utils::erc20::IERC20DispatcherTrait;
 use kurosawa_akira::utils::erc20::IERC20Dispatcher;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_burn;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_mint;
-use kurosawa_akira::ExchangeEventStructures::Events::FundsTraits::Zeroable;
+use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::Zeroable;
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct FixedFee {

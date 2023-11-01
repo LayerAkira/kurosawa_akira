@@ -6,7 +6,7 @@ use kurosawa_akira::FeeLogic::GasFee::GasFee;
 use kurosawa_akira::FeeLogic::GasFee::validate_and_apply_gas_fee;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::ContractState;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_cur_gas_price_read;
-use kurosawa_akira::ExchangeEventStructures::Events::FundsTraits::Zeroable;
+use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::Zeroable;
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct OrderFee {

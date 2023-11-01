@@ -1,7 +1,7 @@
-use kurosawa_akira::ExchangeEventStructures::Events::DepositEvent::Deposit;
-use kurosawa_akira::ExchangeEventStructures::Events::WithdrawEvent::Withdraw;
-use kurosawa_akira::ExchangeEventStructures::Events::TradeEvent::Trade;
-use kurosawa_akira::ExchangeEventStructures::Events::Order::Order;
+use kurosawa_akira::ExchangeEntityStructures::Entities::DepositEntity::Deposit;
+use kurosawa_akira::ExchangeEntityStructures::Entities::WithdrawEntity::Withdraw;
+use kurosawa_akira::ExchangeEntityStructures::Entities::TradeEntity::Trade;
+use kurosawa_akira::ExchangeEntityStructures::Entities::Order::Order;
 use poseidon::poseidon_hash_span;
 use array::SpanTrait;
 use array::ArrayTrait;
