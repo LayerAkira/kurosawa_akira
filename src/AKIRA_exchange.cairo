@@ -28,8 +28,9 @@ mod AKIRA_exchange {
         _WRAPPED_NATIVE_CHAIN_COIN: ContractAddress,
         _cur_gas_price: u256,
         _pow_of_decimals: LegacyMap::<ContractAddress, u256>,
-        _block_of_requested_cancellation: LegacyMap::<felt252, u64>,
+        _block_of_requested_action: LegacyMap::<felt252, u64>,
         _waiting_gap_of_block_qty: u64,
+        _requested_onchain_withdraws: LegacyMap::<felt252, Withdraw>,
     }
 
     #[constructor]
@@ -47,7 +48,7 @@ mod AKIRA_exchange {
         self._pow_of_decimals.write(ETH, 1000000000000000000);
         self._pow_of_decimals.write(BTC, 100000000);
         self._pow_of_decimals.write(USDC, 1000000);
-        self._waiting_gap_of_block_qty.write(10);
+        self._waiting_gap_of_block_qty.write(0);
     }
 
     //ENTITIES LOOP
@@ -183,18 +184,22 @@ mod AKIRA_exchange {
     fn _pow_of_decimals_read(ref self: ContractState, token: ContractAddress) -> u256 {
         self._pow_of_decimals.read(token)
     }
-    fn _pending_deposits_block_of_requested_cancellation_write(
-        ref self: ContractState, hash: felt252, block_number: u64
-    ) {
-        self._block_of_requested_cancellation.write(hash, block_number);
+    fn _block_of_requested_action_write(ref self: ContractState, hash: felt252, block_number: u64) {
+        self._block_of_requested_action.write(hash, block_number);
     }
-    fn _pending_deposits_block_of_requested_cancellation_read(
-        ref self: ContractState, hash: felt252
-    ) -> u64 {
-        self._block_of_requested_cancellation.read(hash)
+    fn _block_of_requested_action_read(ref self: ContractState, hash: felt252) -> u64 {
+        self._block_of_requested_action.read(hash)
     }
     fn _waiting_gap_of_block_qty_read(ref self: ContractState) -> u64 {
         self._waiting_gap_of_block_qty.read()
+    }
+    fn _requested_onchain_withdraws_read(ref self: ContractState, hash: felt252) -> Withdraw {
+        self._requested_onchain_withdraws.read(hash)
+    }
+    fn _requested_onchain_withdraws_write(
+        ref self: ContractState, hash: felt252, withdraw: Withdraw
+    ) {
+        self._requested_onchain_withdraws.write(hash, withdraw)
     }
 
 
@@ -213,6 +218,7 @@ mod AKIRA_exchange {
         deposit_event: deposit_event,
         user_balance_snapshot: user_balance_snapshot,
         request_cancel_pending_deposit: request_cancel_pending_deposit,
+        request_onchain_withdraw: request_onchain_withdraw,
     }
     #[derive(Drop, starknet::Event)]
     struct apply_transaction_started {}
@@ -293,5 +299,14 @@ mod AKIRA_exchange {
         ref self: ContractState, _request_cancel_pending_deposit: request_cancel_pending_deposit
     ) {
         self.emit(Event::request_cancel_pending_deposit(_request_cancel_pending_deposit));
+    }
+    #[derive(Drop, starknet::Event)]
+    struct request_onchain_withdraw {
+        withdraw: Withdraw
+    }
+    fn emit_request_onchain_withdraw(
+        ref self: ContractState, _request_onchain_withdraw: request_onchain_withdraw
+    ) {
+        self.emit(Event::request_onchain_withdraw(_request_onchain_withdraw));
     }
 }

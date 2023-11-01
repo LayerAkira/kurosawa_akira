@@ -8,8 +8,8 @@ use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::check_sign;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_balance_read;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_pending_deposits_write;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_pending_deposits_read;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_pending_deposits_block_of_requested_cancellation_write;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_pending_deposits_block_of_requested_cancellation_read;
+use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_block_of_requested_action_read;
+use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_block_of_requested_action_write;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_waiting_gap_of_block_qty_read;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_mint;
 use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::apply_deposit_started;
@@ -83,13 +83,12 @@ impl PendingImpl of Pending<Deposit> {
     fn request_cancellation_pending(self: Deposit, ref state: ContractState) {
         let key = self.get_poseidon_hash();
         let deposit = _pending_deposits_read(ref state, key);
+        let caller = get_caller_address();
+        assert(caller == self.maker, 'only by user himself');
         assert(!deposit.is_zero(), 'not_pending');
-        assert(
-            _pending_deposits_block_of_requested_cancellation_read(ref state, key) == 0,
-            'alrdy requseted'
-        );
+        assert(_block_of_requested_action_read(ref state, key) == 0, 'alrdy requseted');
         let block_number = get_block_number();
-        _pending_deposits_block_of_requested_cancellation_write(ref state, key, block_number);
+        _block_of_requested_action_write(ref state, key, block_number);
         emit_request_cancel_pending_deposit(
             ref state, request_cancel_pending_deposit { deposit: self }
         )
@@ -98,19 +97,18 @@ impl PendingImpl of Pending<Deposit> {
     fn cancel_pending(self: Deposit, ref state: ContractState) {
         let key = self.get_poseidon_hash();
         let deposit = _pending_deposits_read(ref state, key);
+        let caller = get_caller_address();
+        assert(caller == self.maker, 'only by user himself');
         assert(!deposit.is_zero(), 'not_pending');
-        assert(
-            _pending_deposits_block_of_requested_cancellation_read(ref state, key) != 0,
-            'no cancel rqst'
-        );
+        assert(_block_of_requested_action_read(ref state, key) != 0, 'no cancel rqst');
         let block_number = get_block_number();
         assert(
-            _pending_deposits_block_of_requested_cancellation_read(ref state, key)
+            _block_of_requested_action_read(ref state, key)
                 + _waiting_gap_of_block_qty_read(ref state) <= block_number,
             'early_cnsl'
         );
-        _pending_deposits_block_of_requested_cancellation_write(ref state, key, 0);
-        _pending_deposits_write(ref state, key, deposit.zero());
+        _block_of_requested_action_write(ref state, key, 0);
+        _pending_deposits_write(ref state, key, self.zero());
     }
 }
 

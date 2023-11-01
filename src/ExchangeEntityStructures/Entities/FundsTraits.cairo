@@ -17,6 +17,11 @@ trait Pending<T> {
     fn cancel_pending(self: T, ref state: ContractState);
 }
 
+trait OnchainWithdraw<T> {
+    fn request_onchain_withdraw(self: T, ref state: ContractState);
+    fn make_onchain_withdraw(self: T, ref state: ContractState);
+}
+
 trait Zeroable<T> {
     fn is_zero(self: T) -> bool;
     fn zero(self: T) -> T;
