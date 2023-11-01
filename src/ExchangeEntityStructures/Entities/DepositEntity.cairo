@@ -106,7 +106,7 @@ impl PendingImpl of Pending<Deposit> {
         let block_number = get_block_number();
         assert(
             _pending_deposits_block_of_requested_cancellation_read(ref state, key)
-                + _waiting_gap_of_block_qty_read(ref state) < block_number,
+                + _waiting_gap_of_block_qty_read(ref state) <= block_number,
             'early_cnsl'
         );
         _pending_deposits_block_of_requested_cancellation_write(ref state, key, 0);
