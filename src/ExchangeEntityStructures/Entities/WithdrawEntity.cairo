@@ -24,6 +24,8 @@ use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::check_sign;
 use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::OnchainWithdraw;
 use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::PoseidonHashImpl;
 use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::Zeroable;
+use kurosawa_akira::utils::SlowModeLogic::ISlowModeDispatcher;
+use kurosawa_akira::utils::SlowModeLogic::ISlowModeDispatcherTrait;
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct Withdraw {
@@ -50,60 +52,114 @@ impl ZeroableImpl of Zeroable<Withdraw> {
     }
 }
 
-impl ApplyingWithdrawImpl of Applying<SignedWithdraw> {
-    fn apply(self: SignedWithdraw, ref state: ContractState) {
-        emit_apply_withdraw_started(ref state, apply_withdraw_started {});
-        let hash = self.withdraw.get_poseidon_hash();
-        check_sign(self.withdraw.maker, hash, self.sign);
-        _burn(ref state, self.withdraw.maker, self.withdraw.amount, self.withdraw.token);
-        IERC20Dispatcher { contract_address: self.withdraw.token }
-            .transfer(self.withdraw.maker, self.withdraw.amount);
-        emit_user_balance_snapshot(
-            ref state,
-            user_balance_snapshot {
-                user_address: self.withdraw.maker,
-                token: self.withdraw.token,
-                balance: _balance_read(ref state, (self.withdraw.token, self.withdraw.maker))
-            }
-        );
-    }
+use kurosawa_akira::utils::common::ChainCtx;
+#[starknet::interface]
+trait IWithdrawContract<TContractState> {
+    fn request_onchain_withdraw(ref self: TContractState, withdraw: Withdraw, ctx: ChainCtx);
+    fn make_onchain_withdraw(ref self: TContractState, withdraw: Withdraw, ctx: ChainCtx);
+    fn apply_withdraw(ref self: TContractState, signed_withdraw: SignedWithdraw);
 }
 
-impl OnchainWithdrawImpl of OnchainWithdraw<Withdraw> {
-    fn request_onchain_withdraw(self: Withdraw, ref state: ContractState) {
-        let key = self.get_poseidon_hash();
-        let withdraw = _requested_onchain_withdraws_read(ref state, key);
-        let caller = get_caller_address();
-        assert(caller == self.maker, 'only by user himself');
-        assert(withdraw.is_zero(), 'alry_requested');
-        let block_number = get_block_number();
-        _block_of_requested_action_write(ref state, key, block_number);
-        emit_request_onchain_withdraw(ref state, request_onchain_withdraw { withdraw: self })
+#[starknet::contract]
+mod WithdrawContract {
+    use kurosawa_akira::utils::common::ChainCtx;
+    use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::PoseidonHashImpl;
+    use starknet::ContractAddress;
+    use super::Withdraw;
+    use super::SignedWithdraw;
+    use kurosawa_akira::utils::SlowModeLogic::ISlowModeDispatcher;
+    use kurosawa_akira::utils::SlowModeLogic::ISlowModeDispatcherTrait;
+    use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::user_balance_snapshot;
+    use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::emit_user_balance_snapshot;
+    use kurosawa_akira::ExchangeBalance::IExchangeBalanceDispatcher;
+    use kurosawa_akira::ExchangeBalance::IExchangeBalanceDispatcherTrait;
+    use kurosawa_akira::utils::erc20::IERC20DispatcherTrait;
+    use kurosawa_akira::utils::erc20::IERC20Dispatcher;
+    use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::check_sign;
+
+    #[storage]
+    struct Storage {
+        slow_mode_contract: ContractAddress,
+        exchange_balance_contract: ContractAddress,
     }
-    fn make_onchain_withdraw(self: Withdraw, ref state: ContractState) {
-        let key = self.get_poseidon_hash();
-        let withdraw = _requested_onchain_withdraws_read(ref state, key);
-        let caller = get_caller_address();
-        assert(caller == self.maker, 'only by user himself');
-        assert(!withdraw.is_zero(), 'not_requested');
-        let block_number = get_block_number();
-        assert(
-            _block_of_requested_action_read(ref state, key)
-                + _waiting_gap_of_block_qty_read(ref state) <= block_number,
-            'early_make'
-        );
-        _block_of_requested_action_write(ref state, key, 0);
-        _requested_onchain_withdraws_write(ref state, key, self.zero());
-        _burn(ref state, self.maker, self.amount, self.token);
-        IERC20Dispatcher { contract_address: self.token }.transfer(self.maker, self.amount);
-        emit_user_balance_snapshot(
-            ref state,
-            user_balance_snapshot {
-                user_address: self.maker,
-                token: self.token,
-                balance: _balance_read(ref state, (self.token, self.maker))
-            }
-        );
+
+    #[constructor]
+    fn constructor(
+        ref self: ContractState,
+        slow_mode_contract: ContractAddress,
+        exchange_balance_contract: ContractAddress
+    ) {
+        self.slow_mode_contract.write(slow_mode_contract);
+        self.exchange_balance_contract.write(exchange_balance_contract)
+    }
+
+
+    fn request_onchain_withdraw(ref self: ContractState, withdraw: Withdraw, ctx: ChainCtx) {
+        let key = withdraw.get_poseidon_hash();
+        let slow_mode_dispatcher = ISlowModeDispatcher {
+            contract_address: self.slow_mode_contract.read()
+        };
+        slow_mode_dispatcher.assert_request_and_apply(withdraw.maker, key, ctx);
+        self
+            .emit(
+                Event::request_onchain_withdraw(request_onchain_withdraw_s { withdraw: withdraw })
+            );
+    }
+
+    fn make_onchain_withdraw(ref self: ContractState, withdraw: Withdraw, ctx: ChainCtx) {
+        let key = withdraw.get_poseidon_hash();
+        let slow_mode_dispatcher = ISlowModeDispatcher {
+            contract_address: self.slow_mode_contract.read()
+        };
+        slow_mode_dispatcher.assert_delay(key, ctx);
+        slow_mode_dispatcher.assert_have_request_and_apply(withdraw.maker, key, ctx);
+
+        let exchange_balance_dispatcher = IExchangeBalanceDispatcher {
+            contract_address: self.exchange_balance_contract.read()
+        };
+        exchange_balance_dispatcher.burn(withdraw.maker, withdraw.amount, withdraw.token);
+        IERC20Dispatcher { contract_address: withdraw.token }
+            .transfer(withdraw.maker, withdraw.amount);
+        self.emit(Event::make_onchain_withdraw(make_onchain_withdraw_s { withdraw: withdraw }));
+    }
+
+    fn apply_withdraw(ref self: ContractState, signed_withdraw: SignedWithdraw) {
+        let hash = signed_withdraw.withdraw.get_poseidon_hash();
+        check_sign(signed_withdraw.withdraw.maker, hash, signed_withdraw.sign);
+        let exchange_balance_dispatcher = IExchangeBalanceDispatcher {
+            contract_address: self.exchange_balance_contract.read()
+        };
+        exchange_balance_dispatcher
+            .burn(
+                signed_withdraw.withdraw.maker,
+                signed_withdraw.withdraw.amount,
+                signed_withdraw.withdraw.token
+            );
+        IERC20Dispatcher { contract_address: signed_withdraw.withdraw.token }
+            .transfer(signed_withdraw.withdraw.maker, signed_withdraw.withdraw.amount);
+        self.emit(Event::apply_withdraw(apply_withdraw_s { withdraw: signed_withdraw.withdraw }));
+    }
+
+    #[event]
+    #[derive(Drop, starknet::Event)]
+    enum Event {
+        request_onchain_withdraw: request_onchain_withdraw_s,
+        make_onchain_withdraw: make_onchain_withdraw_s,
+        apply_withdraw: apply_withdraw_s,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct request_onchain_withdraw_s {
+        withdraw: Withdraw
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct make_onchain_withdraw_s {
+        withdraw: Withdraw
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct apply_withdraw_s {
+        withdraw: Withdraw
     }
 }
-
