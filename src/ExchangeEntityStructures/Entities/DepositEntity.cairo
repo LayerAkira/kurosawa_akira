@@ -5,28 +5,11 @@ use kurosawa_akira::ExchangeEntityStructures::ExchangeEntity::Applying;
 use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::Pending;
 use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::Zeroable;
 use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::check_sign;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_balance_read;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_pending_deposits_write;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_pending_deposits_read;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_block_of_requested_action_read;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_block_of_requested_action_write;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_waiting_gap_of_block_qty_read;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_mint;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::apply_deposit_started;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::emit_apply_deposit_started;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::deposit_event;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::emit_deposit_event;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::user_balance_snapshot;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::emit_user_balance_snapshot;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::request_cancel_pending_deposit;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::emit_request_cancel_pending_deposit;
 use starknet::info::get_caller_address;
 use starknet::info::get_contract_address;
 use kurosawa_akira::utils::erc20::IERC20DispatcherTrait;
 use kurosawa_akira::utils::erc20::IERC20Dispatcher;
 use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::PoseidonHash;
-use starknet::{StorageBaseAddress, SyscallResult};
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::ContractState;
 use starknet::Event;
 use traits::Into;
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
@@ -61,78 +44,133 @@ impl ZeroableImpl of Zeroable<Deposit> {
     }
 }
 
+use kurosawa_akira::utils::common::ChainCtx;
+#[starknet::interface]
+trait IDepositContract<TContractState> {
+    fn set_pending(ref self: TContractState, deposit: Deposit, ctx: ChainCtx) -> felt252;
+    fn request_cancellation_pending(ref self: TContractState, key: felt252, ctx: ChainCtx);
+    fn cancel_pending(ref self: TContractState, key: felt252, ctx: ChainCtx);
+    fn apply_pending_deposit(ref self: TContractState, deposit_apply: DepositApply);
+}
 
-impl PendingImpl of Pending<Deposit> {
-    fn set_pending(self: Deposit, ref state: ContractState) -> felt252 {
+
+#[starknet::contract]
+mod DepositContract {
+    use kurosawa_akira::utils::common::ChainCtx;
+    use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::PoseidonHashImpl;
+    use starknet::ContractAddress;
+    use super::Deposit;
+    use super::DepositApply;
+    use super::ZeroableImpl;
+    use kurosawa_akira::utils::SlowModeLogic::ISlowModeDispatcher;
+    use kurosawa_akira::utils::SlowModeLogic::ISlowModeDispatcherTrait;
+    use kurosawa_akira::ExchangeBalance::IExchangeBalanceDispatcher;
+    use kurosawa_akira::ExchangeBalance::IExchangeBalanceDispatcherTrait;
+    use kurosawa_akira::utils::erc20::IERC20DispatcherTrait;
+    use kurosawa_akira::utils::erc20::IERC20Dispatcher;
+    use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::check_sign;
+    use starknet::info::get_block_number;
+    use starknet::info::get_caller_address;
+    use starknet::info::get_contract_address;
+
+    #[storage]
+    struct Storage {
+        slow_mode_contract: ContractAddress,
+        exchange_balance_contract: ContractAddress,
+        _pending_deposits: LegacyMap::<felt252, Deposit>,
+    }
+
+    #[constructor]
+    fn constructor(
+        ref self: ContractState,
+        slow_mode_contract: ContractAddress,
+        exchange_balance_contract: ContractAddress
+    ) {
+        self.slow_mode_contract.write(slow_mode_contract);
+        self.exchange_balance_contract.write(exchange_balance_contract)
+    }
+
+    #[external(v0)]
+    fn set_pending(ref self: ContractState, deposit: Deposit, ctx: ChainCtx) -> felt252 {
         let caller = get_caller_address();
         let contract = get_contract_address();
-        assert(caller == self.maker, 'only deposits by user himself');
-        assert(contract == self.receiver, 'only deposits to exchange');
-        let pre = IERC20Dispatcher { contract_address: self.token }.balanceOf(contract);
-        IERC20Dispatcher { contract_address: self.token }
-            .transferFrom(self.maker, contract, self.amount);
-        let fact_received = IERC20Dispatcher { contract_address: self.token }.balanceOf(contract)
+        assert(caller == deposit.maker, 'only deposits by user himself');
+        assert(contract == deposit.receiver, 'only deposits to exchange');
+        // assert(deposit.value == ctx.value && self.deposit_price == ctx.value, 'wrong value')
+
+        let key = deposit.get_poseidon_hash();
+        assert(self._pending_deposits.read(key).is_zero(), 'Deposit already pending');
+
+        let pre = IERC20Dispatcher { contract_address: deposit.token }.balanceOf(contract);
+        IERC20Dispatcher { contract_address: deposit.token }
+            .transferFrom(deposit.maker, contract, deposit.amount);
+        let fact_received = IERC20Dispatcher { contract_address: deposit.token }.balanceOf(contract)
             - pre;
-        let key = self.get_poseidon_hash();
-        let deposit = _pending_deposits_read(ref state, key);
-        assert(deposit.is_zero(), 'already_pending');
-        _pending_deposits_write(ref state, key, self);
+        assert(fact_received == deposit.amount, 'Wrong received amount');
+        self._pending_deposits.write(key, deposit);
         key
     }
 
-    fn request_cancellation_pending(self: Deposit, ref state: ContractState) {
-        let key = self.get_poseidon_hash();
-        let deposit = _pending_deposits_read(ref state, key);
-        let caller = get_caller_address();
-        assert(caller == self.maker, 'only by user himself');
+    #[external(v0)]
+    fn request_cancellation_pending(ref self: ContractState, key: felt252, ctx: ChainCtx) {
+        let deposit = self._pending_deposits.read(key);
         assert(!deposit.is_zero(), 'not_pending');
-        assert(_block_of_requested_action_read(ref state, key) == 0, 'alrdy requseted');
-        let block_number = get_block_number();
-        _block_of_requested_action_write(ref state, key, block_number);
-        emit_request_cancel_pending_deposit(
-            ref state, request_cancel_pending_deposit { deposit: self }
-        )
+        let slow_mode_dispatcher = ISlowModeDispatcher {
+            contract_address: self.slow_mode_contract.read()
+        };
+        slow_mode_dispatcher.assert_request_and_apply(deposit.maker, key, ctx);
+        self.emit(Event::request_cancellation_pending(request_cancellation_pending_s { deposit: deposit }));
     }
 
-    fn cancel_pending(self: Deposit, ref state: ContractState) {
-        let key = self.get_poseidon_hash();
-        let deposit = _pending_deposits_read(ref state, key);
-        let caller = get_caller_address();
-        assert(caller == self.maker, 'only by user himself');
+    #[external(v0)]
+    fn cancel_pending(ref self: ContractState, key: felt252, ctx: ChainCtx) {
+        let deposit = self._pending_deposits.read(key);
         assert(!deposit.is_zero(), 'not_pending');
-        assert(_block_of_requested_action_read(ref state, key) != 0, 'no cancel rqst');
-        let block_number = get_block_number();
-        assert(
-            _block_of_requested_action_read(ref state, key)
-                + _waiting_gap_of_block_qty_read(ref state) <= block_number,
-            'early_cnsl'
-        );
-        IERC20Dispatcher { contract_address: self.token }.transfer(self.maker, self.amount);
-        _block_of_requested_action_write(ref state, key, 0);
-        _pending_deposits_write(ref state, key, self.zero());
+        let slow_mode_dispatcher = ISlowModeDispatcher {
+            contract_address: self.slow_mode_contract.read()
+        };
+        slow_mode_dispatcher.assert_delay(key, ctx);
+        slow_mode_dispatcher.assert_have_request_and_apply(deposit.maker, key, ctx);
+        self._pending_deposits.write(key, deposit.zero());
+
+        IERC20Dispatcher { contract_address: deposit.token }.transfer(deposit.maker, deposit.amount);
+        self.emit(Event::cancel_pending(cancel_pending_s { deposit: deposit }));
     }
-}
 
-trait ApplyingDeposit<T> {
-    fn apply(self: T, ref state: ContractState);
-}
+    #[external(v0)]
+    fn apply_pending_deposit(ref self: ContractState, deposit_apply: DepositApply) {
+        let deposit = self._pending_deposits.read(deposit_apply.key);
+        check_sign(deposit.maker, deposit_apply.key, deposit_apply.sign);
+        let exchange_balance_dispatcher = IExchangeBalanceDispatcher {
+            contract_address: self.exchange_balance_contract.read()
+        };
+        exchange_balance_dispatcher.mint(deposit.maker, deposit.amount, deposit.token);
+        self._pending_deposits.write(deposit_apply.key, deposit.zero());
+        self.emit(Event::apply_pending_deposit(apply_pending_deposit_s { deposit: deposit }));
+    }
 
 
-impl ApplyingDepositImpl of ApplyingDeposit<DepositApply> {
-    fn apply(self: DepositApply, ref state: ContractState) {
-        emit_apply_deposit_started(ref state, apply_deposit_started {});
-        let deposit = _pending_deposits_read(ref state, self.key);
-        emit_deposit_event(ref state, deposit_event { deposit });
-        check_sign(deposit.maker, self.key, self.sign);
-        _mint(ref state, deposit.maker, deposit.amount, deposit.token);
-        _pending_deposits_write(ref state, self.key, deposit.zero());
-        emit_user_balance_snapshot(
-            ref state,
-            user_balance_snapshot {
-                user_address: deposit.maker,
-                token: deposit.token,
-                balance: _balance_read(ref state, (deposit.token, deposit.maker))
-            }
-        );
+
+    #[event]
+    #[derive(Drop, starknet::Event)]
+    enum Event {
+        request_cancellation_pending: request_cancellation_pending_s,
+        cancel_pending: cancel_pending_s,
+        apply_pending_deposit: apply_pending_deposit_s,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct request_cancellation_pending_s {
+        deposit: Deposit
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct cancel_pending_s {
+        deposit: Deposit
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct apply_pending_deposit_s {
+        deposit: Deposit
     }
 }
