@@ -18,7 +18,7 @@ trait Pending<T> {
 }
 
 trait OnchainWithdraw<T> {
-    fn request_onchain_withdraw(self: T, ref state: ContractState);
+    // fn request_onchain_withdraw(self: T, ref state: ContractState);
     fn make_onchain_withdraw(self: T, ref state: ContractState);
 }
 

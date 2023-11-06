@@ -12,9 +12,13 @@ mod AKIRA_exchange {
     use kurosawa_akira::ExchangeEntityStructures::Entities::Order::Order;
     use kurosawa_akira::ExchangeEntityStructures::Entities::DepositEntity::Deposit;
     use kurosawa_akira::ExchangeEntityStructures::Entities::WithdrawEntity::Withdraw;
-    use kurosawa_akira::ExchangeEntityStructures::Entities::DepositEntity::PendingImpl;
     use kurosawa_akira::ExchangeEntityStructures::Entities::DepositEntity::ZeroableImpl;
     use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::PoseidonHashImpl;
+    use kurosawa_akira::ExchangeEntityStructures::Entities::WithdrawEntity::IWithdrawContractDispatcher;
+    use kurosawa_akira::ExchangeEntityStructures::Entities::WithdrawEntity::IWithdrawContractDispatcherTrait;
+    use kurosawa_akira::ExchangeEntityStructures::Entities::DepositEntity::IDepositContractDispatcher;
+    use kurosawa_akira::ExchangeEntityStructures::Entities::DepositEntity::IDepositContractDispatcherTrait;
+
 
     #[storage]
     struct Storage {
@@ -28,9 +32,8 @@ mod AKIRA_exchange {
         _WRAPPED_NATIVE_CHAIN_COIN: ContractAddress,
         _cur_gas_price: u256,
         _pow_of_decimals: LegacyMap::<ContractAddress, u256>,
-        _block_of_requested_action: LegacyMap::<felt252, u64>,
-        _waiting_gap_of_block_qty: u64,
-        _requested_onchain_withdraws: LegacyMap::<felt252, Withdraw>,
+        _withdraw_logic: ContractAddress,
+        _deposit_logic: ContractAddress,
     }
 
     #[constructor]
@@ -40,7 +43,9 @@ mod AKIRA_exchange {
         WRAPPED_NATIVE_CHAIN_COIN: ContractAddress,
         ETH: ContractAddress,
         BTC: ContractAddress,
-        USDC: ContractAddress
+        USDC: ContractAddress,
+        _withdraw_logic: ContractAddress,
+        _deposit_logic: ContractAddress,
     ) {
         self._name.write('AKIRA');
         self._exchange_address.write(_exchange_address0);
@@ -48,7 +53,8 @@ mod AKIRA_exchange {
         self._pow_of_decimals.write(ETH, 1000000000000000000);
         self._pow_of_decimals.write(BTC, 100000000);
         self._pow_of_decimals.write(USDC, 1000000);
-        self._waiting_gap_of_block_qty.write(0);
+        self._withdraw_logic.write(_withdraw_logic);
+        self._deposit_logic.write(_deposit_logic);
     }
 
     //ENTITIES LOOP
@@ -69,7 +75,7 @@ mod AKIRA_exchange {
     }
 
     fn _exchange_entities_loop(
-        ref contract_state: ContractState, exchange_entities: Array::<ExchangeEntity>
+        ref self: ContractState, exchange_entities: Array::<ExchangeEntity>
     ) {
         let mut current_index = 0;
         let last_ind = exchange_entities.len();
@@ -78,26 +84,19 @@ mod AKIRA_exchange {
                 break true;
             }
             let entity: ExchangeEntity = *exchange_entities[current_index];
-            entity.apply(ref contract_state);
+            match entity {
+                ExchangeEntity::DepositApply(x) => {
+                    IDepositContractDispatcher { contract_address: self._deposit_logic.read() }
+                        .apply_pending_deposit(x);
+                },
+                ExchangeEntity::Trade(x) => { x.apply(ref self); },
+                ExchangeEntity::SignedWithdraw(x) => {
+                    IWithdrawContractDispatcher { contract_address: self._withdraw_logic.read() }
+                        .apply_withdraw(x);
+                },
+            }
             current_index += 1;
         };
-    }
-
-    // PENDING
-
-    #[external(v0)]
-    fn set_deposit_pending(ref self: ContractState, deposit: Deposit) {
-        deposit.set_pending(ref self);
-    }
-
-    #[external(v0)]
-    fn request_cancellation_pending_deposit(ref self: ContractState, deposit: Deposit) {
-        deposit.request_cancellation_pending(ref self);
-    }
-
-    #[external(v0)]
-    fn cancel_pending_deposit(ref self: ContractState, deposit: Deposit) {
-        deposit.cancel_pending(ref self);
     }
 
     // TOKEN
@@ -183,23 +182,6 @@ mod AKIRA_exchange {
     }
     fn _pow_of_decimals_read(ref self: ContractState, token: ContractAddress) -> u256 {
         self._pow_of_decimals.read(token)
-    }
-    fn _block_of_requested_action_write(ref self: ContractState, hash: felt252, block_number: u64) {
-        self._block_of_requested_action.write(hash, block_number);
-    }
-    fn _block_of_requested_action_read(ref self: ContractState, hash: felt252) -> u64 {
-        self._block_of_requested_action.read(hash)
-    }
-    fn _waiting_gap_of_block_qty_read(ref self: ContractState) -> u64 {
-        self._waiting_gap_of_block_qty.read()
-    }
-    fn _requested_onchain_withdraws_read(ref self: ContractState, hash: felt252) -> Withdraw {
-        self._requested_onchain_withdraws.read(hash)
-    }
-    fn _requested_onchain_withdraws_write(
-        ref self: ContractState, hash: felt252, withdraw: Withdraw
-    ) {
-        self._requested_onchain_withdraws.write(hash, withdraw)
     }
 
 

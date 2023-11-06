@@ -10,3 +10,11 @@ struct ChainCtx {
     gas_price: u256,
     tx_index: u256,
 }
+
+fn min(a: u256, b: u256) -> u256 {
+    if a > b {
+        b
+    } else {
+        a
+    }
+}

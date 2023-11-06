@@ -3,25 +3,9 @@ use serde::Serde;
 use starknet::info::get_block_number;
 use starknet::info::get_caller_address;
 use starknet::info::get_contract_address;
-use kurosawa_akira::ExchangeEntityStructures::ExchangeEntity::Applying;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_burn;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_balance_read;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_requested_onchain_withdraws_read;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_requested_onchain_withdraws_write;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_block_of_requested_action_read;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_block_of_requested_action_write;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::apply_withdraw_started;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::emit_apply_withdraw_started;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::user_balance_snapshot;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::emit_user_balance_snapshot;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::request_onchain_withdraw;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::emit_request_onchain_withdraw;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_waiting_gap_of_block_qty_read;
 use kurosawa_akira::utils::erc20::IERC20DispatcherTrait;
 use kurosawa_akira::utils::erc20::IERC20Dispatcher;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::ContractState;
 use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::check_sign;
-use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::OnchainWithdraw;
 use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::PoseidonHashImpl;
 use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::Zeroable;
 use kurosawa_akira::utils::SlowModeLogic::ISlowModeDispatcher;
@@ -69,8 +53,6 @@ mod WithdrawContract {
     use super::SignedWithdraw;
     use kurosawa_akira::utils::SlowModeLogic::ISlowModeDispatcher;
     use kurosawa_akira::utils::SlowModeLogic::ISlowModeDispatcherTrait;
-    use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::user_balance_snapshot;
-    use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::emit_user_balance_snapshot;
     use kurosawa_akira::ExchangeBalance::IExchangeBalanceDispatcher;
     use kurosawa_akira::ExchangeBalance::IExchangeBalanceDispatcherTrait;
     use kurosawa_akira::utils::erc20::IERC20DispatcherTrait;
@@ -93,7 +75,7 @@ mod WithdrawContract {
         self.exchange_balance_contract.write(exchange_balance_contract)
     }
 
-
+    #[external(v0)]
     fn request_onchain_withdraw(ref self: ContractState, withdraw: Withdraw, ctx: ChainCtx) {
         let key = withdraw.get_poseidon_hash();
         let slow_mode_dispatcher = ISlowModeDispatcher {
@@ -106,6 +88,7 @@ mod WithdrawContract {
             );
     }
 
+    #[external(v0)]
     fn make_onchain_withdraw(ref self: ContractState, withdraw: Withdraw, ctx: ChainCtx) {
         let key = withdraw.get_poseidon_hash();
         let slow_mode_dispatcher = ISlowModeDispatcher {
@@ -123,6 +106,7 @@ mod WithdrawContract {
         self.emit(Event::make_onchain_withdraw(make_onchain_withdraw_s { withdraw: withdraw }));
     }
 
+    #[external(v0)]
     fn apply_withdraw(ref self: ContractState, signed_withdraw: SignedWithdraw) {
         let hash = signed_withdraw.withdraw.get_poseidon_hash();
         check_sign(signed_withdraw.withdraw.maker, hash, signed_withdraw.sign);

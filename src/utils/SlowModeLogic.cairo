@@ -6,6 +6,25 @@ struct SlowModeDelay {
     ts: u64,
 }
 
+use starknet::ContractAddress;
+use kurosawa_akira::utils::common::ChainCtx;
+#[starknet::interface]
+trait ISlowMode<TContractState> {
+    fn remove_if_have_entry(ref self: TContractState, key: felt252);
+
+    fn update_delay(ref self: TContractState, new_delay: SlowModeDelay, ctx: ChainCtx);
+
+    fn assert_delay(ref self: TContractState, key: felt252, ctx: ChainCtx);
+
+    fn assert_request_and_apply(
+        ref self: TContractState, maker: ContractAddress, key: felt252, ctx: ChainCtx
+    );
+
+    fn assert_have_request_and_apply(
+        ref self: TContractState, maker: ContractAddress, key: felt252, ctx: ChainCtx
+    );
+}
+
 #[starknet::contract]
 mod SlowMode {
     use starknet::ContractAddress;
@@ -14,7 +33,7 @@ mod SlowMode {
 
     #[storage]
     struct Storage {
-        block_time_of_requested_action: LegacyMap::<u256, (u64, u64)>,
+        block_time_of_requested_action: LegacyMap::<felt252, (u64, u64)>,
         delay: SlowModeDelay,
         max_delay: SlowModeDelay,
         owner: ContractAddress,
@@ -32,10 +51,12 @@ mod SlowMode {
     #[derive(Drop, starknet::Event)]
     enum Event {}
 
-    fn remove_if_have_entry(ref self: ContractState, key: u256) {
+    #[external(v0)]
+    fn remove_if_have_entry(ref self: ContractState, key: felt252) {
         self.block_time_of_requested_action.write(key, (0, 0));
     }
 
+    #[external(v0)]
     fn update_delay(ref self: ContractState, new_delay: SlowModeDelay, ctx: ChainCtx) {
         assert(self.owner.read() == ctx.caller, 'only_owner');
         assert(new_delay.block <= self.max_delay.read().block, 'wrong_block');
@@ -43,7 +64,8 @@ mod SlowMode {
         self.delay.write(new_delay);
     }
 
-    fn assert_delay(ref self: ContractState, key: u256, ctx: ChainCtx) {
+    #[external(v0)]
+    fn assert_delay(ref self: ContractState, key: felt252, ctx: ChainCtx) {
         let (req_block, req_time) = self.block_time_of_requested_action.read(key);
         assert(
             ctx.timestamp
@@ -53,16 +75,18 @@ mod SlowMode {
         );
     }
 
+    #[external(v0)]
     fn assert_request_and_apply(
-        ref self: ContractState, maker: ContractAddress, key: u256, ctx: ChainCtx
+        ref self: ContractState, maker: ContractAddress, key: felt252, ctx: ChainCtx
     ) {
         assert(maker == ctx.caller, 'user himself');
         assert(self.block_time_of_requested_action.read(key) == (0, 0), 'aldy rqsted');
         self.block_time_of_requested_action.write(key, (ctx.block, ctx.timestamp));
     }
 
+    #[external(v0)]
     fn assert_have_request_and_apply(
-        ref self: ContractState, maker: ContractAddress, key: u256, ctx: ChainCtx
+        ref self: ContractState, maker: ContractAddress, key: felt252, ctx: ChainCtx
     ) {
         assert(maker == ctx.caller, 'user himself');
         assert(self.block_time_of_requested_action.read(key) != (0, 0), 'no cnl req');

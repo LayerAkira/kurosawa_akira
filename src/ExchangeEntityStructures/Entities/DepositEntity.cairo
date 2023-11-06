@@ -119,7 +119,12 @@ mod DepositContract {
             contract_address: self.slow_mode_contract.read()
         };
         slow_mode_dispatcher.assert_request_and_apply(deposit.maker, key, ctx);
-        self.emit(Event::request_cancellation_pending(request_cancellation_pending_s { deposit: deposit }));
+        self
+            .emit(
+                Event::request_cancellation_pending(
+                    request_cancellation_pending_s { deposit: deposit }
+                )
+            );
     }
 
     #[external(v0)]
@@ -133,7 +138,8 @@ mod DepositContract {
         slow_mode_dispatcher.assert_have_request_and_apply(deposit.maker, key, ctx);
         self._pending_deposits.write(key, deposit.zero());
 
-        IERC20Dispatcher { contract_address: deposit.token }.transfer(deposit.maker, deposit.amount);
+        IERC20Dispatcher { contract_address: deposit.token }
+            .transfer(deposit.maker, deposit.amount);
         self.emit(Event::cancel_pending(cancel_pending_s { deposit: deposit }));
     }
 
@@ -148,7 +154,6 @@ mod DepositContract {
         self._pending_deposits.write(deposit_apply.key, deposit.zero());
         self.emit(Event::apply_pending_deposit(apply_pending_deposit_s { deposit: deposit }));
     }
-
 
 
     #[event]

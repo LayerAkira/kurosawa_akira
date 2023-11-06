@@ -1,9 +1,54 @@
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+struct OrderTradeInfo {
+    filled_amount: u256,
+    last_traded_px: u256,
+    num_trades_happened: u256,
+    remaining_qty: u256,
+}
+use starknet::ContractAddress;
+use kurosawa_akira::ExchangeEntityStructures::Entities::Order::Order;
+use kurosawa_akira::ExchangeEntityStructures::Entities::Order::SignedOrder;
+use kurosawa_akira::ExchangeEntityStructures::Entities::TradeEntity::Trade;
+use kurosawa_akira::utils::common::ChainCtx;
+use kurosawa_akira::FeeLogic::FixedFee::FixedFee;
+use kurosawa_akira::FeeLogic::OrderFee::OrderFee;
 #[starknet::interface]
-trait ICommonTradeLogicContract<TContractState> {}
+trait ICommonTradeLogicContract<TContractState> {
+    fn validate_maker_order(
+        ref self: TContractState, signed_order: SignedOrder, order_hash: felt252
+    ) -> u256;
+    fn rebalance_after_trade(
+        ref self: TContractState,
+        is_maker_SELL_side: bool,
+        trade: Trade,
+        amount_maker: u256,
+        amount_taker: u256
+    );
+    fn validate_taker_order(
+        ref self: TContractState,
+        signed_order: SignedOrder,
+        order_hash: felt252,
+        settlement_price: u256
+    ) -> u256;
+    fn apply_order_fee_safe(
+        ref self: TContractState,
+        user: ContractAddress,
+        order_fee: OrderFee,
+        feeable_qty: u256,
+        fee_token: ContractAddress,
+        is_maker: bool,
+        ctx: ChainCtx
+    );
+    fn orders_trade_info_read(self: @TContractState, order_hash: felt252) -> OrderTradeInfo;
+    fn orders_trade_info_write(
+        ref self: TContractState, order_hash: felt252, order_trade_info: OrderTradeInfo
+    );
+}
 
 #[starknet::contract]
 mod CommonTradeLogicContract {
     use starknet::ContractAddress;
+    use super::OrderTradeInfo;
     use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::check_sign;
     use kurosawa_akira::ExchangeEntityStructures::Entities::Order::Order;
     use kurosawa_akira::ExchangeEntityStructures::Entities::Order::SignedOrder;
@@ -14,14 +59,6 @@ mod CommonTradeLogicContract {
     use kurosawa_akira::FeeLogic::FixedFee::FixedFee;
     use kurosawa_akira::FeeLogic::OrderFee::OrderFee;
     use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::Zeroable;
-
-    #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
-    struct OrderTradeInfo {
-        filled_amount: u256,
-        last_traded_px: u256,
-        num_trades_happened: u256,
-        remaining_qty: u256,
-    }
 
     #[storage]
     struct Storage {
@@ -204,6 +241,18 @@ mod CommonTradeLogicContract {
                 .validate_and_apply_gas_fee_internal(user, order_fee.gas_fee, ctx)
         }
         apply_fixed_fee_involved(ref self, user, order_fee.trade_fee, feeable_qty, ctx);
+    }
+
+    #[external(v0)]
+    fn orders_trade_info_read(self: @ContractState, order_hash: felt252) -> OrderTradeInfo {
+        self.orders_trade_info.read(order_hash)
+    }
+
+    #[external(v0)]
+    fn orders_trade_info_write(
+        ref self: ContractState, order_hash: felt252, order_trade_info: OrderTradeInfo
+    ) {
+        self.orders_trade_info.write(order_hash, order_trade_info);
     }
 
     #[event]

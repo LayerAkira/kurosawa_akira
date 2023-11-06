@@ -23,6 +23,8 @@ struct Order {
     fee: OrderFee,
     number_of_swaps_allowed: u256,
     salt: felt252,
+    to_safe_book: bool,
+    nonce: u256,
 }
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
