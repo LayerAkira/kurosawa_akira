@@ -39,6 +39,7 @@ impl ZeroableImpl of Zeroable<Withdraw> {
 #[starknet::interface]
 trait IWithdrawContract<TContractState> {
     fn request_onchain_withdraw(ref self: TContractState, withdraw: Withdraw);
+    fn cancel_onchain_withdraw_request(ref self: TContractState, withdraw: Withdraw);
     fn make_onchain_withdraw(ref self: TContractState, withdraw: Withdraw);
     fn apply_withdraw(ref self: TContractState, signed_withdraw: SignedWithdraw);
 }
@@ -103,6 +104,20 @@ mod WithdrawContract {
             .transfer(withdraw.maker, withdraw.amount);
         self.emit(Event::make_onchain_withdraw(make_onchain_withdraw_s { withdraw: withdraw }));
     }
+    #[external(v0)]
+    fn cancel_onchain_withdraw_request(ref self: ContractState, withdraw: Withdraw) {
+        let key = withdraw.get_poseidon_hash();
+        let slow_mode_dispatcher = ISlowModeDispatcher {
+            contract_address: self.slow_mode_contract.read()
+        };
+        slow_mode_dispatcher.assert_have_request_and_apply(withdraw.maker, key);
+        self
+            .emit(
+                Event::completed_withdraw_request(
+                    completed_withdraw_request_s { withdraw: withdraw, is_cancelled: true }
+                )
+            );
+    }
 
     #[external(v0)]
     fn apply_withdraw(ref self: ContractState, signed_withdraw: SignedWithdraw) {
@@ -128,6 +143,7 @@ mod WithdrawContract {
         request_onchain_withdraw: request_onchain_withdraw_s,
         make_onchain_withdraw: make_onchain_withdraw_s,
         apply_withdraw: apply_withdraw_s,
+        completed_withdraw_request: completed_withdraw_request_s,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -143,5 +159,11 @@ mod WithdrawContract {
     #[derive(Drop, starknet::Event)]
     struct apply_withdraw_s {
         withdraw: Withdraw
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct completed_withdraw_request_s {
+        withdraw: Withdraw,
+        is_cancelled: bool,
     }
 }

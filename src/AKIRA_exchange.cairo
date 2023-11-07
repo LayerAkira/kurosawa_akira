@@ -10,7 +10,9 @@ mod AKIRA_exchange {
     use kurosawa_akira::ExchangeEntityStructures::ExchangeEntity::ExchangeEntity;
     use kurosawa_akira::ExchangeEntityStructures::Entities::TradeEntity::Trade;
     use kurosawa_akira::ExchangeEntityStructures::Entities::DepositEntity::Deposit;
+    use kurosawa_akira::ExchangeEntityStructures::Entities::DepositEntity::DepositApply;
     use kurosawa_akira::ExchangeEntityStructures::Entities::WithdrawEntity::Withdraw;
+    use kurosawa_akira::ExchangeEntityStructures::Entities::WithdrawEntity::SignedWithdraw;
     use kurosawa_akira::ExchangeEntityStructures::Entities::WithdrawEntity::IWithdrawContractDispatcher;
     use kurosawa_akira::ExchangeEntityStructures::Entities::WithdrawEntity::IWithdrawContractDispatcherTrait;
     use kurosawa_akira::ExchangeEntityStructures::Entities::DepositEntity::IDepositContractDispatcher;
@@ -19,6 +21,9 @@ mod AKIRA_exchange {
     use kurosawa_akira::ExchangeEntityStructures::Entities::SafeTradeLogic::ISafeTradeLogicDispatcherTrait;
     use kurosawa_akira::ExchangeBalance::IExchangeBalanceDispatcher;
     use kurosawa_akira::ExchangeBalance::IExchangeBalanceDispatcherTrait;
+    use kurosawa_akira::NonceLogic::INonceLogicDispatcher;
+    use kurosawa_akira::NonceLogic::INonceLogicDispatcherTrait;
+    use kurosawa_akira::NonceLogic::SignedIncreaseNonce;
 
 
     #[storage]
@@ -87,15 +92,9 @@ mod AKIRA_exchange {
             }
             let entity: ExchangeEntity = *exchange_entities[current_index];
             match entity {
-                ExchangeEntity::DepositApply(x) => {
-                    IDepositContractDispatcher { contract_address: self.deposit_logic.read() }
-                        .apply_pending_deposit(x);
-                },
+                ExchangeEntity::DepositApply(x) => { apply_pending_deposit(ref self, x); },
                 ExchangeEntity::Trade(x) => { apply_trade_event(ref self, x); },
-                ExchangeEntity::SignedWithdraw(x) => {
-                    IWithdrawContractDispatcher { contract_address: self.withdraw_logic.read() }
-                        .apply_withdraw(x);
-                },
+                ExchangeEntity::SignedWithdraw(x) => { apply_withdraw(ref self, x); },
             }
             current_index += 1;
         };
@@ -106,16 +105,46 @@ mod AKIRA_exchange {
             .apply_trade_event(trade);
     }
 
-    fn get_pending_deposit(self: @ContractState) {}
-    fn set_pending_deposit(ref self: ContractState) {}
-    fn request_cancellation_pending(ref self: ContractState) {}
-    fn cancel_pending_deposit(ref self: ContractState) {}
-    fn apply_pending_deposit(ref self: ContractState) {}
-    fn request_onchain_withdraw(ref self: ContractState) {}
-    fn make_onchain_withdraw(ref self: ContractState) {}
-    fn cancel_onchain_withdraw_request(ref self: ContractState) {}
-    fn apply_withdraw(ref self: ContractState) {}
-    fn apply_increase_nonce(ref self: ContractState) {}
+    fn get_pending_deposit(self: @ContractState, deposit_hash: felt252) -> Deposit {
+        IDepositContractDispatcher { contract_address: self.deposit_logic.read() }
+            .get_pending_deposit(deposit_hash)
+    }
+    fn set_pending_deposit(ref self: ContractState, deposit: Deposit) {
+        IDepositContractDispatcher { contract_address: self.deposit_logic.read() }
+            .set_pending(deposit);
+    }
+    fn request_cancellation_pending(ref self: ContractState, deposit_hash: felt252) {
+        IDepositContractDispatcher { contract_address: self.deposit_logic.read() }
+            .request_cancellation_pending(deposit_hash);
+    }
+    fn cancel_pending_deposit(ref self: ContractState, deposit_hash: felt252) {
+        IDepositContractDispatcher { contract_address: self.deposit_logic.read() }
+            .cancel_pending(deposit_hash);
+    }
+    fn apply_pending_deposit(ref self: ContractState, deposit_apply: DepositApply) {
+        IDepositContractDispatcher { contract_address: self.deposit_logic.read() }
+            .apply_pending_deposit(deposit_apply);
+    }
+    fn request_onchain_withdraw(ref self: ContractState, withdraw: Withdraw) {
+        IWithdrawContractDispatcher { contract_address: self.withdraw_logic.read() }
+            .request_onchain_withdraw(withdraw);
+    }
+    fn make_onchain_withdraw(ref self: ContractState, withdraw: Withdraw) {
+        IWithdrawContractDispatcher { contract_address: self.withdraw_logic.read() }
+            .make_onchain_withdraw(withdraw);
+    }
+    fn cancel_onchain_withdraw_request(ref self: ContractState, withdraw: Withdraw) {
+        IWithdrawContractDispatcher { contract_address: self.withdraw_logic.read() }
+            .cancel_onchain_withdraw_request(withdraw);
+    }
+    fn apply_withdraw(ref self: ContractState, signed_withdraw: SignedWithdraw) {
+        IWithdrawContractDispatcher { contract_address: self.withdraw_logic.read() }
+            .apply_withdraw(signed_withdraw);
+    }
+    fn apply_increase_nonce(ref self: ContractState, signed_nonce_increase: SignedIncreaseNonce) {
+        INonceLogicDispatcher { contract_address: self.nonce_logic.read() }
+            .apply_increase_nonce(signed_nonce_increase);
+    }
 
 
     // EVENTS

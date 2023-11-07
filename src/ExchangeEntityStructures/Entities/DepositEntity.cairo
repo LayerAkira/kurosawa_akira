@@ -46,6 +46,7 @@ impl ZeroableImpl of Zeroable<Deposit> {
 
 #[starknet::interface]
 trait IDepositContract<TContractState> {
+    fn get_pending_deposit(self: @TContractState, deposit_hash: felt252) -> Deposit;
     fn set_pending(ref self: TContractState, deposit: Deposit) -> felt252;
     fn request_cancellation_pending(ref self: TContractState, key: felt252);
     fn cancel_pending(ref self: TContractState, key: felt252);
@@ -86,6 +87,11 @@ mod DepositContract {
     ) {
         self.slow_mode_contract.write(slow_mode_contract);
         self.exchange_balance_contract.write(exchange_balance_contract)
+    }
+
+    #[external(v0)]
+    fn get_pending_deposit(self: @ContractState, deposit_hash: felt252) -> Deposit {
+        self._pending_deposits.read(deposit_hash)
     }
 
     #[external(v0)]
