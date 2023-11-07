@@ -1,6 +1,5 @@
 use starknet::ContractAddress;
 use kurosawa_akira::FeeLogic::GasFee::GasFee;
-use kurosawa_akira::utils::common::ChainCtx;
 #[starknet::interface]
 trait IExchangeBalance<TContractState> {
     fn total_supply(self: @TContractState, token: ContractAddress) -> u256;
@@ -16,8 +15,13 @@ trait IExchangeBalance<TContractState> {
         token: ContractAddress
     );
     fn validate_and_apply_gas_fee_internal(
-        ref self: TContractState, user: ContractAddress, gas_fee: GasFee, ctx: ChainCtx
+        ref self: TContractState, user: ContractAddress, gas_fee: GasFee
     );
+    fn get_gas_fee_and_coin(
+        ref self: TContractState, gas_fee: GasFee, cur_gas_price: u256
+    ) -> (u256, core::starknet::contract_address::ContractAddress);
+    fn get_cur_gas_price(self: @TContractState) -> u256;
+    fn set_cur_gas_price(ref self: TContractState, gas_price: u256);
 }
 
 
@@ -25,7 +29,6 @@ trait IExchangeBalance<TContractState> {
 mod ExchangeBalance {
     use starknet::ContractAddress;
     use kurosawa_akira::FeeLogic::GasFee::GasFee;
-    use kurosawa_akira::utils::common::ChainCtx;
 
     #[storage]
     struct Storage {
@@ -33,6 +36,7 @@ mod ExchangeBalance {
         _balance: LegacyMap::<(ContractAddress, ContractAddress), u256>,
         wrapped_native_token: ContractAddress,
         exchange_address: ContractAddress,
+        cur_gas_price: u256,
     }
 
 
@@ -84,7 +88,7 @@ mod ExchangeBalance {
         self._balance.write((token, from), self._balance.read((token, from)) - amount);
         self._balance.write((token, to), self._balance.read((token, to)) + amount);
     }
-
+    #[external(v0)]
     fn get_gas_fee_and_coin(
         ref self: ContractState, gas_fee: GasFee, cur_gas_price: u256
     ) -> (u256, core::starknet::contract_address::ContractAddress) {
@@ -111,17 +115,17 @@ mod ExchangeBalance {
 
     #[external(v0)]
     fn validate_and_apply_gas_fee_internal(
-        ref self: ContractState, user: ContractAddress, gas_fee: GasFee, ctx: ChainCtx
+        ref self: ContractState, user: ContractAddress, gas_fee: GasFee
     ) {
-        if ctx.gas_price == 0 {
+        if self.cur_gas_price.read() == 0 {
             return;
         }
         if gas_fee.gas_per_swap == 0 {
             return;
         }
-        assert(gas_fee.max_gas_price >= ctx.gas_price, 'gas_prc <-= user stated prc');
+        assert(gas_fee.max_gas_price >= self.cur_gas_price.read(), 'gas_prc <-= user stated prc');
         assert(gas_fee.external_call == false, 'unsafe external call');
-        let (spend, coin) = get_gas_fee_and_coin(ref self, gas_fee, ctx.gas_price);
+        let (spend, coin) = get_gas_fee_and_coin(ref self, gas_fee, self.cur_gas_price.read());
         internal_transfer(ref self, user, self.exchange_address.read(), spend, gas_fee.fee_token);
         self
             .emit(
@@ -134,6 +138,15 @@ mod ExchangeBalance {
                     }
                 )
             );
+    }
+
+    #[external(v0)]
+    fn get_cur_gas_price(self: @ContractState) -> u256 {
+        self.cur_gas_price.read()
+    }
+    #[external(v0)]
+    fn set_cur_gas_price(ref self: ContractState, gas_price: u256) {
+        self.cur_gas_price.write(gas_price);
     }
 
 

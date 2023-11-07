@@ -44,19 +44,17 @@ impl ZeroableImpl of Zeroable<Deposit> {
     }
 }
 
-use kurosawa_akira::utils::common::ChainCtx;
 #[starknet::interface]
 trait IDepositContract<TContractState> {
-    fn set_pending(ref self: TContractState, deposit: Deposit, ctx: ChainCtx) -> felt252;
-    fn request_cancellation_pending(ref self: TContractState, key: felt252, ctx: ChainCtx);
-    fn cancel_pending(ref self: TContractState, key: felt252, ctx: ChainCtx);
+    fn set_pending(ref self: TContractState, deposit: Deposit) -> felt252;
+    fn request_cancellation_pending(ref self: TContractState, key: felt252);
+    fn cancel_pending(ref self: TContractState, key: felt252);
     fn apply_pending_deposit(ref self: TContractState, deposit_apply: DepositApply);
 }
 
 
 #[starknet::contract]
 mod DepositContract {
-    use kurosawa_akira::utils::common::ChainCtx;
     use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::PoseidonHashImpl;
     use starknet::ContractAddress;
     use super::Deposit;
@@ -91,11 +89,12 @@ mod DepositContract {
     }
 
     #[external(v0)]
-    fn set_pending(ref self: ContractState, deposit: Deposit, ctx: ChainCtx) -> felt252 {
+    fn set_pending(ref self: ContractState, deposit: Deposit) -> felt252 {
         let caller = get_caller_address();
         let contract = get_contract_address();
         assert(caller == deposit.maker, 'only deposits by user himself');
         assert(contract == deposit.receiver, 'only deposits to exchange');
+        //TODO
         // assert(deposit.value == ctx.value && self.deposit_price == ctx.value, 'wrong value')
 
         let key = deposit.get_poseidon_hash();
@@ -107,18 +106,21 @@ mod DepositContract {
         let fact_received = IERC20Dispatcher { contract_address: deposit.token }.balanceOf(contract)
             - pre;
         assert(fact_received == deposit.amount, 'Wrong received amount');
+
+        //TODO
+        // FakeERC20(self._wrapped_base_token).transfer(deposit.receiver, deposit.value.value, ctx)
         self._pending_deposits.write(key, deposit);
         key
     }
 
     #[external(v0)]
-    fn request_cancellation_pending(ref self: ContractState, key: felt252, ctx: ChainCtx) {
+    fn request_cancellation_pending(ref self: ContractState, key: felt252) {
         let deposit = self._pending_deposits.read(key);
         assert(!deposit.is_zero(), 'not_pending');
         let slow_mode_dispatcher = ISlowModeDispatcher {
             contract_address: self.slow_mode_contract.read()
         };
-        slow_mode_dispatcher.assert_request_and_apply(deposit.maker, key, ctx);
+        slow_mode_dispatcher.assert_request_and_apply(deposit.maker, key);
         self
             .emit(
                 Event::request_cancellation_pending(
@@ -128,14 +130,14 @@ mod DepositContract {
     }
 
     #[external(v0)]
-    fn cancel_pending(ref self: ContractState, key: felt252, ctx: ChainCtx) {
+    fn cancel_pending(ref self: ContractState, key: felt252) {
         let deposit = self._pending_deposits.read(key);
         assert(!deposit.is_zero(), 'not_pending');
         let slow_mode_dispatcher = ISlowModeDispatcher {
             contract_address: self.slow_mode_contract.read()
         };
-        slow_mode_dispatcher.assert_delay(key, ctx);
-        slow_mode_dispatcher.assert_have_request_and_apply(deposit.maker, key, ctx);
+        slow_mode_dispatcher.assert_delay(key);
+        slow_mode_dispatcher.assert_have_request_and_apply(deposit.maker, key);
         self._pending_deposits.write(key, deposit.zero());
 
         IERC20Dispatcher { contract_address: deposit.token }

@@ -7,21 +7,18 @@ struct SlowModeDelay {
 }
 
 use starknet::ContractAddress;
-use kurosawa_akira::utils::common::ChainCtx;
 #[starknet::interface]
 trait ISlowMode<TContractState> {
     fn remove_if_have_entry(ref self: TContractState, key: felt252);
 
-    fn update_delay(ref self: TContractState, new_delay: SlowModeDelay, ctx: ChainCtx);
+    fn update_delay(ref self: TContractState, new_delay: SlowModeDelay);
 
-    fn assert_delay(ref self: TContractState, key: felt252, ctx: ChainCtx);
+    fn assert_delay(ref self: TContractState, key: felt252);
 
-    fn assert_request_and_apply(
-        ref self: TContractState, maker: ContractAddress, key: felt252, ctx: ChainCtx
-    );
+    fn assert_request_and_apply(ref self: TContractState, maker: ContractAddress, key: felt252);
 
     fn assert_have_request_and_apply(
-        ref self: TContractState, maker: ContractAddress, key: felt252, ctx: ChainCtx
+        ref self: TContractState, maker: ContractAddress, key: felt252
     );
 }
 
@@ -29,7 +26,9 @@ trait ISlowMode<TContractState> {
 mod SlowMode {
     use starknet::ContractAddress;
     use super::SlowModeDelay;
-    use kurosawa_akira::utils::common::ChainCtx;
+    use starknet::get_caller_address;
+    use starknet::info::get_block_timestamp;
+    use starknet::info::get_block_number;
 
     #[storage]
     struct Storage {
@@ -57,38 +56,43 @@ mod SlowMode {
     }
 
     #[external(v0)]
-    fn update_delay(ref self: ContractState, new_delay: SlowModeDelay, ctx: ChainCtx) {
-        assert(self.owner.read() == ctx.caller, 'only_owner');
+    fn update_delay(ref self: ContractState, new_delay: SlowModeDelay) {
+        let caller = get_caller_address();
+        assert(self.owner.read() == caller, 'only_owner');
         assert(new_delay.block <= self.max_delay.read().block, 'wrong_block');
         assert(new_delay.ts <= self.max_delay.read().ts, 'wrong_ts');
         self.delay.write(new_delay);
     }
 
     #[external(v0)]
-    fn assert_delay(ref self: ContractState, key: felt252, ctx: ChainCtx) {
+    fn assert_delay(ref self: ContractState, key: felt252) {
         let (req_block, req_time) = self.block_time_of_requested_action.read(key);
+        let timestamp = get_block_timestamp();
+        let block = get_block_number();
         assert(
-            ctx.timestamp
-                - req_time >= self.delay.read().ts && ctx.block
+            timestamp
+                - req_time >= self.delay.read().ts && block
                 - req_block >= self.delay.read().block,
             'early invoke'
         );
     }
 
     #[external(v0)]
-    fn assert_request_and_apply(
-        ref self: ContractState, maker: ContractAddress, key: felt252, ctx: ChainCtx
-    ) {
-        assert(maker == ctx.caller, 'user himself');
+    fn assert_request_and_apply(ref self: ContractState, maker: ContractAddress, key: felt252) {
+        let caller = get_caller_address();
+        assert(maker == caller, 'user himself');
         assert(self.block_time_of_requested_action.read(key) == (0, 0), 'aldy rqsted');
-        self.block_time_of_requested_action.write(key, (ctx.block, ctx.timestamp));
+        let timestamp = get_block_timestamp();
+        let block = get_block_number();
+        self.block_time_of_requested_action.write(key, (block, timestamp));
     }
 
     #[external(v0)]
     fn assert_have_request_and_apply(
-        ref self: ContractState, maker: ContractAddress, key: felt252, ctx: ChainCtx
+        ref self: ContractState, maker: ContractAddress, key: felt252
     ) {
-        assert(maker == ctx.caller, 'user himself');
+        let caller = get_caller_address();
+        assert(maker == caller, 'user himself');
         assert(self.block_time_of_requested_action.read(key) != (0, 0), 'no cnl req');
         self.block_time_of_requested_action.write(key, (0, 0));
     }

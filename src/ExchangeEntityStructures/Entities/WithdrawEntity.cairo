@@ -36,17 +36,15 @@ impl ZeroableImpl of Zeroable<Withdraw> {
     }
 }
 
-use kurosawa_akira::utils::common::ChainCtx;
 #[starknet::interface]
 trait IWithdrawContract<TContractState> {
-    fn request_onchain_withdraw(ref self: TContractState, withdraw: Withdraw, ctx: ChainCtx);
-    fn make_onchain_withdraw(ref self: TContractState, withdraw: Withdraw, ctx: ChainCtx);
+    fn request_onchain_withdraw(ref self: TContractState, withdraw: Withdraw);
+    fn make_onchain_withdraw(ref self: TContractState, withdraw: Withdraw);
     fn apply_withdraw(ref self: TContractState, signed_withdraw: SignedWithdraw);
 }
 
 #[starknet::contract]
 mod WithdrawContract {
-    use kurosawa_akira::utils::common::ChainCtx;
     use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::PoseidonHashImpl;
     use starknet::ContractAddress;
     use super::Withdraw;
@@ -76,12 +74,12 @@ mod WithdrawContract {
     }
 
     #[external(v0)]
-    fn request_onchain_withdraw(ref self: ContractState, withdraw: Withdraw, ctx: ChainCtx) {
+    fn request_onchain_withdraw(ref self: ContractState, withdraw: Withdraw) {
         let key = withdraw.get_poseidon_hash();
         let slow_mode_dispatcher = ISlowModeDispatcher {
             contract_address: self.slow_mode_contract.read()
         };
-        slow_mode_dispatcher.assert_request_and_apply(withdraw.maker, key, ctx);
+        slow_mode_dispatcher.assert_request_and_apply(withdraw.maker, key);
         self
             .emit(
                 Event::request_onchain_withdraw(request_onchain_withdraw_s { withdraw: withdraw })
@@ -89,13 +87,13 @@ mod WithdrawContract {
     }
 
     #[external(v0)]
-    fn make_onchain_withdraw(ref self: ContractState, withdraw: Withdraw, ctx: ChainCtx) {
+    fn make_onchain_withdraw(ref self: ContractState, withdraw: Withdraw) {
         let key = withdraw.get_poseidon_hash();
         let slow_mode_dispatcher = ISlowModeDispatcher {
             contract_address: self.slow_mode_contract.read()
         };
-        slow_mode_dispatcher.assert_delay(key, ctx);
-        slow_mode_dispatcher.assert_have_request_and_apply(withdraw.maker, key, ctx);
+        slow_mode_dispatcher.assert_delay(key);
+        slow_mode_dispatcher.assert_have_request_and_apply(withdraw.maker, key);
 
         let exchange_balance_dispatcher = IExchangeBalanceDispatcher {
             contract_address: self.exchange_balance_contract.read()

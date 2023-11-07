@@ -9,7 +9,6 @@ use starknet::ContractAddress;
 use kurosawa_akira::ExchangeEntityStructures::Entities::Order::Order;
 use kurosawa_akira::ExchangeEntityStructures::Entities::Order::SignedOrder;
 use kurosawa_akira::ExchangeEntityStructures::Entities::TradeEntity::Trade;
-use kurosawa_akira::utils::common::ChainCtx;
 use kurosawa_akira::FeeLogic::FixedFee::FixedFee;
 use kurosawa_akira::FeeLogic::OrderFee::OrderFee;
 #[starknet::interface]
@@ -37,12 +36,12 @@ trait ICommonTradeLogicContract<TContractState> {
         feeable_qty: u256,
         fee_token: ContractAddress,
         is_maker: bool,
-        ctx: ChainCtx
     );
     fn orders_trade_info_read(self: @TContractState, order_hash: felt252) -> OrderTradeInfo;
     fn orders_trade_info_write(
         ref self: TContractState, order_hash: felt252, order_trade_info: OrderTradeInfo
     );
+    fn get_feeable_qty(self: @TContractState, fixed_fee: FixedFee, feeable_qty: u256) -> u256;
 }
 
 #[starknet::contract]
@@ -55,7 +54,6 @@ mod CommonTradeLogicContract {
     use kurosawa_akira::ExchangeEntityStructures::Entities::TradeEntity::Trade;
     use kurosawa_akira::ExchangeBalance::IExchangeBalanceDispatcher;
     use kurosawa_akira::ExchangeBalance::IExchangeBalanceDispatcherTrait;
-    use kurosawa_akira::utils::common::ChainCtx;
     use kurosawa_akira::FeeLogic::FixedFee::FixedFee;
     use kurosawa_akira::FeeLogic::OrderFee::OrderFee;
     use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::Zeroable;
@@ -184,8 +182,8 @@ mod CommonTradeLogicContract {
         }
         return order.quantity;
     }
-
-    fn get_feeable_qty(fixed_fee: FixedFee, feeable_qty: u256) -> u256 {
+    #[external(v0)]
+    fn get_feeable_qty(self: @ContractState, fixed_fee: FixedFee, feeable_qty: u256) -> u256 {
         if fixed_fee.pbips == 0 {
             return 0;
         }
@@ -194,13 +192,9 @@ mod CommonTradeLogicContract {
 
 
     fn apply_fixed_fee_involved(
-        ref self: ContractState,
-        user: ContractAddress,
-        fixed_fee: FixedFee,
-        feeable_qty: u256,
-        ctx: ChainCtx
+        ref self: ContractState, user: ContractAddress, fixed_fee: FixedFee, feeable_qty: u256,
     ) {
-        let fee = get_feeable_qty(fixed_fee, feeable_qty);
+        let fee = get_feeable_qty(@self, fixed_fee, feeable_qty);
         let exchange_balance_dispatcher = IExchangeBalanceDispatcher {
             contract_address: self.exchange_balance_contract.read()
         };
@@ -228,7 +222,6 @@ mod CommonTradeLogicContract {
         feeable_qty: u256,
         fee_token: ContractAddress,
         is_maker: bool,
-        ctx: ChainCtx
     ) {
         assert(order_fee.trade_fee.fee_token == fee_token, 'wrong fee token, require same');
         assert(order_fee.router_fee.is_zero() == false, 'safe requires no router fee');
@@ -237,10 +230,9 @@ mod CommonTradeLogicContract {
             contract_address: self.exchange_balance_contract.read()
         };
         if !is_maker && !order_fee.gas_fee.is_zero() {
-            exchange_balance_dispatcher
-                .validate_and_apply_gas_fee_internal(user, order_fee.gas_fee, ctx)
+            exchange_balance_dispatcher.validate_and_apply_gas_fee_internal(user, order_fee.gas_fee)
         }
-        apply_fixed_fee_involved(ref self, user, order_fee.trade_fee, feeable_qty, ctx);
+        apply_fixed_fee_involved(ref self, user, order_fee.trade_fee, feeable_qty);
     }
 
     #[external(v0)]

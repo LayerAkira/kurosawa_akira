@@ -5,3 +5,4 @@ mod Order;
 mod FundsTraits;
 mod CommonTradeLogic;
 mod SafeTradeLogic;
+mod UnsafeTradeLogic;

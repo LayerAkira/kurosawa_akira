@@ -1,10 +1,5 @@
 use starknet::ContractAddress;
 use serde::Serde;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::ContractState;
-use kurosawa_akira::utils::erc20::IERC20DispatcherTrait;
-use kurosawa_akira::utils::erc20::IERC20Dispatcher;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_burn;
-use kurosawa_akira::AKIRA_exchange::AKIRA_exchange::_mint;
 use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::Zeroable;
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
@@ -13,23 +8,6 @@ struct FixedFee {
     fee_token: ContractAddress,
     pbips: u256,
     external_call: bool,
-}
-
-
-fn apply_fixed_fee_involved(
-    ref state: ContractState, user: ContractAddress, fixedFee: FixedFee, feeable_qty: u256
-) {
-    if fixedFee.pbips == 0 {
-        return;
-    }
-    let fee = (feeable_qty * fixedFee.pbips - 1) / 1000000 + 1;
-    if fixedFee.external_call {
-        IERC20Dispatcher { contract_address: fixedFee.fee_token }
-            .transferFrom(user, fixedFee.recipient, fee);
-    } else {
-        _burn(ref state, user, fee, fixedFee.fee_token);
-        _mint(ref state, fixedFee.recipient, fee, fixedFee.fee_token);
-    }
 }
 
 impl ZeroableImpl of Zeroable<FixedFee> {

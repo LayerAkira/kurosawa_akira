@@ -1,3 +1,10 @@
+use kurosawa_akira::ExchangeEntityStructures::Entities::TradeEntity::Trade;
+#[starknet::interface]
+trait ISafeTradeLogic<TContractState> {
+    fn apply_trade_event(ref self: TContractState, trade: Trade);
+}
+
+
 #[starknet::contract]
 mod SafeTradeLogicContract {
     use starknet::ContractAddress;
@@ -8,7 +15,6 @@ mod SafeTradeLogicContract {
     use kurosawa_akira::ExchangeEntityStructures::Entities::Order::Order;
     use kurosawa_akira::ExchangeEntityStructures::Entities::Order::SignedOrder;
     use kurosawa_akira::ExchangeEntityStructures::Entities::TradeEntity::Trade;
-    use kurosawa_akira::utils::common::ChainCtx;
     use kurosawa_akira::FeeLogic::FixedFee::FixedFee;
     use kurosawa_akira::FeeLogic::OrderFee::OrderFee;
     use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::PoseidonHashImpl;
@@ -64,7 +70,7 @@ mod SafeTradeLogicContract {
 
 
     #[external(v0)]
-    fn apply_trade_event(ref self: ContractState, trade: Trade, ctx: ChainCtx) {
+    fn apply_trade_event(ref self: ContractState, trade: Trade) {
         let maker_o = trade.maker_signed_order.order;
         let taker_o = trade.taker_signed_order.order;
 
@@ -114,20 +120,20 @@ mod SafeTradeLogicContract {
         if maker_o.side == false {
             common_trade_logic_contract_dispatcher
                 .apply_order_fee_safe(
-                    maker_o.maker, maker_o.fee, matching_cost, maker_o.qty_address, true, ctx
+                    maker_o.maker, maker_o.fee, matching_cost, maker_o.qty_address, true
                 );
             common_trade_logic_contract_dispatcher
                 .apply_order_fee_safe(
-                    taker_o.maker, taker_o.fee, match_qty, taker_o.price_address, false, ctx
+                    taker_o.maker, taker_o.fee, match_qty, taker_o.price_address, false
                 );
         } else {
             common_trade_logic_contract_dispatcher
                 .apply_order_fee_safe(
-                    maker_o.maker, maker_o.fee, match_qty, maker_o.price_address, true, ctx
+                    maker_o.maker, maker_o.fee, match_qty, maker_o.price_address, true
                 );
             common_trade_logic_contract_dispatcher
                 .apply_order_fee_safe(
-                    taker_o.maker, taker_o.fee, matching_cost, taker_o.qty_address, false, ctx
+                    taker_o.maker, taker_o.fee, matching_cost, taker_o.qty_address, false
                 );
         }
 
