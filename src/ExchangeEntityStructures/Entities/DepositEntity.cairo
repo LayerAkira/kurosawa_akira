@@ -19,6 +19,7 @@ struct Deposit {
     token: ContractAddress,
     amount: u256,
     salt: felt252,
+    value: u256,
 }
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
@@ -39,7 +40,8 @@ impl ZeroableImpl of Zeroable<Deposit> {
             receiver: zero_address,
             token: zero_address,
             amount: zero_u256,
-            salt: 0
+            salt: 0,
+            value: 0,
         }
     }
 }
@@ -77,16 +79,19 @@ mod DepositContract {
         slow_mode_contract: ContractAddress,
         exchange_balance_contract: ContractAddress,
         _pending_deposits: LegacyMap::<felt252, Deposit>,
+        deposit_price: u256,
     }
 
     #[constructor]
     fn constructor(
         ref self: ContractState,
         slow_mode_contract: ContractAddress,
-        exchange_balance_contract: ContractAddress
+        exchange_balance_contract: ContractAddress,
+        deposit_price: u256,
     ) {
         self.slow_mode_contract.write(slow_mode_contract);
-        self.exchange_balance_contract.write(exchange_balance_contract)
+        self.exchange_balance_contract.write(exchange_balance_contract);
+        self.deposit_price.write(deposit_price);
     }
 
     #[external(v0)]
@@ -100,8 +105,11 @@ mod DepositContract {
         let contract = get_contract_address();
         assert(caller == deposit.maker, 'only deposits by user himself');
         assert(contract == deposit.receiver, 'only deposits to exchange');
-        //TODO
-        // assert(deposit.value == ctx.value && self.deposit_price == ctx.value, 'wrong value')
+
+        let exchange_balance_dispatcher = IExchangeBalanceDispatcher {
+            contract_address: self.exchange_balance_contract.read()
+        };
+        assert(deposit.value == exchange_balance_dispatcher.get_cur_value() && self.deposit_price.read() == exchange_balance_dispatcher.get_cur_value(), 'wrong value');
 
         let key = deposit.get_poseidon_hash();
         assert(self._pending_deposits.read(key).is_zero(), 'Deposit already pending');
@@ -113,8 +121,9 @@ mod DepositContract {
             - pre;
         assert(fact_received == deposit.amount, 'Wrong received amount');
 
-        //TODO
-        // FakeERC20(self._wrapped_base_token).transfer(deposit.receiver, deposit.value.value, ctx)
+
+                IERC20Dispatcher { contract_address: deposit.token }
+            .transfer(deposit.receiver, deposit.value);
         self._pending_deposits.write(key, deposit);
         key
     }

@@ -22,6 +22,8 @@ trait IExchangeBalance<TContractState> {
     ) -> (u256, core::starknet::contract_address::ContractAddress);
     fn get_cur_gas_price(self: @TContractState) -> u256;
     fn set_cur_gas_price(ref self: TContractState, gas_price: u256);
+    fn get_cur_value(self: @TContractState) -> u256;
+    fn set_cur_value(ref self: TContractState, gas_price: u256);
 }
 
 
@@ -37,6 +39,7 @@ mod ExchangeBalance {
         wrapped_native_token: ContractAddress,
         exchange_address: ContractAddress,
         cur_gas_price: u256,
+        cur_value: u256,
     }
 
 
@@ -147,6 +150,15 @@ mod ExchangeBalance {
     #[external(v0)]
     fn set_cur_gas_price(ref self: ContractState, gas_price: u256) {
         self.cur_gas_price.write(gas_price);
+    }
+
+    #[external(v0)]
+    fn get_cur_value(self: @ContractState) -> u256 {
+        self.cur_value.read()
+    }
+    #[external(v0)]
+    fn set_cur_value(ref self: ContractState, gas_price: u256) {
+        self.cur_value.write(gas_price);
     }
 
 

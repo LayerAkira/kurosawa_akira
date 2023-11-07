@@ -114,17 +114,18 @@ mod RouterLogicContract {
 
     #[external(v0)]
     fn router_deposit(ref self: ContractState, router: ContractAddress) {
-        //TODO
-        // IERC20Dispatcher { contract_address: self.wrapped_native_token.read() }
-        //     .transfer(self.exchange_contract.read(), ctx.value);
 
-        let exchange_balance_dispatcher = IExchangeBalanceDispatcher {
+            let exchange_balance_dispatcher = IExchangeBalanceDispatcher {
             contract_address: self.exchange_balance_contract.read()
         };
 
+        IERC20Dispatcher { contract_address: self.wrapped_native_token.read() }
+            .transfer(self.exchange_contract.read(), exchange_balance_dispatcher.get_cur_value());
+
+
+
         let b_old = exchange_balance_dispatcher.balanceOf(router, self.wrapped_native_token.read());
-        //TODO
-        //exchange_balance_dispatcher.mint(router, ctx.value, self.wrapped_native_token.read());
+        exchange_balance_dispatcher.mint(router, exchange_balance_dispatcher.get_cur_value(), self.wrapped_native_token.read());
 
         let b = exchange_balance_dispatcher.balanceOf(router, self.wrapped_native_token.read());
 
@@ -193,8 +194,7 @@ mod RouterLogicContract {
         let exchange_balance_dispatcher = IExchangeBalanceDispatcher {
             contract_address: self.exchange_balance_contract.read()
         };
-        //TODO
-        //assert(ctx.value >= self.router_stake_amount.read(), 'Must place stake amount');
+        assert(exchange_balance_dispatcher.get_cur_value() >= self.router_stake_amount.read(), 'Must place stake amount');
         assert(
             exchange_balance_dispatcher.balanceOf(router, self.wrapped_native_token.read()) > 0,
             'Already registered'
@@ -210,13 +210,11 @@ mod RouterLogicContract {
             self.signer_to_router.write(signer, router);
             current_index += 1;
         };
-        //TODO
-        //IERC20Dispatcher { contract_address: self.wrapped_native_token.read() }
-        //    .transfer(self.exchange_contract.read(), ctx.value);
+        IERC20Dispatcher { contract_address: self.wrapped_native_token.read() }
+            .transfer(self.exchange_contract.read(), exchange_balance_dispatcher.get_cur_value());
 
         let old_b = exchange_balance_dispatcher.balanceOf(router, self.wrapped_native_token.read());
-        //TODO
-        //exchange_balance_dispatcher.mint(router, ctx.value, self.wrapped_native_token.read());
+        exchange_balance_dispatcher.mint(router, exchange_balance_dispatcher.get_cur_value(), self.wrapped_native_token.read());
 
         let b = exchange_balance_dispatcher.balanceOf(router, self.wrapped_native_token.read());
 
