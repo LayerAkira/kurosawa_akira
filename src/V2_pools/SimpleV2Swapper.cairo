@@ -1,8 +1,25 @@
 use serde::Serde;
 use starknet::ContractAddress;
-
+    #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+    struct MarketInfo {
+        router_id: u256,
+        pool: ContractAddress,
+    }
 #[starknet::interface]
-trait ISimpleV2SwapperContract<TContractState> {}
+trait ISimpleV2SwapperContract<TContractState> {
+    #[external(v0)]
+    fn swap_exact_amounts(
+        ref self: TContractState,
+        amount_in_pool: u256,
+        amount_out_pool: u256,
+        token_in: ContractAddress,
+        token_out: ContractAddress,
+        mkt_info: MarketInfo,
+        recipient: ContractAddress,
+    ) -> u256;
+    #[external(v0)]
+    fn register_v2_market(ref self: TContractState, v2_type: bool);
+}
 
 #[starknet::interface]
 trait ISimpleV2Swapper<TContractState> {
@@ -35,12 +52,7 @@ mod SimpleV2SwapperContract {
     use super::IExtendedV2SwapperDispatcher;
     use super::IExtendedV2SwapperDispatcherTrait;
     use integer::u256_from_felt252;
-
-    #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
-    struct MarketInfo {
-        router_id: u256,
-        pool: ContractAddress,
-    }
+    use super::MarketInfo;
 
     #[storage]
     struct Storage {
@@ -53,6 +65,8 @@ mod SimpleV2SwapperContract {
     #[constructor]
     fn constructor(ref self: ContractState) {}
 
+
+    #[external(v0)]
     fn swap_exact_amounts(
         ref self: ContractState,
         amount_in_pool: u256,
@@ -91,7 +105,7 @@ mod SimpleV2SwapperContract {
         assert(0 != 0, 'unreachable state');
         0
     }
-
+    #[external(v0)]
     fn register_v2_market(ref self: ContractState, v2_type: bool) {
         self.mkt_id_to_v2.write(self.mkt_id.read(), v2_type);
         self.mkt_id.write(self.mkt_id.read() + 1);
