@@ -3,10 +3,6 @@ name = "kurosawa_akira"
 version = "0.1.0"
 
 [[target.starknet-contract]]
-sierra = true
-casm = true
-casm-add-pythonic-hints = true
-allowed-libfuncs-list.name = "all"
 
 [dependencies]
 starknet = ">=2.0.0"
