@@ -23,8 +23,14 @@ mod SithWrapper {
     #[starknet::interface]
     trait SithWrapperPair<T> {
         fn getToken0(self: @T) -> ContractAddress;
-        fn swap(self: @T, amount0_out: u256, amount1_out: u256, to: ContractAddress,data: Array::<felt252>);
-        fn getAmountOut(self: @T, amountIn: u256, token_in:ContractAddress) -> u256;
+        fn swap(
+            self: @T,
+            amount0_out: u256,
+            amount1_out: u256,
+            to: ContractAddress,
+            data: Array::<felt252>
+        );
+        fn getAmountOut(self: @T, amountIn: u256, token_in: ContractAddress) -> u256;
     }
 
     #[external(v0)]
@@ -32,9 +38,9 @@ mod SithWrapper {
         fn swap(ref self: ContractState, swap_info: SwapExactInfo, recipient: ContractAddress) {
             let pair = SithWrapperPairDispatcher { contract_address: swap_info.pool };
             if pair.getToken0() == swap_info.token_in {
-                return pair.swap(0, swap_info.amount_out_min, recipient,ArrayTrait::new());
+                return pair.swap(0, swap_info.amount_out_min, recipient, ArrayTrait::new());
             } else {
-                return pair.swap(swap_info.amount_out_min, 0, recipient,ArrayTrait::new());
+                return pair.swap(swap_info.amount_out_min, 0, recipient, ArrayTrait::new());
             }
         }
 
