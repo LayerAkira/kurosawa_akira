@@ -63,8 +63,7 @@ mod ConcreteV2 {
     use kurosawa_akira::utils::erc20::IERC20DispatcherTrait;
     use kurosawa_akira::utils::erc20::IERC20Dispatcher;
     use starknet::get_caller_address;
-            use starknet::get_contract_address;
-
+    use starknet::get_contract_address;
 
 
     #[storage]
@@ -87,8 +86,9 @@ mod ConcreteV2 {
                 contract_address: self.market_to_wrapper.read(market_id)
             };
             let caller = get_caller_address();
-            IERC20Dispatcher { contract_address: swap_info.token_in }.transferFrom(caller, swap_info.pool, swap_info.amount_in_pool);
-            
+            IERC20Dispatcher { contract_address: swap_info.token_in }
+                .transferFrom(caller, swap_info.pool, swap_info.amount_in_pool);
+
             wrapper.swap(swap_info, recipient);
         }
 
@@ -105,6 +105,7 @@ mod ConcreteV2 {
             let wrapper = RouterWrapperDispatcher {
                 contract_address: self.market_to_wrapper.read(mkt_id)
             };
+            self._idx.write(mkt_id);
         }
     }
 }
