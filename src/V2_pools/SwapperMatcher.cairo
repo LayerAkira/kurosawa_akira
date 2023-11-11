@@ -48,7 +48,6 @@ mod SwapperMatcherContract {
     #[storage]
     struct Storage {
         v2_address: ContractAddress,
-        pow_of_decimals: LegacyMap::<ContractAddress, u256>,
     }
 
 
@@ -56,14 +55,8 @@ mod SwapperMatcherContract {
     fn constructor(
         ref self: ContractState,
         v2_address: ContractAddress,
-        ETH: ContractAddress,
-        BTC: ContractAddress,
-        USDC: ContractAddress,
     ) {
         self.v2_address.write(v2_address);
-        self.pow_of_decimals.write(ETH, 1000000000000000000);
-        self.pow_of_decimals.write(BTC, 100000000);
-        self.pow_of_decimals.write(USDC, 1000000);
     }
 
     #[external(v0)]
@@ -100,11 +93,9 @@ mod SwapperMatcherContract {
         ) -> bool {
             let zero_address = starknet::contract_address_try_from_felt252(0).unwrap();
             let market_ids: Array<u16> = get_market_ids_from_tuple(order.market_ids);
-            let qty_decimals = self.pow_of_decimals.read(order.qty_address);
-            let matching_cost = order.quantity * order.price / qty_decimals;
             let swap_info = SwapExactInfo {
                 amount_in_pool: order.quantity,
-                amount_out_min: matching_cost,
+                amount_out_min: matching_maker_cost,
                 token_in: order.qty_address,
                 token_out: order.price_address,
                 pool: zero_address
@@ -127,9 +118,9 @@ mod SwapperMatcherContract {
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
-        abab: abab
+        ababb: ababb
     }
 
     #[derive(Drop, starknet::Event)]
-    struct abab {}
+    struct ababb {}
 }
