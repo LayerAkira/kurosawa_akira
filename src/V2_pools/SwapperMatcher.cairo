@@ -7,7 +7,6 @@ struct MinimalOrderInfoV2Swap {
     price: u256,
     qty_address: ContractAddress,
     price_address: ContractAddress,
-    market_ids: (bool, bool),
 }
 
 
@@ -17,18 +16,19 @@ trait ISwapperMatcherContract<TContractState> {
         ref self: TContractState,
         order: MinimalOrderInfoV2Swap,
         matching_maker_cost: u256,
-        pool_address: ContractAddress
+        pools: Array<ContractAddress>, market_ids: Array<u16>
     ) -> bool;
     fn get_best_swapper(
-        self: @TContractState, swap_info: SwapExactInfo, market_ids: Array<u16>
-    ) -> u16;
+        self: @TContractState, swap_info: SwapExactInfo, pools: Array<ContractAddress>, market_ids: Array<u16>
+    ) -> (u16, ContractAddress);
 }
 
 
 
 #[starknet::contract]
 mod SwapperMatcherContract {
-    use starknet::ContractAddress;
+    use core::traits::TryInto;
+use starknet::ContractAddress;
     use starknet::get_caller_address;
     use starknet::get_contract_address;
     use starknet::info::get_block_timestamp;
@@ -62,52 +62,53 @@ mod SwapperMatcherContract {
     #[external(v0)]
     impl SwapperMatcherContractImpl of super::ISwapperMatcherContract<ContractState> {
         fn get_best_swapper(
-            self: @ContractState, swap_info: SwapExactInfo, market_ids: Array<u16>
-        ) -> u16 {
+            self: @ContractState, swap_info: SwapExactInfo,
+            pools: Array<ContractAddress>, market_ids: Array<u16>
+        ) -> (u16,ContractAddress) {
             let mut current_index = 0;
             let last_ind = market_ids.len();
             let mut res = 0;
+            let mut best_pool:ContractAddress = 0.try_into().unwrap();
             let mut max_amount_out = 0;
+            let mut new_swap_info = swap_info;
             loop {
                 if (current_index == last_ind) {
                     break true;
                 }
                 let market_id: u16 = *market_ids[current_index];
-                let amount_out = AbstractV2Dispatcher {
-                    contract_address: self.v2_address.read()
-                }
-                    .get_amount_out(swap_info, market_id);
+                // let pool:ContractAddress = ;
+                new_swap_info.pool = *pools[current_index];
+                let amount_out = AbstractV2Dispatcher {contract_address: self.v2_address.read()}.get_amount_out(new_swap_info, market_id);
                 if amount_out > max_amount_out {
                     max_amount_out = amount_out;
-                    res = market_id
+                    res = market_id;
+                    best_pool = new_swap_info.pool;
                 }
                 current_index += 1;
             };
-            res
+            return (res, best_pool);
         }
         fn match_swap(
             ref self: ContractState,
             order: MinimalOrderInfoV2Swap,
             matching_maker_cost: u256,
-            pool_address: ContractAddress
+             pools: Array<ContractAddress>, market_ids: Array<u16>
         ) -> bool {
-            let zero_address = starknet::contract_address_try_from_felt252(0).unwrap();
-            let market_ids: Array<u16> = get_market_ids_from_tuple(order.market_ids);
-            let swap_info = SwapExactInfo {
+            let mut swap_info = SwapExactInfo {
                 amount_in_pool: order.quantity,
                 amount_out_min: matching_maker_cost,
                 token_in: order.qty_address,
                 token_out: order.price_address,
-                pool: zero_address
+                pool: 0.try_into().unwrap()
             };
-            let best_market_id = self.get_best_swapper(swap_info, market_ids);
-            let amount_out = AbstractV2Dispatcher {
-                contract_address: self.v2_address.read()
-            }
-                .get_amount_out(swap_info, best_market_id);
+            let (best_market, pool) = self.get_best_swapper(swap_info, pools, market_ids);
+            
+            swap_info.pool = pool;
+            let amount_out = AbstractV2Dispatcher { contract_address: self.v2_address.read()}.get_amount_out(swap_info, best_market);
+            
             if amount_out > matching_maker_cost {
                 AbstractV2Dispatcher { contract_address: self.v2_address.read() }
-                    .swap(swap_info, order.maker, best_market_id);
+                    .swap(swap_info, order.maker, best_market);
                 return true;
             }
             false

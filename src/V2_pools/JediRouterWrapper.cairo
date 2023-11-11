@@ -14,7 +14,7 @@ mod JediWrapper {
 
     use starknet::ContractAddress;
     use starknet::contract_address_to_felt252;
-   
+
     #[storage]
     struct Storage {
         router: ContractAddress
@@ -26,10 +26,15 @@ mod JediWrapper {
     }
     #[starknet::interface]
     trait JediIPair<T> {
-        
         fn token0(self: @T) -> ContractAddress;
-        fn get_reserves(self: @T) -> (u256,u256,felt252);
-        fn swap(self: @T,amount0Out:u256, amount1Out: u256, to: ContractAddress,  data:Array::<felt252>);
+        fn get_reserves(self: @T) -> (u256, u256, felt252);
+        fn swap(
+            self: @T,
+            amount0Out: u256,
+            amount1Out: u256,
+            to: ContractAddress,
+            data: Array::<felt252>
+        );
     }
     #[constructor]
     fn constructor(ref self: ContractState, router_address: ContractAddress) {
@@ -44,15 +49,14 @@ mod JediWrapper {
             if pair.token0() == swap_info.token_in {
                 return pair.swap(0, swap_info.amount_out_min, recipient, ArrayTrait::new());
             } else {
-                 return pair.swap(swap_info.amount_out_min,0, recipient, ArrayTrait::new());
+                return pair.swap(swap_info.amount_out_min, 0, recipient, ArrayTrait::new());
             }
-
         }
 
         fn get_amount_out(self: @ContractState, swap_info: SwapExactInfo) -> u256 {
             let executor = JediRealRouterDispatcher { contract_address: self.router.read() };
             let pair = JediIPairDispatcher { contract_address: swap_info.pool };
-            let (supply_0,supply_1,_) = pair.get_reserves();
+            let (supply_0, supply_1, _) = pair.get_reserves();
             if pair.token0() == swap_info.token_in {
                 return executor.get_amount_out(swap_info.amount_in_pool, supply_0, supply_1);
             } else {
@@ -61,3 +65,4 @@ mod JediWrapper {
         }
     }
 }
+
