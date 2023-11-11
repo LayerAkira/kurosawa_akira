@@ -1,105 +1,139 @@
 use serde::Serde;
 use starknet::ContractAddress;
-    use starknet::contract_address_to_felt252;
-    use array::ArrayTrait;
+use starknet::contract_address_to_felt252;
+use array::ArrayTrait;
 
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct SwapExactInfo {
-        amount_in: u256,
-        amount_out_min: u256,
-        token_in: ContractAddress,
-        token_out: ContractAddress,
-        to: ContractAddress,
-        deadline: felt252,
+    amount_in: u256,
+    amount_out_min: u256,
+    token_in: ContractAddress,
+    token_out: ContractAddress,
+    to: ContractAddress,
+    deadline: felt252,
 }
 
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct JediSwapRouter {
-        address: ContractAddress,
+    address: ContractAddress,
 }
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
-struct MySwapRouter {
-        address: ContractAddress,
+struct TenKSwapRouter {
+    address: ContractAddress,
 }
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
-struct RandomSwapRouter {
-        address: ContractAddress,
+struct SithSwapRouter {
+    address: ContractAddress,
 }
 
 trait ExactSwapTrait<T> {
-    fn swap_exact_tokens_for_tokens(self: T,
-        info: SwapExactInfo
-    ) -> u256;
+    fn swap_exact_tokens_for_tokens(self: T, info: SwapExactInfo);
 }
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 enum V2Swapper {
     JediSwap: JediSwapRouter,
-    MySwap: MySwapRouter,
-    RandomSwap: RandomSwapRouter,
+    TenKSwap: TenKSwapRouter,
+    SithSwap: SithSwapRouter,
 }
 
 #[starknet::interface]
 trait IJediSwapRouterContract<TContractState> {
-    fn swap_exact_tokens_for_tokens(ref self: TContractState, amountIn: u256, amountOutMin: u256, path: Array::<felt252>, to: felt252, deadline: felt252) -> u256;
+    fn swap_exact_tokens_for_tokens(
+        ref self: TContractState,
+        amountIn: u256,
+        amountOutMin: u256,
+        path: Array::<felt252>,
+        to: felt252,
+        deadline: felt252
+    );
 }
 
+#[starknet::interface]
+trait ITenKSwapRouterContract<TContractState> {
+    fn swapExactTokensForTokens(
+        ref self: TContractState,
+        amountIn: u256,
+        amountOutMin: u256,
+        path: Array::<felt252>,
+        to: felt252,
+        deadline: felt252
+    );
+}
+
+#[starknet::interface]
+trait ISithSwapRouterContract<TContractState> {
+    fn swapExactTokensForTokens(
+        ref self: TContractState,
+        amountIn: u256,
+        amountOutMin: u256,
+        routes: Array::<felt252>,
+        to: felt252,
+        deadline: felt252
+    );
+}
 
 
 impl JediSwapExactSwapTraitImpl of ExactSwapTrait<JediSwapRouter> {
-    fn swap_exact_tokens_for_tokens(
-        self: JediSwapRouter, info: SwapExactInfo
-    ) -> u256{
+    fn swap_exact_tokens_for_tokens(self: JediSwapRouter, info: SwapExactInfo) {
         let mut path: Array::<felt252> = ArrayTrait::new();
         path.append(contract_address_to_felt252(info.token_in));
         path.append(contract_address_to_felt252(info.token_out));
-        return IJediSwapRouterContractDispatcher{contract_address:self.address}.swap_exact_tokens_for_tokens(
-        info.amount_in,
-        info.amount_out_min,
-        path,
-        contract_address_to_felt252(info.to),
-        info.deadline,
-        );
+        return IJediSwapRouterContractDispatcher { contract_address: self.address }
+            .swap_exact_tokens_for_tokens(
+                info.amount_in,
+                info.amount_out_min,
+                path,
+                contract_address_to_felt252(info.to),
+                info.deadline,
+            );
     }
 }
 
-impl MySwapExactSwapTraitImpl of ExactSwapTrait<MySwapRouter> {
-    fn swap_exact_tokens_for_tokens(
-        self: MySwapRouter, info: SwapExactInfo
-    ) -> u256{
-        0
+impl TenKSwapExactSwapTraitImpl of ExactSwapTrait<TenKSwapRouter> {
+    fn swap_exact_tokens_for_tokens(self: TenKSwapRouter, info: SwapExactInfo) {
+        let mut path: Array::<felt252> = ArrayTrait::new();
+        path.append(contract_address_to_felt252(info.token_in));
+        path.append(contract_address_to_felt252(info.token_out));
+        ITenKSwapRouterContractDispatcher { contract_address: self.address }
+            .swapExactTokensForTokens(
+                info.amount_in,
+                info.amount_out_min,
+                path,
+                contract_address_to_felt252(info.to),
+                info.deadline,
+            );
     }
 }
 
 
-impl RandomSwapExactSwapTraitImpl of ExactSwapTrait<RandomSwapRouter> {
-    fn swap_exact_tokens_for_tokens(
-        self: RandomSwapRouter, info: SwapExactInfo
-    ) -> u256{
-        0
+impl RandomSwapExactSwapTraitImpl of ExactSwapTrait<SithSwapRouter> {
+    fn swap_exact_tokens_for_tokens(self: SithSwapRouter, info: SwapExactInfo) {
+        let mut path: Array::<felt252> = ArrayTrait::new();
+        path.append(contract_address_to_felt252(info.token_in));
+        path.append(contract_address_to_felt252(info.token_out));
+        ITenKSwapRouterContractDispatcher { contract_address: self.address }
+            .swapExactTokensForTokens(
+                info.amount_in,
+                info.amount_out_min,
+                path,
+                contract_address_to_felt252(info.to),
+                info.deadline,
+            );
     }
 }
-
 
 
 impl ExactSwapTraitImpl of ExactSwapTrait<V2Swapper> {
-    fn swap_exact_tokens_for_tokens(
-        self: V2Swapper, info: SwapExactInfo
-    ) -> u256{
+    fn swap_exact_tokens_for_tokens(self: V2Swapper, info: SwapExactInfo) {
         match self {
-            V2Swapper::JediSwap(x) => {
-                return x.swap_exact_tokens_for_tokens(info);
-            },
-            V2Swapper::MySwap(x) => {
-                return x.swap_exact_tokens_for_tokens(info);
-            },
-            V2Swapper::RandomSwap(x) => {
-                return x.swap_exact_tokens_for_tokens(info);
-            },
+            V2Swapper::JediSwap(x) => { x.swap_exact_tokens_for_tokens(info); },
+            V2Swapper::TenKSwap(x) => { x.swap_exact_tokens_for_tokens(info); },
+            V2Swapper::SithSwap(x) => { x.swap_exact_tokens_for_tokens(info); },
         }
     }
 }
@@ -108,9 +142,7 @@ impl ExactSwapTraitImpl of ExactSwapTrait<V2Swapper> {
 trait ISimpleV2SwapperContract<TContractState> {
     #[external(v0)]
     fn swap_exact_amounts(
-        ref self: TContractState,
-        swapper: V2Swapper,
-        info: SwapExactInfo,
+        ref self: TContractState, swapper: V2Swapper, info: SwapExactInfo,
     ) -> u256;
 }
 
@@ -131,46 +163,34 @@ mod SimpleV2SwapperContract {
     use super::ExactSwapTraitImpl;
 
     #[storage]
-    struct Storage {
-    }
+    struct Storage {}
 
 
     #[constructor]
-    fn constructor(ref self: ContractState) {
-    }
+    fn constructor(ref self: ContractState) {}
 
 
     #[external(v0)]
-    fn swap_exact_amounts(
-        ref self: ContractState,
-        swapper: V2Swapper,
-        info: SwapExactInfo,
-    ) -> u256 {
+    fn swap_exact_amounts(ref self: ContractState, swapper: V2Swapper, info: SwapExactInfo,) {
         let caller = get_caller_address();
-        IERC20Dispatcher { contract_address: info.token_in }.transferFrom(caller, get_contract_address(), info.amount_in);
+        IERC20Dispatcher { contract_address: info.token_in }
+            .transferFrom(caller, get_contract_address(), info.amount_in);
         let router_address: ContractAddress = match swapper {
-            V2Swapper::JediSwap(x) => {
-                x.address
-            },
-            V2Swapper::MySwap(x) => {
-                x.address
-            },
-            V2Swapper::RandomSwap(x) => {
-                x.address
-            },
+            V2Swapper::JediSwap(x) => { x.address },
+            V2Swapper::TenKSwap(x) => { x.address },
+            V2Swapper::SithSwap(x) => { x.address },
         };
-        IERC20Dispatcher { contract_address: info.token_in }.approve(router_address, info.amount_in);
-        let amount_out = swapper.swap_exact_tokens_for_tokens(info);
-        return amount_out;
+        IERC20Dispatcher { contract_address: info.token_in }
+            .approve(router_address, info.amount_in);
+        swapper.swap_exact_tokens_for_tokens(info);
     }
 
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
-        ab: ab
+        aba: aba
     }
 
     #[derive(Drop, starknet::Event)]
-    struct ab {
-    }
+    struct aba {}
 }

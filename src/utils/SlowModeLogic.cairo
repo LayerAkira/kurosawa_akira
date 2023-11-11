@@ -13,7 +13,7 @@ trait ISlowMode<TContractState> {
 
     fn update_delay(ref self: TContractState, new_delay: SlowModeDelay);
 
-    fn assert_delay(ref self: TContractState, key: felt252);
+    fn assert_delay(self: @TContractState, key: felt252);
 
     fn assert_request_and_apply(ref self: TContractState, maker: ContractAddress, key: felt252);
 
@@ -65,7 +65,7 @@ mod SlowMode {
     }
 
     #[external(v0)]
-    fn assert_delay(ref self: ContractState, key: felt252) {
+    fn assert_delay(self: @ContractState, key: felt252) {
         let (req_block, req_time) = self.block_time_of_requested_action.read(key);
         let timestamp = get_block_timestamp();
         let block = get_block_number();

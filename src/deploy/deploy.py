@@ -52,7 +52,8 @@ async def deploy(contract_name, raw_calldata, net_type):
         with open(file_path, 'w') as file:
             file.write(hex(address))
         return int(hex(address), 16)
-    except:
+    except Exception as e:
+        print(f"{e}")
         file_path = f"{contract_name}"
         with open(file_path, 'r') as file:
             s = file.read()
@@ -61,6 +62,14 @@ async def deploy(contract_name, raw_calldata, net_type):
 
 
 async def main():
+
+    contract_name = "SimpleV2SwapperContract"
+    raw_calldata = []
+    net_type = "testnet"
+    ExchangeBalance = await deploy(contract_name, raw_calldata, net_type)
+
+
+    return
     contract_name = "ExchangeBalance"
     # 0x166db0a0758b72c6c89bf5ac6942aeaa0ee281eaae34f06bee74ce29ae4cd36
     raw_calldata = [0x049D36570D4e46f48e99674bd3fcc84644DdD6b96F7C741B1562B82f9e004dC7,
