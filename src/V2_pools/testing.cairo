@@ -14,6 +14,8 @@ use kurosawa_akira::V2_pools::RouterWrapper::RouterWrapperDispatcher;
 use kurosawa_akira::V2_pools::RouterWrapper::RouterWrapperDispatcherTrait;
 use kurosawa_akira::V2_pools::RouterWrapper::ConcreteV2;
 #[cfg(test)]
+
+
 mod tests {
     use core::traits::Into;
     use core::array::ArrayTrait;
@@ -58,6 +60,16 @@ mod tests {
         let dummy_wrapper = RouterWrapperDispatcher { contract_address: deployed };
         return deployed;
     }
+
+    fn get_sith_swap() -> ContractAddress {
+        let dummy_wrapper_cls = declare('SithWrapper');
+        let mut constructor: Array::<felt252> = ArrayTrait::new();
+        let deployed = dummy_wrapper_cls.deploy(@constructor).unwrap();
+        let dummy_wrapper = RouterWrapperDispatcher { contract_address: deployed };
+        return deployed;
+    }
+
+    
 
     fn test_get_reserves(adapter:AbstractV2Dispatcher,info:SwapExactInfo,mkt_id:u16)-> u256 {
         return adapter.get_amount_out(info, mkt_id);
@@ -112,9 +124,12 @@ mod tests {
         let jedi_wrapper = get_jedi_swap(mainnet_jedi_swap_router_addr);
         // add 10kSwap  at index 2
         let ten_k_swap = get_10k_swap(mainnet_10k_swap_router_addr);
+        // addd sith at index 3
+        let sith_swap = get_sith_swap();
 
         adapter.add_router(jedi_wrapper);
         adapter.add_router(ten_k_swap);
+        adapter.add_router(sith_swap);
         return adapter;
     }
     
@@ -146,7 +161,7 @@ mod tests {
     #[available_gas(10000000000)]
     #[fork("forked")]
     fn test_joint() {
-         let adapter = init_router();
+        let adapter = init_router();
         
         let jedi_pool:ContractAddress = 0x05801bdad32f343035fb242e98d1e9371ae85bc1543962fedea16c59b35bd19b.try_into().unwrap();
         let mut info = get_test_data(100_000, jedi_pool);
@@ -157,7 +172,24 @@ mod tests {
         let mut info = get_test_data(100_000, ten_k_pool);
         info.amount_out_min = test_get_reserves(adapter, info, 2);
         test_swap(adapter, info, 2);
-        
+
+        let sith_pool:ContractAddress = 0x0601f72228f73704e827de5bcd8dadaad52c652bb1e42bf492d90bbe22df2cec.try_into().unwrap();
+        let mut info = get_test_data(100_000, sith_pool);
+        info.amount_out_min = test_get_reserves(adapter, info, 3);
+        test_swap(adapter, info, 3);
     }
+
+    #[test]
+    #[available_gas(10000000000)]
+    #[fork("forked")]
+    fn test_sith_swap() {
+        let adapter = init_router();        
+        let sith_pool:ContractAddress = 0x0601f72228f73704e827de5bcd8dadaad52c652bb1e42bf492d90bbe22df2cec.try_into().unwrap();
+        let mut info = get_test_data(100_000, sith_pool);
+        info.amount_out_min = test_get_reserves(adapter, info, 3);
+        test_swap(adapter, info, 3);
+    }
+
+
 }
 
