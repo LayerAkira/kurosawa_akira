@@ -1,32 +1,29 @@
 use starknet::ContractAddress;
-use kurosawa_akira::ExchangeEntityStructures::Entities::Order::Order;
-
-#[derive(Copy, Drop, Serde)]
-struct SwapExactInfo {
-    amount_in_pool: u256,
-    amount_out_min: u256,
-    token_in: ContractAddress,
-    token_out: ContractAddress,
-    pool: ContractAddress
+use kurosawa_akira::V2_pools::RouterWrapper::SwapExactInfo;
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+struct MinimalOrderInfoV2Swap {
+    maker:ContractAddress,
+    quantity: u256,
+    price: u256,
+    qty_address: ContractAddress,
+    price_address: ContractAddress,
+    market_ids: (bool, bool),
 }
 
-
-#[starknet::interface]
-trait AbstractV2<T> {
-    fn swap(ref self: T, swap_info: SwapExactInfo, recipient: ContractAddress, market_id: u16);
-
-    fn get_amount_out(self: @T, swap_info: SwapExactInfo, market_id: u16) -> u256;
-
-    fn add_router(ref self: T, router: ContractAddress);
-}
 
 #[starknet::interface]
 trait ISwapperMatcherContract<TContractState> {
-    fn match_swap(ref self: TContractState, order: Order, matching_maker_cost: u256) -> bool;
+    fn match_swap(
+        ref self: TContractState,
+        order: MinimalOrderInfoV2Swap,
+        matching_maker_cost: u256,
+        pool_address: ContractAddress
+    ) -> bool;
     fn get_best_swapper(
-            self: @TContractState, swap_info: SwapExactInfo, market_ids: Array<u16>
-        ) -> u16;
+        self: @TContractState, swap_info: SwapExactInfo, market_ids: Array<u16>
+    ) -> u16;
 }
+
 
 
 #[starknet::contract]
@@ -40,23 +37,33 @@ mod SwapperMatcherContract {
     use kurosawa_akira::utils::erc20::IERC20DispatcherTrait;
     use kurosawa_akira::utils::erc20::IERC20Dispatcher;
     use integer::u256_from_felt252;
-    use super::AbstractV2Dispatcher;
-    use super::AbstractV2DispatcherTrait;
-    use super::SwapExactInfo;
-    use kurosawa_akira::ExchangeEntityStructures::Entities::Order::Order;
+    use kurosawa_akira::V2_pools::RouterWrapper::AbstractV2Dispatcher;
+    use kurosawa_akira::V2_pools::RouterWrapper::AbstractV2DispatcherTrait;
+    use kurosawa_akira::V2_pools::RouterWrapper::SwapExactInfo;
     use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::Zeroable;
     use kurosawa_akira::utils::common::pow_ten;
     use kurosawa_akira::utils::common::get_market_ids_from_tuple;
+    use super::MinimalOrderInfoV2Swap;
 
     #[storage]
     struct Storage {
-        v2_dispatcher_address: ContractAddress
+        v2_address: ContractAddress,
+        pow_of_decimals: LegacyMap::<ContractAddress, u256>,
     }
 
 
     #[constructor]
-    fn constructor(ref self: ContractState, v2_dispatcher_address: ContractAddress) {
-        self.v2_dispatcher_address.write(v2_dispatcher_address);
+    fn constructor(
+        ref self: ContractState,
+        v2_address: ContractAddress,
+        ETH: ContractAddress,
+        BTC: ContractAddress,
+        USDC: ContractAddress,
+    ) {
+        self.v2_address.write(v2_address);
+        self.pow_of_decimals.write(ETH, 1000000000000000000);
+        self.pow_of_decimals.write(BTC, 100000000);
+        self.pow_of_decimals.write(USDC, 1000000);
     }
 
     #[external(v0)]
@@ -74,7 +81,7 @@ mod SwapperMatcherContract {
                 }
                 let market_id: u16 = *market_ids[current_index];
                 let amount_out = AbstractV2Dispatcher {
-                    contract_address: self.v2_dispatcher_address.read()
+                    contract_address: self.v2_address.read()
                 }
                     .get_amount_out(swap_info, market_id);
                 if amount_out > max_amount_out {
@@ -85,26 +92,31 @@ mod SwapperMatcherContract {
             };
             res
         }
-        fn match_swap(ref self: ContractState, order: Order, matching_maker_cost: u256) -> bool {
+        fn match_swap(
+            ref self: ContractState,
+            order: MinimalOrderInfoV2Swap,
+            matching_maker_cost: u256,
+            pool_address: ContractAddress
+        ) -> bool {
             let zero_address = starknet::contract_address_try_from_felt252(0).unwrap();
             let market_ids: Array<u16> = get_market_ids_from_tuple(order.market_ids);
-            let qty_decimals = IERC20Dispatcher{contract_address:order.qty_address}.decimals();
-            let matching_cost = order.quantity * order.price / pow_ten(qty_decimals);
-            let swap_info = SwapExactInfo{
-                    amount_in_pool: order.quantity,
-                    amount_out_min: matching_cost,
-                    token_in: order.qty_address,
-                    token_out: order.price_address,
-                    pool: zero_address
+            let qty_decimals = self.pow_of_decimals.read(order.qty_address);
+            let matching_cost = order.quantity * order.price / qty_decimals;
+            let swap_info = SwapExactInfo {
+                amount_in_pool: order.quantity,
+                amount_out_min: matching_cost,
+                token_in: order.qty_address,
+                token_out: order.price_address,
+                pool: zero_address
             };
             let best_market_id = self.get_best_swapper(swap_info, market_ids);
             let amount_out = AbstractV2Dispatcher {
-                    contract_address: self.v2_dispatcher_address.read()
-                }.get_amount_out(swap_info, best_market_id);
-            if amount_out > matching_maker_cost{
-                AbstractV2Dispatcher {
-                    contract_address: self.v2_dispatcher_address.read()
-                }.swap(swap_info, order.maker,best_market_id);
+                contract_address: self.v2_address.read()
+            }
+                .get_amount_out(swap_info, best_market_id);
+            if amount_out > matching_maker_cost {
+                AbstractV2Dispatcher { contract_address: self.v2_address.read() }
+                    .swap(swap_info, order.maker, best_market_id);
                 return true;
             }
             false
@@ -115,9 +127,9 @@ mod SwapperMatcherContract {
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
-        aba: aba
+        abab: abab
     }
 
     #[derive(Drop, starknet::Event)]
-    struct aba {}
+    struct abab {}
 }
