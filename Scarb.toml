@@ -5,8 +5,19 @@ version = "0.1.0"
 [[target.starknet-contract]]
 sierra = true
 casm = true
-casm-add-pythonic-hints = true
 allowed-libfuncs-list.name = "all"
 
 [dependencies]
-starknet = ">=2.0.0"
+starknet = ">=2.3.1"
+snforge_std = { git = "https://github.com/foundry-rs/starknet-foundry.git", tag = "v0.10.1" }
+
+[[tool.snforge.fork]]
+name = "forked"
+url = "https://starknet-mainnet.public.blastapi.io"
+block_id.number = "391001"
+
+[[tool.snforge.fork]]
+name = "latest"
+url = "https://starknet-mainnet.public.blastapi.io"
+block_id.tag = "Latest"
+

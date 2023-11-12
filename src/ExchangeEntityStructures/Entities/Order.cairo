@@ -23,7 +23,8 @@ struct Order {
     salt: felt252,
     to_safe_book: bool,
     nonce: u256,
-}
+    market_ids:(bool, bool),
+    }
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct SignedOrder {

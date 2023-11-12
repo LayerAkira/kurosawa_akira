@@ -114,18 +114,20 @@ mod RouterLogicContract {
 
     #[external(v0)]
     fn router_deposit(ref self: ContractState, router: ContractAddress) {
-
-            let exchange_balance_dispatcher = IExchangeBalanceDispatcher {
+        let exchange_balance_dispatcher = IExchangeBalanceDispatcher {
             contract_address: self.exchange_balance_contract.read()
         };
 
         IERC20Dispatcher { contract_address: self.wrapped_native_token.read() }
             .transfer(self.exchange_contract.read(), exchange_balance_dispatcher.get_cur_value());
 
-
-
         let b_old = exchange_balance_dispatcher.balanceOf(router, self.wrapped_native_token.read());
-        exchange_balance_dispatcher.mint(router, exchange_balance_dispatcher.get_cur_value(), self.wrapped_native_token.read());
+        exchange_balance_dispatcher
+            .mint(
+                router,
+                exchange_balance_dispatcher.get_cur_value(),
+                self.wrapped_native_token.read()
+            );
 
         let b = exchange_balance_dispatcher.balanceOf(router, self.wrapped_native_token.read());
 
@@ -194,7 +196,10 @@ mod RouterLogicContract {
         let exchange_balance_dispatcher = IExchangeBalanceDispatcher {
             contract_address: self.exchange_balance_contract.read()
         };
-        assert(exchange_balance_dispatcher.get_cur_value() >= self.router_stake_amount.read(), 'Must place stake amount');
+        assert(
+            exchange_balance_dispatcher.get_cur_value() >= self.router_stake_amount.read(),
+            'Must place stake amount'
+        );
         assert(
             exchange_balance_dispatcher.balanceOf(router, self.wrapped_native_token.read()) > 0,
             'Already registered'
@@ -214,7 +219,12 @@ mod RouterLogicContract {
             .transfer(self.exchange_contract.read(), exchange_balance_dispatcher.get_cur_value());
 
         let old_b = exchange_balance_dispatcher.balanceOf(router, self.wrapped_native_token.read());
-        exchange_balance_dispatcher.mint(router, exchange_balance_dispatcher.get_cur_value(), self.wrapped_native_token.read());
+        exchange_balance_dispatcher
+            .mint(
+                router,
+                exchange_balance_dispatcher.get_cur_value(),
+                self.wrapped_native_token.read()
+            );
 
         let b = exchange_balance_dispatcher.balanceOf(router, self.wrapped_native_token.read());
 
