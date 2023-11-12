@@ -249,14 +249,22 @@ mod tests {
             .try_into()
             .unwrap();
 
+        let ten_k_pool: ContractAddress =
+            0x041a708cf109737a50baa6cbeb9adf0bf8d97112dc6cc80c7a458cbad35328b0
+            .try_into()
+            .unwrap();
+
         let mut pools: Array::<ContractAddress> = ArrayTrait::new();
         pools.append(sith_pool);
 
         pools.append(jedi_pool);
+        pools.append(ten_k_pool);
 
         let mut mkts: Array::<u16> = ArrayTrait::new();
         mkts.append(3);
         mkts.append(1);
+        mkts.append(2);
+        
 
         return (adapter, matcher, mkts, pools);
     }
@@ -282,7 +290,7 @@ mod tests {
         router.print();
     }
 
-    fn test_swap_matcher(pool_amount_in: u256, would_be_traded_clob: u256, is_sell_side: bool) {
+    fn test_swap_matcher(pool_amount_in: u256, would_be_traded_clob: u256, is_sell_side: bool) -> u16 {
         let receiver: ContractAddress = 1.try_into().unwrap();
 
         let (adapter, matcher, mkts, pools) = init_ctx_matcher();
@@ -300,10 +308,13 @@ mod tests {
             .try_into()
             .unwrap();
 
+        let mut mkt:u16 = 0;
+
         if is_sell_side {
             //  ticker usdc/usdt, we selling  pool_amount_in usdt and getting would_be_traded_clob usdc
             let (router, pool, amount) = matcher
                 .get_best_swapper(pool_amount_in, usdt_token, usdc_token, pools, mkts);
+            mkt = router;
             let order_info = MinimalOrderInfoV2Swap {
                 maker: receiver,
                 quantity: pool_amount_in, //usdc
@@ -343,6 +354,7 @@ mod tests {
                 price_address: usdc_token,
                 is_sell_side: false
             };
+            mkt = router;
             let erc20 = IERC20Dispatcher { contract_address: usdc_token };
             start_prank(erc20.contract_address, caller_who_have_funds);
             erc20.transfer(matcher.contract_address, pool_amount_in);
@@ -361,9 +373,12 @@ mod tests {
             );
 
             let balance_after = erc20.balanceOf(receiver);
-            assert(amount == balance_after - balance_before, 'wrong trade');
+            assert(amount == balance_after - balance_before, 'wrong trade'); 
         }
+        return mkt;
     }
+
+    // usdc/usdt market  price address is usdc, qty is usdt
 
     #[test]
     #[available_gas(10000000000)]
@@ -378,4 +393,71 @@ mod tests {
     fn test_matcher_swap_buy_order() {
         test_swap_matcher(10_000_001, 9_000_000, false);
     }
+    #[test] 
+    #[should_panic(expected: ('Wrong, match should happen', ))]
+    #[fork(url: "https://starknet-mainnet.public.blastapi.io", block_id: BlockId::Number(360025))]                                                                                  
+    fn test_sell_on_ours_cause_better_1000usd() {
+        // we receive 1001usd
+        test_swap_matcher(1000_000_000, 1001_000_000, true).print();
+    }
+
+
+// // 392719 -> mkt id 3 is sell_side true
+//     #[test]
+//     #[fork(url: "https://starknet-mainnet.public.blastapi.io", block_id: BlockId::Number(392719))]
+                                                                                       
+//     fn test_best_on_mkt_3() {
+//         test_swap_matcher(10_000_000, 9_000_000, true).print();
+//     }
+
+//  //  391002 mkt_id 2 is sell side false
+//     #[test] 
+//     #[fork(url: "https://starknet-mainnet.public.blastapi.io", block_id: BlockId::Number(391002))]                                                                                  
+//     fn test_best_on_mkt_2() {
+//         test_swap_matcher(10_000_000, 9_000_000, false).print();
+//     }
+
+//     #[test] 
+//     #[fork(url: "https://starknet-mainnet.public.blastapi.io", block_id: BlockId::Number(360025))]                                                                                  
+//     fn test_best_on_391005() {
+//         test_swap_matcher(10_000_000, 9_000_000, false).print();
+//     }
+//         #[test] 
+//     #[fork(url: "https://starknet-mainnet.public.blastapi.io", block_id: BlockId::Number(360025))]                                                                                  
+//     fn test_best_on_391006() {
+//         test_swap_matcher(10_000_000, 9_000_000, false).print();
+//     }
+//         #[test] 
+//     #[fork(url: "https://starknet-mainnet.public.blastapi.io", block_id: BlockId::Number(360025))]                                                                                  
+//     fn test_best_on_391007() {
+//         test_swap_matcher(10_000_000, 9_000_000, false).print();
+//     }
+//         #[test] 
+//     #[fork(url: "https://starknet-mainnet.public.blastapi.io", block_id: BlockId::Number(360025))]                                                                                  
+//     fn test_best_on_391008() {
+//         test_swap_matcher(10_000_000, 9_000_000, false).print();
+//     }
+
+//     #[test] 
+//     #[fork(url: "https://starknet-mainnet.public.blastapi.io", block_id: BlockId::Number(360025))]                                                                                  
+//     fn test_best_on_391005_t() {
+//         test_swap_matcher(10_000_000, 9_000_000, true).print();
+//     }
+//         #[test] 
+//     #[fork(url: "https://starknet-mainnet.public.blastapi.io", block_id: BlockId::Number(360025))]                                                                                  
+//     fn test_best_on_391006_t() {
+//         test_swap_matcher(1000_000_000, 1000_000_000, false).print();
+//     }
+//     #[test] 
+//     #[fork(url: "https://starknet-mainnet.public.blastapi.io", block_id: BlockId::Number(360025))]                                                                                  
+//     fn test_best_on_391007_t() {
+//         test_swap_matcher(1000_000_000, 1000_000_000, true).print();
+//     }
+//         #[test] 
+//     #[fork(url: "https://starknet-mainnet.public.blastapi.io", block_id: BlockId::Number(360025))]                                                                                  
+//     fn test_best_on_391008_t() {
+//         test_swap_matcher(1000_000_000, 1000_000_000, true).print();
+//     }
 }
+
+// 391001 buy 10_000_000, 9_000_000  mkt id 2

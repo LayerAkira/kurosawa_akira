@@ -147,28 +147,9 @@ mod SwapperMatcherContract {
                 AbstractV2Dispatcher { contract_address: self.v2_address.read() }
                     .swap(swap_info, order.maker, best_route);
                 return true;
-            // let amount_out = AbstractV2Dispatcher { contract_address: self.v2_address.read() }
-            //     .get_amount_out(swap_info, best_market);
+
             }
-        // let mut swap_info = SwapExactInfo {
-        //     amount_in_pool: overall_matching_qty_cost,
-        //     amount_out_min: overall_matching_volume_cost,
-        //     token_in: order.qty_address,
-        //     token_out: order.price_address,
-        //     pool: 0.try_into().unwrap()
-        // };
-        // return true;
-        // let (best_market, pool) = self.get_best_swapper(swap_info, pools, market_ids);
 
-        // swap_info.pool = pool;
-        // let amount_out = AbstractV2Dispatcher { contract_address: self.v2_address.read()}.get_amount_out(swap_info, best_market);
-
-        // if amount_out < matching_maker_cost {
-        //     AbstractV2Dispatcher { contract_address: self.v2_address.read() }
-        //         .swap(swap_info, order.maker, best_market);
-        //     return true;
-        // }
-        // false
         }
     }
 
