@@ -1,5 +1,6 @@
 use starknet::ContractAddress;
 use kurosawa_akira::FeeLogic::GasFee::GasFee;
+
 #[starknet::interface]
 trait IExchangeBalance<TContractState> {
     fn total_supply(self: @TContractState, token: ContractAddress) -> u256;
@@ -174,5 +175,213 @@ mod ExchangeBalance {
         _exchange_address: ContractAddress,
         coin: ContractAddress,
         spend: u256,
+    }
+}
+
+
+#[starknet::interface]
+trait INewExchangeBalance<TContractState> {
+    fn mint(ref self: TContractState, to: ContractAddress, amount: u256, token: ContractAddress);
+    fn burn(ref self: TContractState, from: ContractAddress, amount: u256, token: ContractAddress);
+    fn internal_transfer(
+        ref self: TContractState,
+        from: ContractAddress,
+        to: ContractAddress,
+        amount: u256,
+        token: ContractAddress
+    );
+    fn validate_and_apply_gas_fee_internal(
+        ref self: TContractState, user: ContractAddress, gas_fee: NewGasFee, gas_price: u256
+    );
+
+
+    fn total_supply(self: @TContractState, token: ContractAddress) -> u256;
+
+    fn balanceOf(self: @TContractState, address: ContractAddress, token: ContractAddress) -> u256;
+
+    fn balancesOf(
+        self: @TContractState, addresses: Span<ContractAddress>, tokens: Span<ContractAddress>
+    ) -> Array<Array<u256>>;
+
+    fn get_wrapped_native_token(self: @TContractState) -> ContractAddress;
+
+    fn get_gas_fee_and_coin(
+        self: @TContractState, gas_fee: NewGasFee, cur_gas_price: u256
+    ) -> (u256, ContractAddress);
+
+    fn get_fee_recipient(self: @TContractState) -> ContractAddress;
+// fn set_fee_recipient(ref self:TContractState);
+
+}
+
+
+// TODO use this once all stuff rewritten in components
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+struct NewGasFee {
+    gas_per_action: u256,
+    fee_token: ContractAddress,
+    max_gas_price: u256,
+    conversion_rate: (u256, u256),
+    external_call: bool,
+}
+
+
+#[starknet::component]
+mod exchange_balance_logic_component {
+    use starknet::{ContractAddress, get_caller_address};
+    use super::INewExchangeBalance;
+
+    #[event]
+    #[derive(Drop, starknet::Event)]
+    enum Event {
+        GasFeeEvent: GasFeeEvent
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct GasFeeEvent {
+        #[key]
+        user: ContractAddress,
+        #[key]
+        coin: ContractAddress,
+        spent: u256
+    }
+
+    #[storage]
+    struct Storage {
+        _total_supply: LegacyMap::<ContractAddress, u256>,
+        _balances: LegacyMap::<(ContractAddress, ContractAddress), u256>,
+        wrapped_native_token: ContractAddress,
+        exchange_address: ContractAddress,
+        fee_recipient: ContractAddress
+    }
+
+    #[embeddable_as(ExchangeBalanceble)]
+    impl ExchangeBalancebleImpl<
+        TContractState, +HasComponent<TContractState>
+    > of INewExchangeBalance<ComponentState<TContractState>> {
+        // TODO add modifier that this is internal method ?
+        fn mint(
+            ref self: ComponentState<TContractState>,
+            to: ContractAddress,
+            amount: u256,
+            token: ContractAddress
+        ) {
+            assert(get_caller_address() == self.exchange_address.read(), 'Only self');
+            self._total_supply.write(token, self._total_supply.read(token) + amount);
+            self._balances.write((token, to), self._balances.read((token, to)) + amount);
+        }
+
+        fn burn(
+            ref self: ComponentState<TContractState>,
+            from: ContractAddress,
+            amount: u256,
+            token: ContractAddress
+        ) {
+            assert(get_caller_address() == self.exchange_address.read(), 'Only self');
+            self._total_supply.write(token, self._total_supply.read(token) - amount);
+            self._balances.write((token, from), self._balances.read((token, from)) - amount);
+        }
+        fn internal_transfer(
+            ref self: ComponentState<TContractState>,
+            from: ContractAddress,
+            to: ContractAddress,
+            amount: u256,
+            token: ContractAddress
+        ) {
+            assert(get_caller_address() == self.exchange_address.read(), 'Only self');
+            assert(self._balances.read((token, from)) >= amount, 'Few balance');
+            self._balances.write((token, from), self._balances.read((token, from)) - amount);
+            self._balances.write((token, to), self._balances.read((token, to)) + amount);
+        }
+
+        fn validate_and_apply_gas_fee_internal(
+            ref self: ComponentState<TContractState>,
+            user: ContractAddress,
+            gas_fee: super::NewGasFee,
+            gas_price: u256
+        ) {
+            assert(get_caller_address() == self.exchange_address.read(), 'Only self');
+            if gas_price == 0 || gas_fee.gas_per_action == 0 {
+                return;
+            }
+            assert(gas_fee.external_call == false, 'unsafe external call');
+            let (spent, coin) = self.get_gas_fee_and_coin(gas_fee, gas_price);
+            self.internal_transfer(user, self.fee_recipient.read(), spent, gas_fee.fee_token);
+            self
+                .emit(
+                    GasFeeEvent { user: user, coin: coin, spent: spent }
+                ); // TODO do we need event here? maybe just for debug?
+        }
+
+        fn total_supply(self: @ComponentState<TContractState>, token: ContractAddress) -> u256 {
+            return self._total_supply.read(token);
+        }
+
+        fn balanceOf(
+            self: @ComponentState<TContractState>, address: ContractAddress, token: ContractAddress
+        ) -> u256 {
+            return self._balances.read((token, address));
+        }
+
+        fn balancesOf(
+            self: @ComponentState<TContractState>,
+            addresses: Span<ContractAddress>,
+            tokens: Span<ContractAddress>
+        ) -> Array<Array<u256>> {
+            let mut res: Array<Array<u256>> = ArrayTrait::new();
+            let sz_addr = addresses.len();
+            let sz_token = tokens.len();
+            let mut idx_addr = 0;
+            loop {
+                let addr = *addresses.at(idx_addr);
+                let mut sub_res: Array<u256> = ArrayTrait::new();
+                let mut idx_token = 0;
+                loop {
+                    let token = *tokens.at(idx_token);
+                    sub_res.append(self._balances.read((token, addr)));
+                    idx_token += 1;
+                    if sz_token == idx_token {
+                        break;
+                    }
+                };
+                res.append(sub_res);
+                idx_addr += 1;
+                if sz_addr == idx_addr {
+                    break;
+                }
+            };
+            return res;
+        }
+
+        fn get_wrapped_native_token(self: @ComponentState<TContractState>) -> ContractAddress {
+            return self.wrapped_native_token.read();
+        }
+
+        fn get_fee_recipient(self: @ComponentState<TContractState>) -> ContractAddress {
+            return self.fee_recipient.read();
+        }
+
+        fn get_gas_fee_and_coin(
+            self: @ComponentState<TContractState>, gas_fee: super::NewGasFee, cur_gas_price: u256
+        ) -> (u256, core::starknet::contract_address::ContractAddress) {
+            if cur_gas_price == 0 {
+                return (0, self.wrapped_native_token.read());
+            }
+            if gas_fee.gas_per_action == 0 {
+                return (0, self.wrapped_native_token.read());
+            }
+            assert(gas_fee.max_gas_price >= cur_gas_price, 'gas_prc <-= user stated prc');
+
+            let spend_native = gas_fee.gas_per_action * cur_gas_price;
+            if (gas_fee.fee_token == self.wrapped_native_token.read()) && !gas_fee.external_call {
+                return (spend_native, self.wrapped_native_token.read());
+            } else if gas_fee.fee_token == self.wrapped_native_token.read()
+                && gas_fee.external_call {
+                return (spend_native, self.wrapped_native_token.read());
+            }
+            let (r0, r1) = gas_fee.conversion_rate;
+            let spend_converted = spend_native * r1 / r0;
+            return (spend_converted, gas_fee.fee_token);
+        }
     }
 }
