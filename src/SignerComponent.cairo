@@ -19,8 +19,7 @@ trait ISignerLogic<TContractState> {
     fn get_signer(self: @TContractState, trader: ContractAddress) -> ContractAddress;
     //  returns zero address in case of no binding
     fn get_signers(self: @TContractState, traders: Span<ContractAddress>) -> Array<ContractAddress>;
-    
-    // TODO: later support rebinding 
+// TODO: later support rebinding 
 }
 
 #[starknet::component]

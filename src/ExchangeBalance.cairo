@@ -181,20 +181,6 @@ mod ExchangeBalance {
 
 #[starknet::interface]
 trait INewExchangeBalance<TContractState> {
-    fn mint(ref self: TContractState, to: ContractAddress, amount: u256, token: ContractAddress);
-    fn burn(ref self: TContractState, from: ContractAddress, amount: u256, token: ContractAddress);
-    fn internal_transfer(
-        ref self: TContractState,
-        from: ContractAddress,
-        to: ContractAddress,
-        amount: u256,
-        token: ContractAddress
-    );
-    fn validate_and_apply_gas_fee_internal(
-        ref self: TContractState, user: ContractAddress, gas_fee: NewGasFee, gas_price: u256
-    );
-
-
     fn total_supply(self: @TContractState, token: ContractAddress) -> u256;
 
     fn balanceOf(self: @TContractState, address: ContractAddress, token: ContractAddress) -> u256;
@@ -209,8 +195,9 @@ trait INewExchangeBalance<TContractState> {
         self: @TContractState, gas_fee: NewGasFee, cur_gas_price: u256
     ) -> (u256, ContractAddress);
 
+    fn get_latest_gas_price(self: @TContractState)->u256;
+
     fn get_fee_recipient(self: @TContractState) -> ContractAddress;
-// fn set_fee_recipient(ref self:TContractState);
 
 }
 
@@ -252,66 +239,17 @@ mod exchange_balance_logic_component {
         _balances: LegacyMap::<(ContractAddress, ContractAddress), u256>,
         wrapped_native_token: ContractAddress,
         exchange_address: ContractAddress,
-        fee_recipient: ContractAddress
+        fee_recipient: ContractAddress,
+        latest_gas: u256,
     }
 
+
+
+
     #[embeddable_as(ExchangeBalanceble)]
-    impl ExchangeBalancebleImpl<
-        TContractState, +HasComponent<TContractState>
-    > of INewExchangeBalance<ComponentState<TContractState>> {
+    impl ExchangeBalancebleImpl<TContractState, +HasComponent<TContractState>> of INewExchangeBalance<ComponentState<TContractState>> {
         // TODO add modifier that this is internal method ?
-        fn mint(
-            ref self: ComponentState<TContractState>,
-            to: ContractAddress,
-            amount: u256,
-            token: ContractAddress
-        ) {
-            assert(get_caller_address() == self.exchange_address.read(), 'Only self');
-            self._total_supply.write(token, self._total_supply.read(token) + amount);
-            self._balances.write((token, to), self._balances.read((token, to)) + amount);
-        }
-
-        fn burn(
-            ref self: ComponentState<TContractState>,
-            from: ContractAddress,
-            amount: u256,
-            token: ContractAddress
-        ) {
-            assert(get_caller_address() == self.exchange_address.read(), 'Only self');
-            self._total_supply.write(token, self._total_supply.read(token) - amount);
-            self._balances.write((token, from), self._balances.read((token, from)) - amount);
-        }
-        fn internal_transfer(
-            ref self: ComponentState<TContractState>,
-            from: ContractAddress,
-            to: ContractAddress,
-            amount: u256,
-            token: ContractAddress
-        ) {
-            assert(get_caller_address() == self.exchange_address.read(), 'Only self');
-            assert(self._balances.read((token, from)) >= amount, 'Few balance');
-            self._balances.write((token, from), self._balances.read((token, from)) - amount);
-            self._balances.write((token, to), self._balances.read((token, to)) + amount);
-        }
-
-        fn validate_and_apply_gas_fee_internal(
-            ref self: ComponentState<TContractState>,
-            user: ContractAddress,
-            gas_fee: super::NewGasFee,
-            gas_price: u256
-        ) {
-            assert(get_caller_address() == self.exchange_address.read(), 'Only self');
-            if gas_price == 0 || gas_fee.gas_per_action == 0 {
-                return;
-            }
-            assert(gas_fee.external_call == false, 'unsafe external call');
-            let (spent, coin) = self.get_gas_fee_and_coin(gas_fee, gas_price);
-            self.internal_transfer(user, self.fee_recipient.read(), spent, gas_fee.fee_token);
-            self
-                .emit(
-                    GasFeeEvent { user: user, coin: coin, spent: spent }
-                ); // TODO do we need event here? maybe just for debug?
-        }
+        
 
         fn total_supply(self: @ComponentState<TContractState>, token: ContractAddress) -> u256 {
             return self._total_supply.read(token);
@@ -360,6 +298,9 @@ mod exchange_balance_logic_component {
         fn get_fee_recipient(self: @ComponentState<TContractState>) -> ContractAddress {
             return self.fee_recipient.read();
         }
+        fn get_latest_gas_price(self: @ComponentState<TContractState>) -> u256 {
+            return self.latest_gas.read();
+        }
 
         fn get_gas_fee_and_coin(
             self: @ComponentState<TContractState>, gas_fee: super::NewGasFee, cur_gas_price: u256
@@ -382,6 +323,66 @@ mod exchange_balance_logic_component {
             let (r0, r1) = gas_fee.conversion_rate;
             let spend_converted = spend_native * r1 / r0;
             return (spend_converted, gas_fee.fee_token);
+        }
+    }
+    #[generate_trait]
+    impl InternalExchangeBalancebleImpl<
+        TContractState, +HasComponent<TContractState>
+    > of InternalExchangeBalanceble<TContractState> {
+        fn initializer(ref self: ComponentState<TContractState>,fee_recipient:ContractAddress, wrapped_native_token:ContractAddress, exchange_address: ContractAddress) {
+            self.exchange_address.write(exchange_address);
+            self.wrapped_native_token.write(wrapped_native_token);
+            self.fee_recipient.write(fee_recipient);
+        }
+
+        fn mint(
+            ref self: ComponentState<TContractState>,
+            to: ContractAddress,
+            amount: u256,
+            token: ContractAddress
+        ) {
+            assert(get_caller_address() == self.exchange_address.read(), 'Only self');
+            self._total_supply.write(token, self._total_supply.read(token) + amount);
+            self._balances.write((token, to), self._balances.read((token, to)) + amount);
+        }
+
+        fn burn(
+            ref self: ComponentState<TContractState>,
+            from: ContractAddress,
+            amount: u256,
+            token: ContractAddress
+        ) {
+            self._total_supply.write(token, self._total_supply.read(token) - amount);
+            self._balances.write((token, from), self._balances.read((token, from)) - amount);
+        }
+        fn internal_transfer(
+            ref self: ComponentState<TContractState>,
+            from: ContractAddress,
+            to: ContractAddress,
+            amount: u256,
+            token: ContractAddress
+        ) {
+            assert(self._balances.read((token, from)) >= amount, 'Few balance');
+            self._balances.write((token, from), self._balances.read((token, from)) - amount);
+            self._balances.write((token, to), self._balances.read((token, to)) + amount);
+        }
+
+        fn validate_and_apply_gas_fee_internal(
+            ref self: ComponentState<TContractState>,
+            user: ContractAddress,
+            gas_fee: super::NewGasFee,
+            gas_price: u256
+        ) {
+            if gas_price == 0 || gas_fee.gas_per_action == 0 {
+                return;
+            }
+            assert(gas_fee.external_call == false, 'unsafe external call');
+            let (spent, coin) = self.get_gas_fee_and_coin(gas_fee, gas_price);
+            self.internal_transfer(user, self.fee_recipient.read(), spent, gas_fee.fee_token);
+            self
+                .emit(
+                    GasFeeEvent { user: user, coin: coin, spent: spent }
+                ); // TODO do we need event here? maybe just for debug?
         }
     }
 }
