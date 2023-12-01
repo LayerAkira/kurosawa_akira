@@ -138,7 +138,7 @@ mod withdraw_component {
             let mut contract = self.get_balancer_mut();
             contract.burn(w_req.maker, w_req.amount, w_req.token);
             IERC20Dispatcher { contract_address: w_req.token }.transfer(w_req.maker, w_req.amount);
-            self.emit(Withdrawal{maker:w_req.maker,token:w_req.token,amount:w_req.amount});
+            self.emit(Withdrawal{maker:w_req.maker,token:w_req.token,amount:w_req.amount, reciever:w_req.reciever,});
 
             // payment to exchange for gas
             let cur_gas = contract.get_latest_gas_price();
