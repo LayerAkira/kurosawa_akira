@@ -193,6 +193,7 @@ mod router_component {
         fn validate_router(self: @ComponentState<TContractState>, message: felt252, signature: (felt252, felt252), signer: ContractAddress, router:ContractAddress) -> bool {
             let actual_router = self.signer_to_router.read(signer);
             if actual_router != router {return false;}
+            assert(self.registered.read(router),'NOT_REGISTERED');
             let (sig_r,sig_s) = signature;
             return check_ecdsa_signature(message, signer.into(), sig_r, sig_s);
         }
