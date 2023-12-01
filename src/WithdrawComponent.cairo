@@ -10,7 +10,8 @@ struct WithdrawNew {
     token: ContractAddress,
     amount: u256,
     salt: felt252,
-    gas_fee: NewGasFee
+    gas_fee: NewGasFee,
+    reciever:ContractAddress
 }
 
 #[derive(Copy, Drop, Serde, PartialEq)]
@@ -23,8 +24,8 @@ struct SignedWithdrawNew {
 trait IWithdraw<TContractState> {
     // scheduels onchain withdraw so user can actually withdraw by apply_onchain_withdraw
     fn request_onchain_withdraw(ref self: TContractState, withdraw: WithdrawNew);
-    // cancels onchain withdraw_request so user prevent 
-    fn cancel_onchain_withdraw_request(ref self: TContractState, key:felt252);
+    // // cancels onchain withdraw_request so user prevent 
+    // fn cancel_onchain_withdraw_request(ref self: TContractState, key:felt252);
     // can only be performed by the owner
     fn apply_onchain_withdraw(ref self: TContractState, key:felt252);
 }
@@ -47,7 +48,6 @@ mod withdraw_component {
     #[derive(Drop, starknet::Event)]
     enum Event {
         ReqOnChainWithdraw: ReqOnChainWithdraw,
-        ReqOnChainCancelled: ReqOnChainCancelled,
         Withdrawal: Withdrawal
     }
 
@@ -57,16 +57,10 @@ mod withdraw_component {
         maker: ContractAddress,
         #[key]
         token: ContractAddress,
+        reciever:ContractAddress,
         amount: u256,
         salt: felt252,
         gas_fee: NewGasFee,
-    }
-
-    #[derive(Drop, starknet::Event)]
-    struct ReqOnChainCancelled {
-        #[key]
-        maker:ContractAddress,
-        withdraw_key:felt252
     }
 
     #[derive(Drop, starknet::Event)]
@@ -75,6 +69,7 @@ mod withdraw_component {
         maker: ContractAddress,
         #[key]
         token: ContractAddress,
+        reciever:ContractAddress,
         amount: u256,
     }
 
@@ -96,16 +91,17 @@ mod withdraw_component {
             self.validate(w.maker, w.token, w.amount, w.gas_fee);
             self.pending_reqs.write(key, (SlowModeDelay {block:get_block_number(), ts: get_block_timestamp()}, withdraw));
             self.emit(ReqOnChainWithdraw{
-                maker:withdraw.maker,token:withdraw.token,amount:withdraw.amount,salt:withdraw.salt,gas_fee:withdraw.gas_fee});
+                maker:withdraw.maker,token:withdraw.token,amount:withdraw.amount,salt:withdraw.salt,gas_fee:withdraw.gas_fee,
+                        reciever:withdraw.reciever});
             
         }
 
-        fn cancel_onchain_withdraw_request(ref self: ComponentState<TContractState>, key:felt252) {
-            let (delay, w_req): (SlowModeDelay, WithdrawNew) = self.pending_reqs.read(key);
-            assert(get_caller_address() == w_req.maker, 'WRONG_MAKER');
-            self.emit(ReqOnChainCancelled{maker:w_req.maker, withdraw_key:key});
-            self.cleanup(w_req, delay, key);
-        }
+        // fn cancel_onchain_withdraw_request(ref self: ComponentState<TContractState>, key:felt252) {
+        //     let (delay, w_req): (SlowModeDelay, WithdrawNew) = self.pending_reqs.read(key);
+        //     assert(get_caller_address() == w_req.maker, 'WRONG_MAKER');
+        //     self.emit(ReqOnChainCancelled{maker:w_req.maker, withdraw_key:key});
+        //     self.cleanup(w_req, delay, key);
+        // }
 
         fn apply_onchain_withdraw(ref self: ComponentState<TContractState>, key:felt252) {
             let (delay, w_req): (SlowModeDelay,WithdrawNew) = self.pending_reqs.read(key);
@@ -115,8 +111,8 @@ mod withdraw_component {
             assert(get_block_number() - delay.block >= limit.block && get_block_timestamp() - delay.ts >= limit.ts, 'FEW_TIME_PASSED');
             let mut balancer = self.get_balancer_mut();
             balancer.burn(w_req.maker,w_req.amount,w_req.token);
-            IERC20Dispatcher{ contract_address: w_req.token}.transfer(w_req.maker, w_req.amount);
-            self.emit(Withdrawal{maker:w_req.maker, token:w_req.token, amount:w_req.amount});
+            IERC20Dispatcher{ contract_address: w_req.token}.transfer(w_req.reciever, w_req.amount);
+            self.emit(Withdrawal{maker:w_req.maker, token:w_req.token, amount:w_req.amount, reciever:w_req.reciever});
             self.cleanup(w_req, delay, key);
         }
 
@@ -136,6 +132,7 @@ mod withdraw_component {
             if w_req != signed_withdraw.withdraw { // need to check sign cause offchain withdrawal
                 let (r,s) = signed_withdraw.sign;
                 assert(self.get_contract().check_sign(signed_withdraw.withdraw.maker,hash,r,s), 'WRONG_SIG');
+
             }
         
             let mut contract = self.get_balancer_mut();
@@ -172,6 +169,16 @@ mod withdraw_component {
             } else {
                 assert(balance >= amount , 'FEW_BALANCE');
                 assert(balancer.balanceOf(maker,gas_fee.fee_token) >= required_gas, 'FEW_BALANCE_GAS');
+            }
+        }
+        fn have_enough(self:@ComponentState<TContractState>,maker:ContractAddress,token:ContractAddress, amount:u256, gas_fee:NewGasFee) ->bool {
+            let balancer =  self.get_balancer();
+            let balance = balancer.balanceOf(maker,token);
+            let required_gas = balancer.get_latest_gas_price() *  gas_fee.gas_per_action;
+            if gas_fee.fee_token == token {
+                return balance >= required_gas + amount;
+            } else {
+                return balance >= amount && balancer.balanceOf(maker, gas_fee.fee_token) >= required_gas;
             }
         }
     }   
