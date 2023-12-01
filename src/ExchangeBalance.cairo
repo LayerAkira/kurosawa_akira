@@ -179,6 +179,27 @@ mod ExchangeBalance {
 }
 
 
+
+
+fn get_gas_fee_and_coin(gas_fee: NewGasFee, cur_gas_price: u256, native_token:ContractAddress) -> (u256, ContractAddress) {
+    if cur_gas_price == 0 { return (0, native_token);}
+    if gas_fee.gas_per_action == 0 { return (0, native_token);}
+    assert(gas_fee.max_gas_price >= cur_gas_price, 'gas_prc <-= user stated prc');
+    let spend_native = gas_fee.gas_per_action * cur_gas_price;
+    
+    if (gas_fee.fee_token == native_token) && !gas_fee.external_call {
+        return (spend_native, native_token);
+    } 
+    else if gas_fee.fee_token == native_token && gas_fee.external_call {
+        return (spend_native, native_token);
+    }
+
+    let (r0, r1) = gas_fee.conversion_rate;
+    let spend_converted = spend_native * r1 / r0;
+    return (spend_converted, gas_fee.fee_token);
+}
+
+
 #[starknet::interface]
 trait INewExchangeBalance<TContractState> {
     fn total_supply(self: @TContractState, token: ContractAddress) -> u256;
@@ -190,10 +211,6 @@ trait INewExchangeBalance<TContractState> {
     ) -> Array<Array<u256>>;
 
     fn get_wrapped_native_token(self: @TContractState) -> ContractAddress;
-
-    fn get_gas_fee_and_coin(
-        self: @TContractState, gas_fee: NewGasFee, cur_gas_price: u256
-    ) -> (u256, ContractAddress);
 
     fn get_latest_gas_price(self: @TContractState)->u256;
 
@@ -301,29 +318,6 @@ mod exchange_balance_logic_component {
         fn get_latest_gas_price(self: @ComponentState<TContractState>) -> u256 {
             return self.latest_gas.read();
         }
-
-        fn get_gas_fee_and_coin(
-            self: @ComponentState<TContractState>, gas_fee: super::NewGasFee, cur_gas_price: u256
-        ) -> (u256, core::starknet::contract_address::ContractAddress) {
-            if cur_gas_price == 0 {
-                return (0, self.wrapped_native_token.read());
-            }
-            if gas_fee.gas_per_action == 0 {
-                return (0, self.wrapped_native_token.read());
-            }
-            assert(gas_fee.max_gas_price >= cur_gas_price, 'gas_prc <-= user stated prc');
-
-            let spend_native = gas_fee.gas_per_action * cur_gas_price;
-            if (gas_fee.fee_token == self.wrapped_native_token.read()) && !gas_fee.external_call {
-                return (spend_native, self.wrapped_native_token.read());
-            } else if gas_fee.fee_token == self.wrapped_native_token.read()
-                && gas_fee.external_call {
-                return (spend_native, self.wrapped_native_token.read());
-            }
-            let (r0, r1) = gas_fee.conversion_rate;
-            let spend_converted = spend_native * r1 / r0;
-            return (spend_converted, gas_fee.fee_token);
-        }
     }
     #[generate_trait]
     impl InternalExchangeBalancebleImpl<
@@ -377,7 +371,7 @@ mod exchange_balance_logic_component {
                 return;
             }
             assert(gas_fee.external_call == false, 'unsafe external call');
-            let (spent, coin) = self.get_gas_fee_and_coin(gas_fee, gas_price);
+            let (spent, coin) = super::get_gas_fee_and_coin(gas_fee, gas_price,self.wrapped_native_token.read());
             self.internal_transfer(user, self.fee_recipient.read(), spent, gas_fee.fee_token);
             self
                 .emit(

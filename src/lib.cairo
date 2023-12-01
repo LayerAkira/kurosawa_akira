@@ -6,3 +6,7 @@ mod ExchangeBalance;
 mod RouterLogic;
 mod NonceLogic;
 mod SignerComponent;
+mod WithdrawComponent;
+mod DepositComponent;
+mod NonceComponent;
+mod RouterComponent;
