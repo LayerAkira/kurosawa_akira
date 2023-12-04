@@ -20,9 +20,9 @@ trait IRouter<TContractState> {
     // if some signer key gets compromised router can safely remove them
     fn remove_binding(ref self: TContractState, signer: ContractAddress);
 
-    fn request_onchain_unregister(ref self: TContractState);
+    fn request_onchain_deregister(ref self: TContractState);
     
-    fn apply_onchain_unregister(ref self: TContractState);
+    fn apply_onchain_deregister(ref self: TContractState);
 
     // validates that message was signed by signer that mapped to router
     fn validate_router(self: @TContractState, message: felt252, signature: (felt252, felt252), signer: ContractAddress, router:ContractAddress) -> bool;
@@ -168,7 +168,7 @@ mod router_component {
 
 
 
-        fn request_onchain_unregister(ref self: ComponentState<TContractState>) {
+        fn request_onchain_deregister(ref self: ComponentState<TContractState>) {
             let router = get_caller_address();
             assert(self.registered.read(router), 'NOT_REGISTERED');
             let ongoing:SlowModeDelay = self.pending_unregister.read(router.into());
@@ -177,7 +177,7 @@ mod router_component {
             self.emit(Registration{router:router,status:1});
         }
          
-        fn apply_onchain_unregister(ref self: ComponentState<TContractState>) {
+        fn apply_onchain_deregister(ref self: ComponentState<TContractState>) {
             let router = get_caller_address();
             assert(self.registered.read(router), 'NOT_REGISTERED');
             let ongoing:SlowModeDelay = self.pending_unregister.read(router.into());
