@@ -24,15 +24,17 @@ struct SignedWithdrawNew {
 trait IWithdraw<TContractState> {
     // scheduels onchain withdraw so user can actually withdraw by apply_onchain_withdraw
     fn request_onchain_withdraw(ref self: TContractState, withdraw: WithdrawNew);
-    // // cancels onchain withdraw_request so user prevent 
-    // fn cancel_onchain_withdraw_request(ref self: TContractState, key:felt252);
+
+    fn get_pending_withdraw(self:@TContractState, maker:ContractAddress,token:ContractAddress)->(SlowModeDelay,WithdrawNew);
+    
     // can only be performed by the owner
-    fn apply_onchain_withdraw(ref self: TContractState, key:felt252);
+    fn apply_onchain_withdraw(ref self: TContractState, token:ContractAddress, key:felt252);
 }
 
 
 #[starknet::component]
 mod withdraw_component {
+    use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::PoseidonHash;
     use kurosawa_akira::ExchangeBalance::exchange_balance_logic_component as balance_component;
     use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
     use super::{WithdrawNew,SignedWithdrawNew,SlowModeDelay,IWithdraw,NewGasFee};
@@ -70,23 +72,28 @@ mod withdraw_component {
         #[key]
         token: ContractAddress,
         reciever:ContractAddress,
+        key:felt252,
         amount: u256,
     }
 
     #[storage]
     struct Storage {
         delay: SlowModeDelay, // set by exchange, can be updated but no more then original
-        pending_reqs:LegacyMap::<felt252,(SlowModeDelay, WithdrawNew)>,
+        pending_reqs:LegacyMap::<(ContractAddress,ContractAddress),(SlowModeDelay, WithdrawNew)>,
         gas_action:u256, //set by exchange
     }
 
     #[embeddable_as(Withdrawable)]
     impl WithdrawableImpl<TContractState, +HasComponent<TContractState>,+balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of IWithdraw<ComponentState<TContractState>> {
 
+        fn get_pending_withdraw(self:@ComponentState<TContractState>,maker:ContractAddress, token:ContractAddress)->(SlowModeDelay, WithdrawNew) {
+            return self.pending_reqs.read((token,maker));
+        }
+
         fn request_onchain_withdraw(ref self: ComponentState<TContractState>, withdraw: WithdrawNew) {
             assert(get_caller_address() == withdraw.maker, 'WRONG_MAKER');
-            let key = withdraw.get_poseidon_hash();            
-            let (pending_ts, w): (SlowModeDelay,WithdrawNew)  =  self.pending_reqs.read(key);
+            let key = (withdraw.token, withdraw.maker);            
+            let (pending_ts, w): (SlowModeDelay, WithdrawNew)  =  self.pending_reqs.read(key);
             assert(w == withdraw, 'ALREADY_REQUESTED');
             self.validate(w.maker, w.token, w.amount, w.gas_fee);
             self.pending_reqs.write(key, (SlowModeDelay {block:get_block_number(), ts: get_block_timestamp()}, withdraw));
@@ -96,24 +103,19 @@ mod withdraw_component {
             
         }
 
-        // fn cancel_onchain_withdraw_request(ref self: ComponentState<TContractState>, key:felt252) {
-        //     let (delay, w_req): (SlowModeDelay, WithdrawNew) = self.pending_reqs.read(key);
-        //     assert(get_caller_address() == w_req.maker, 'WRONG_MAKER');
-        //     self.emit(ReqOnChainCancelled{maker:w_req.maker, withdraw_key:key});
-        //     self.cleanup(w_req, delay, key);
-        // }
+        fn apply_onchain_withdraw(ref self: ComponentState<TContractState>,token:ContractAddress, key:felt252) {
+            let caller = get_caller_address();
+            let (delay, w_req): (SlowModeDelay,WithdrawNew) = self.pending_reqs.read((token, caller));
+            assert(caller == w_req.maker, 'WRONG_MAKER');
+            assert(key == w_req.get_poseidon_hash(),'WRING_WITHDRAW');
 
-        fn apply_onchain_withdraw(ref self: ComponentState<TContractState>, key:felt252) {
-            let (delay, w_req): (SlowModeDelay,WithdrawNew) = self.pending_reqs.read(key);
-            assert(get_caller_address() == w_req.maker, 'WRONG_MAKER');
-            
             let limit:SlowModeDelay = self.delay.read();
             assert(get_block_number() - delay.block >= limit.block && get_block_timestamp() - delay.ts >= limit.ts, 'FEW_TIME_PASSED');
             let mut balancer = self.get_balancer_mut();
             balancer.burn(w_req.maker,w_req.amount,w_req.token);
             IERC20Dispatcher{ contract_address: w_req.token}.transfer(w_req.reciever, w_req.amount);
-            self.emit(Withdrawal{maker:w_req.maker, token:w_req.token, amount:w_req.amount, reciever:w_req.reciever});
-            self.cleanup(w_req, delay, key);
+            self.emit(Withdrawal{maker:w_req.maker, token:w_req.token, amount:w_req.amount, key:key, reciever:w_req.reciever});
+            self.cleanup(w_req, delay);
         }
 
     }
@@ -128,26 +130,26 @@ mod withdraw_component {
         fn apply_withdraw(ref self: ComponentState<TContractState>, signed_withdraw: SignedWithdrawNew) {
 
             let hash = signed_withdraw.withdraw.get_poseidon_hash();
-            let (delay, w_req):(SlowModeDelay,WithdrawNew) = self.pending_reqs.read(hash);
+            let (delay, w_req):(SlowModeDelay,WithdrawNew) = self.pending_reqs.read((signed_withdraw.withdraw.token,signed_withdraw.withdraw.maker));
             if w_req != signed_withdraw.withdraw { // need to check sign cause offchain withdrawal
                 let (r,s) = signed_withdraw.sign;
-                assert(self.get_contract().check_sign(signed_withdraw.withdraw.maker,hash,r,s), 'WRONG_SIG');
+                assert(self.get_contract().check_sign(signed_withdraw.withdraw.maker, hash, r, s), 'WRONG_SIG');
 
             }
         
             let mut contract = self.get_balancer_mut();
             contract.burn(w_req.maker, w_req.amount, w_req.token);
             IERC20Dispatcher { contract_address: w_req.token }.transfer(w_req.maker, w_req.amount);
-            self.emit(Withdrawal{maker:w_req.maker,token:w_req.token,amount:w_req.amount, reciever:w_req.reciever,});
+            self.emit(Withdrawal{maker:w_req.maker,token:w_req.token,amount:w_req.amount,key:hash, reciever:w_req.reciever,});
 
             // payment to exchange for gas
             let cur_gas = contract.get_latest_gas_price();
             contract.validate_and_apply_gas_fee_internal(w_req.maker,w_req.gas_fee, cur_gas);
 
-            self.cleanup(w_req, delay, hash);
+            self.cleanup(w_req, delay);
         }
 
-        fn cleanup(ref self:ComponentState<TContractState>,mut w_req:WithdrawNew, delay:SlowModeDelay, key:felt252) {
+        fn cleanup(ref self:ComponentState<TContractState>,mut w_req:WithdrawNew, delay:SlowModeDelay) {
             let zero_addr:ContractAddress = 0.try_into().unwrap();
             let mut contract = self.get_balancer_mut();
 
@@ -156,7 +158,7 @@ mod withdraw_component {
             w_req.amount = 0;
             w_req.token = zero_addr;
             w_req.maker = zero_addr;
-            self.pending_reqs.write(key, (delay, w_req));
+            self.pending_reqs.write((w_req.token,w_req.maker), (delay, w_req));
         }
 
         fn validate(self:@ComponentState<TContractState>,maker:ContractAddress,token:ContractAddress, amount:u256, gas_fee:NewGasFee) {
