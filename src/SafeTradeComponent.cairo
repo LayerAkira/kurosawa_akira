@@ -1,47 +1,9 @@
-use kurosawa_akira::Order::{SignedOrder,Order,validate_maker_order,validate_taker_order,OrderTradeInfo,OrderFee,FixedFee};
+use kurosawa_akira::Order::{SignedOrder,Order,validate_maker_order,validate_taker_order,OrderTradeInfo,OrderFee,FixedFee,
+            get_feeable_qty,get_limit_px,do_taker_price_checks,do_maker_checks};
 
 #[starknet::interface]
 trait ISafeTradeLogic<TContractState> {
-}
-
-fn get_feeable_qty(fixed_fee: FixedFee, feeable_qty: u256,is_maker:bool) -> u256 {
-    let pbips = if is_maker {fixed_fee.maker_pbips} else {fixed_fee.taker_pbips};
-    if pbips == 0 { return 0;}
-    return (feeable_qty * pbips.into() - 1) / 1000000 + 1;
-}
-
-fn get_limit_px(maker_order:Order, maker_fill_info:OrderTradeInfo) -> (u256, u256){
-    let settle_px = if maker_fill_info.filled_amount > 0 {maker_fill_info.last_traded_px} else {maker_order.price};
-    return (settle_px, maker_order.quantity - maker_fill_info.filled_amount); 
-}
-
-
-fn do_taker_price_checks(taker_order:Order, settle_px:u256, taker_fill_info:OrderTradeInfo)->u256 {
-    if !taker_order.flags.is_sell_side { assert(taker_order.price <= settle_px, 'BUY_PROTECTION_PRICE_FAILED');}
-    else { assert(taker_order.price >= settle_px, 'SELL_PROTECTION_PRICE_FAILED'); }
-
-    if taker_fill_info.filled_amount > 0 {
-        if taker_order.flags.best_level_only { assert(taker_fill_info.last_traded_px == settle_px , 'BEST_LVL_ONLY',);}
-        else {
-            if !taker_order.flags.is_sell_side { assert(taker_fill_info.last_traded_px <= settle_px, 'BUY_PARTIAL_FILL_ERR');} 
-            else { assert(taker_fill_info.last_traded_px >= settle_px, 'SELL_PARTIAL_FILL_ERR');}
-        }
-    }
-    assert(taker_fill_info.filled_amount - taker_order.quantity > 0, 'FILLED_TAKER_ORDER');
-    return taker_order.quantity - taker_fill_info.filled_amount;
-}
-
-fn do_maker_checks(maker_order:Order, maker_fill_info:OrderTradeInfo,nonce:u32)-> (u256, u256) {
-    assert(!maker_order.flags.is_market_order, 'WRONG_MARKET_TYPE');
-    assert(maker_fill_info.filled_amount - maker_order.quantity > 0, 'MAKER_ALREADY_FILLED');
-    assert(maker_order.nonce >= nonce,'OLD_MAKER_NONCE');
-    assert(!maker_order.flags.full_fill_only, 'WRONG_MAKER_FLAG');
-
-    if maker_order.flags.post_only {
-        assert(!maker_order.flags.best_level_only && !maker_order.flags.full_fill_only, 'WRONG_MAKER_FLAGS');
-    }
-    let settle_px = if maker_fill_info.filled_amount > 0 {maker_fill_info.last_traded_px} else {maker_order.price};
-    return (settle_px, maker_order.quantity - maker_fill_info.filled_amount); 
+    fn get_trade_info(self: @TContractState, order_hash: felt252) -> OrderTradeInfo;
 }
 
 #[starknet::component]
@@ -84,8 +46,10 @@ mod safe_trade_component {
     }
 
     #[embeddable_as(SafeTradable)]
-    impl SafeTradableImpl<TContractState, +HasComponent<TContractState>,+INonceLogic<TContractState>,+balance_component::HasComponent<TContractState>,+Drop<TContractState>,Copu,+ISignerLogic<TContractState>> of super::ISafeTradeLogic<ComponentState<TContractState>> {
-
+    impl SafeTradableImpl<TContractState, +HasComponent<TContractState>,+INonceLogic<TContractState>,+balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of super::ISafeTradeLogic<ComponentState<TContractState>> {
+        fn get_trade_info(self: @ComponentState<TContractState>, order_hash: felt252) -> OrderTradeInfo {
+            return self.orders_trade_info.read(order_hash);
+        }
     }
 
      #[generate_trait]
@@ -180,6 +144,10 @@ mod safe_trade_component {
             if last_fill_taker_hash != taker_order_hash { assert(!is_foc || remaining == 0, 'FOK_PREVIOUS');}
 
             if taker_fill_info.filled_amount > 0 { assert(last_fill_taker_hash == taker_order_hash, 'IF_PARTIAL=>PREV_SAME');}
+
+
+            assert(taker_order.fee.router_fee.taker_pbips == 0, 'TAKER_SAFE_REQUIRES_NO_ROUTER');
+            
             return (taker_order, taker_order_hash, taker_fill_info);
         }
 
@@ -225,21 +193,18 @@ mod safe_trade_component {
             let taker_fee_token = if maker_order.flags.is_sell_side { maker_order.price_address } else {maker_order.qty_address};
             let maker_fee_amount = get_feeable_qty(maker_order.fee.trade_fee, if maker_order.flags.is_sell_side { quote_amount } else {base_amount},true);
             let taker_fee_amount = get_feeable_qty(taker_order.fee.trade_fee, if maker_order.flags.is_sell_side { base_amount } else {quote_amount},false);
-            
-
-            assert(maker_order.fee.trade_fee.fee_token == maker_order.qty_address, 'MAKER_WRONG_FEE_TOKEN');
             assert(maker_order.fee.router_fee.taker_pbips == 0, 'MAKER_SAFE_REQUIRES_NO_ROUTER');
-            assert(!maker_order.fee.trade_fee.external_call,'MAKER_NO_EXTERNAL_CALLS');
             
-            assert(taker_order.fee.trade_fee.fee_token == maker_order.qty_address, 'MAKER_WRONG_FEE_TOKEN');
-            assert(taker_order.fee.router_fee.taker_pbips == 0, 'MAKER_SAFE_REQUIRES_NO_ROUTER');
-            assert(!taker_order.fee.trade_fee.external_call,'MAKER_NO_EXTERNAL_CALLS');
+            // This we only need to perform once per taker
+            // assert(taker_order.fee.trade_fee.fee_token == maker_order.qty_address, 'TAKER_WRONG_FEE_TOKEN');
+            // assert(taker_order.fee.router_fee.taker_pbips == 0, 'TAKER_SAFE_REQUIRES_NO_ROUTER');
+            // assert(!taker_order.fee.trade_fee.external_call,'TAKER_NO_EXTERNAL_CALLS');
             
             if maker_fee_amount > 0 {
-                balancer.internal_transfer(maker_order.maker, maker_order.fee.trade_fee.recipient, maker_fee_amount, maker_order.fee.trade_fee.fee_token);
+                balancer.internal_transfer(maker_order.maker, maker_order.fee.trade_fee.recipient, maker_fee_amount, maker_fee_token);
             }
             if taker_fee_amount > 0 {
-                balancer.internal_transfer(taker_order.maker, taker_order.fee.trade_fee.recipient, taker_fee_amount, taker_order.fee.trade_fee.fee_token);
+                balancer.internal_transfer(taker_order.maker, taker_order.fee.trade_fee.recipient, taker_fee_amount, taker_fee_token);
             }
             balancer.validate_and_apply_gas_fee_internal(taker_order.maker, taker_order.fee.gas_fee, gas_price);
         }

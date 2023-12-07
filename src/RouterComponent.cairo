@@ -1,5 +1,6 @@
 use starknet::ContractAddress;
-use kurosawa_akira::ExchangeBalance::{NewGasFee,get_gas_fee_and_coin};
+use kurosawa_akira::Order::GasFee;
+use kurosawa_akira::ExchangeBalanceComponent::{get_gas_fee_and_coin};
 use serde::Serde;
 use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
 
@@ -156,7 +157,7 @@ mod router_component {
             self.signer_to_router.write(signer,router);
             self.emit(Binding{router,signer,is_added:true});
         }
-
+        // TODO: LATER MAKE IT WITH DELAY TO AVOID ON_PURPOSE_REMOVAL
         fn remove_binding(ref self: ComponentState<TContractState>, signer: ContractAddress){
             let router = get_caller_address();
             assert(self.registered.read(router) ,'NOT_REGISTERED');
@@ -165,7 +166,6 @@ mod router_component {
             self.signer_to_router.write(signer, 0.try_into().unwrap());
             self.emit(Binding{router,signer,is_added:false});
         }
-
 
 
         fn request_onchain_deregister(ref self: ComponentState<TContractState>) {

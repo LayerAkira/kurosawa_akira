@@ -11,7 +11,6 @@ struct GasFee {
     fee_token: ContractAddress,
     max_gas_price: u256,
     conversion_rate: (u256, u256),
-    external_call: bool,
 }
 
 
@@ -20,10 +19,8 @@ struct GasFee {
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct FixedFee {
     recipient: ContractAddress,
-    fee_token: ContractAddress,
     maker_pbips: u64,
-    taker_pbips: u64,
-    external_call: bool,
+    taker_pbips: u64
 }
 
 
@@ -57,13 +54,15 @@ struct Order {
     number_of_swaps_allowed: u8,
     salt: felt252,
     nonce: u32,
-    flags:OrderFlags
+    flags: OrderFlags,
+    router_signer: ContractAddress
 }
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct SignedOrder {
     order: Order,
     sign: (felt252, felt252),
+    router_sign: (felt252,felt252)
 }
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
@@ -121,4 +120,60 @@ fn validate_taker_order(order: Order, orders_trade_info:OrderTradeInfo, nonce:u3
         }
     return order.quantity;
     // FULL_FILL_ONLY_FLAG checked by user of this func and sign too
+}
+
+
+fn get_feeable_qty(fixed_fee: FixedFee, feeable_qty: u256,is_maker:bool) -> u256 {
+    let pbips = if is_maker {fixed_fee.maker_pbips} else {fixed_fee.taker_pbips};
+    if pbips == 0 { return 0;}
+    return (feeable_qty * pbips.into() - 1) / 1000000 + 1;
+}
+
+fn get_limit_px(maker_order:Order, maker_fill_info:OrderTradeInfo) -> (u256, u256){
+    let settle_px = if maker_fill_info.filled_amount > 0 {maker_fill_info.last_traded_px} else {maker_order.price};
+    return (settle_px, maker_order.quantity - maker_fill_info.filled_amount); 
+}
+
+fn do_taker_price_checks(taker_order:Order, settle_px:u256, taker_fill_info:OrderTradeInfo)->u256 {
+    if !taker_order.flags.is_sell_side { assert(taker_order.price <= settle_px, 'BUY_PROTECTION_PRICE_FAILED');}
+    else { assert(taker_order.price >= settle_px, 'SELL_PROTECTION_PRICE_FAILED'); }
+
+    if taker_fill_info.filled_amount > 0 {
+        if taker_order.flags.best_level_only { assert(taker_fill_info.last_traded_px == settle_px , 'BEST_LVL_ONLY',);}
+        else {
+            if !taker_order.flags.is_sell_side { assert(taker_fill_info.last_traded_px <= settle_px, 'BUY_PARTIAL_FILL_ERR');} 
+            else { assert(taker_fill_info.last_traded_px >= settle_px, 'SELL_PARTIAL_FILL_ERR');}
+        }
+    }
+    assert(taker_fill_info.filled_amount - taker_order.quantity > 0, 'FILLED_TAKER_ORDER');
+    return taker_order.quantity - taker_fill_info.filled_amount;
+}
+
+fn do_maker_checks(maker_order:Order, maker_fill_info:OrderTradeInfo,nonce:u32)-> (u256, u256) {
+    assert(!maker_order.flags.is_market_order, 'WRONG_MARKET_TYPE');
+    assert(maker_fill_info.filled_amount - maker_order.quantity > 0, 'MAKER_ALREADY_FILLED');
+    assert(maker_order.nonce >= nonce,'OLD_MAKER_NONCE');
+    assert(!maker_order.flags.full_fill_only, 'WRONG_MAKER_FLAG');
+
+    if maker_order.flags.post_only {
+        assert(!maker_order.flags.best_level_only && !maker_order.flags.full_fill_only, 'WRONG_MAKER_FLAGS');
+    }
+    let settle_px = if maker_fill_info.filled_amount > 0 {maker_fill_info.last_traded_px} else {maker_order.price};
+    return (settle_px, maker_order.quantity - maker_fill_info.filled_amount); 
+}
+
+
+fn get_gas_fee_and_coin(gas_fee: GasFee, cur_gas_price: u256, native_token:ContractAddress) -> (u256, ContractAddress) {
+    if cur_gas_price == 0 { return (0, native_token);}
+    if gas_fee.gas_per_action == 0 { return (0, native_token);}
+    assert(gas_fee.max_gas_price >= cur_gas_price, 'gas_prc <-= user stated prc');
+    let spend_native = gas_fee.gas_per_action * cur_gas_price;
+    
+    if gas_fee.fee_token == native_token {
+        return (spend_native, native_token);
+    }
+
+    let (r0, r1) = gas_fee.conversion_rate;
+    let spend_converted = spend_native * r1 / r0;
+    return (spend_converted, gas_fee.fee_token);
 }

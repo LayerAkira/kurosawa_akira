@@ -20,7 +20,7 @@ impl PoseidonHashImpl<T, impl TSerde: Serde<T>, impl TDestruct: Destruct<T>> of 
     }
 }
 
-fn check_sign(account: ContractAddress, hash: felt252, sign: (felt252, felt252)) {
+fn check_sign(account: ContractAddress, hash: felt252, sign: (felt252, felt252)) -> bool {
     let selector =
         0x028420862938116cb3bbdbedee07451ccc54d4e9412dbef71142ad1980a30941; // is_valid_signature
     let (x, y) = sign;
@@ -30,4 +30,5 @@ fn check_sign(account: ContractAddress, hash: felt252, sign: (felt252, felt252))
     calldata.append(x);
     calldata.append(y);
     let mut res = starknet::call_contract_syscall(account, selector, calldata.span());
+    return true;
 }

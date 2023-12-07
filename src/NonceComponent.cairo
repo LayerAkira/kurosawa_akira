@@ -1,11 +1,11 @@
-use kurosawa_akira::ExchangeBalance::NewGasFee;
+use kurosawa_akira::Order::GasFee;
 use starknet::ContractAddress;
 
 #[derive(Copy, Drop, Serde, PartialEq)]
 struct IncreaseNonce {
     maker: ContractAddress,
-    new_nonce: u256,
-    gas_fee: NewGasFee,
+    new_nonce: u32,
+    gas_fee: GasFee,
     salt: felt252,
 }
 
@@ -18,20 +18,20 @@ struct SignedIncreaseNonce {
 #[starknet::interface]
 trait INonceLogic<TContractState> {
     // fn apply_increase_nonce(ref self: TContractState, signed_nonce_increase: SignedIncreaseNonce);
-    fn get_nonce(self: @TContractState, maker: ContractAddress) -> u256;
-    fn get_nonces(self: @TContractState, makers: Span<ContractAddress>)-> Array<u256>;
+    fn get_nonce(self: @TContractState, maker: ContractAddress) -> u32;
+    fn get_nonces(self: @TContractState, makers: Span<ContractAddress>)-> Array<u32>;
 }
 
 
 
 #[starknet::component]
 mod nonce_component {
-    use kurosawa_akira::ExchangeBalance::INewExchangeBalance;
-    use kurosawa_akira::ExchangeBalance::exchange_balance_logic_component as balance_component;
+    use kurosawa_akira::ExchangeBalanceComponent::INewExchangeBalance;
+    use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as balance_component;
     use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
-    use super::{NewGasFee,ContractAddress};
+    use super::{GasFee,ContractAddress};
     use kurosawa_akira::SignerComponent::{ISignerLogic};
-    use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::PoseidonHashImpl;
+    use kurosawa_akira::FundsTraits::PoseidonHashImpl;
 
     #[event]
     #[derive(Drop, starknet::Event)]
@@ -43,12 +43,12 @@ mod nonce_component {
     struct NonceIncrease {
         #[key]
         maker: ContractAddress,
-        new_nonce: u256,
+        new_nonce: u32,
     }
 
     #[storage]
     struct Storage {
-        nonces: LegacyMap::<ContractAddress, u256>,
+        nonces: LegacyMap::<ContractAddress, u32>,
     }
 
     #[embeddable_as(Nonceable)]
@@ -56,12 +56,12 @@ mod nonce_component {
     +balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of super::INonceLogic<ComponentState<TContractState>> {
 
         
-        fn get_nonce(self: @ComponentState<TContractState>, maker: ContractAddress) -> u256 {
+        fn get_nonce(self: @ComponentState<TContractState>, maker: ContractAddress) -> u32 {
             self.nonces.read(maker)
         }
 
-        fn get_nonces(self: @ComponentState<TContractState>, makers: Span<ContractAddress>) -> Array<u256> {
-            let mut res: Array<u256> = ArrayTrait::new();
+        fn get_nonces(self: @ComponentState<TContractState>, makers: Span<ContractAddress>) -> Array<u32> {
+            let mut res: Array<u32> = ArrayTrait::new();
             let mut idx = 0;
             let sz = makers.len(); 
             loop {

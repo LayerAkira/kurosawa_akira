@@ -1,6 +1,6 @@
 use starknet::ContractAddress;
 use serde::Serde;
-use kurosawa_akira::ExchangeBalance::NewGasFee;
+use kurosawa_akira::Order::GasFee;
 use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
 
 
@@ -10,7 +10,7 @@ struct WithdrawNew {
     token: ContractAddress,
     amount: u256,
     salt: felt252,
-    gas_fee: NewGasFee,
+    gas_fee: GasFee,
     reciever:ContractAddress
 }
 
@@ -34,13 +34,12 @@ trait IWithdraw<TContractState> {
 
 #[starknet::component]
 mod withdraw_component {
-    use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::PoseidonHash;
-    use kurosawa_akira::ExchangeBalance::exchange_balance_logic_component as balance_component;
+    use kurosawa_akira::FundsTraits::{PoseidonHash,PoseidonHashImpl};
+    use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as balance_component;
     use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
-    use super::{WithdrawNew,SignedWithdrawNew,SlowModeDelay,IWithdraw,NewGasFee};
+    use super::{WithdrawNew,SignedWithdrawNew,SlowModeDelay,IWithdraw,GasFee};
     use kurosawa_akira::SignerComponent::{ISignerLogic};
     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait, IERC20Dispatcher};
-    use kurosawa_akira::ExchangeEntityStructures::Entities::FundsTraits::PoseidonHashImpl;
     use starknet::{get_caller_address,get_contract_address,get_block_timestamp,ContractAddress};
     use starknet::info::get_block_number;
 
@@ -62,7 +61,7 @@ mod withdraw_component {
         reciever:ContractAddress,
         amount: u256,
         salt: felt252,
-        gas_fee: NewGasFee,
+        gas_fee: GasFee,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -161,10 +160,10 @@ mod withdraw_component {
             self.pending_reqs.write((w_req.token,w_req.maker), (delay, w_req));
         }
 
-        fn validate(self:@ComponentState<TContractState>,maker:ContractAddress,token:ContractAddress, amount:u256, gas_fee:NewGasFee) {
+        fn validate(self:@ComponentState<TContractState>,maker:ContractAddress,token:ContractAddress, amount:u256, gas_fee:GasFee) {
             let balancer =  self.get_balancer();
             let balance = balancer.balanceOf(maker,token);
-            assert(!gas_fee.external_call && gas_fee.gas_per_action == self.gas_action.read() && gas_fee.fee_token == balancer.wrapped_native_token.read(), 'WRONG_GAS_FEE');
+            assert(gas_fee.gas_per_action == self.gas_action.read() && gas_fee.fee_token == balancer.wrapped_native_token.read(), 'WRONG_GAS_FEE');
             let required_gas = balancer.get_latest_gas_price() * 2 * gas_fee.gas_per_action;  //require  reserve a bit more
             if gas_fee.fee_token == token {
                 assert(balance >= required_gas + amount, 'FEW_BALANCE');
@@ -173,7 +172,7 @@ mod withdraw_component {
                 assert(balancer.balanceOf(maker,gas_fee.fee_token) >= required_gas, 'FEW_BALANCE_GAS');
             }
         }
-        fn have_enough(self:@ComponentState<TContractState>,maker:ContractAddress,token:ContractAddress, amount:u256, gas_fee:NewGasFee) ->bool {
+        fn have_enough(self:@ComponentState<TContractState>,maker:ContractAddress,token:ContractAddress, amount:u256, gas_fee:GasFee) ->bool {
             let balancer =  self.get_balancer();
             let balance = balancer.balanceOf(maker,token);
             let required_gas = balancer.get_latest_gas_price() *  gas_fee.gas_per_action;
