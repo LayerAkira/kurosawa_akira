@@ -3,7 +3,7 @@ use kurosawa_akira::Order::{SignedOrder,Order,validate_maker_order,validate_take
 
 #[starknet::interface]
 trait ISafeTradeLogic<TContractState> {
-    fn get_trade_info(self: @TContractState, order_hash: felt252) -> OrderTradeInfo;
+    fn get_safe_trade_info(self: @TContractState, order_hash: felt252) -> OrderTradeInfo;
 }
 
 #[starknet::component]
@@ -20,7 +20,6 @@ mod safe_trade_component {
 
     #[storage]
     struct Storage {
-        precision:u256,
         orders_trade_info: LegacyMap::<felt252, OrderTradeInfo>,
         last_taker_order_and_foc:(felt252,bool,u256),
     }
@@ -47,7 +46,7 @@ mod safe_trade_component {
 
     #[embeddable_as(SafeTradable)]
     impl SafeTradableImpl<TContractState, +HasComponent<TContractState>,+INonceLogic<TContractState>,+balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of super::ISafeTradeLogic<ComponentState<TContractState>> {
-        fn get_trade_info(self: @ComponentState<TContractState>, order_hash: felt252) -> OrderTradeInfo {
+        fn get_safe_trade_info(self: @ComponentState<TContractState>, order_hash: felt252) -> OrderTradeInfo {
             return self.orders_trade_info.read(order_hash);
         }
     }
@@ -61,7 +60,7 @@ mod safe_trade_component {
             let mut maker_order = *maker_orders.at(0).order;
             let mut maker_hash:felt252  = 0.try_into().unwrap();  
             let mut maker_fill_info = self.orders_trade_info.read(maker_hash);
-            let (contract,balance,precision) = (self.get_contract(), self.get_balancer_mut(), self.precision.read());
+            let (contract,balance) = (self.get_contract(), self.get_balancer_mut());
             
             let (_, use_prev_maker) = *iters.at(0);
             let mut first_iter = true;
@@ -104,8 +103,8 @@ mod safe_trade_component {
                             let settle_qty = if maker_qty > taker_qty {taker_qty} else {maker_qty};
                             assert(taker_order.qty_address == maker_order.qty_address && taker_order.price_address == maker_order.price_address,'Mismatch tickers');
                             assert(taker_order.flags.to_safe_book == maker_order.flags.to_safe_book && taker_order.flags.to_safe_book, 'WRONG_BOOK_DESTINATION');
-                            
-                            let matching_cost = settle_px * settle_qty / precision;
+                            assert(taker_order.base_asset == maker_order.base_asset, 'WRONG_ASSET_AMOUNT');
+                            let matching_cost = settle_px * settle_qty / maker_order.base_asset;
                             assert(matching_cost > 0, '0_MATCHING_COST');
                             
                             self.settle_trade(maker_order, taker_order, matching_cost, settle_qty, gas_price);

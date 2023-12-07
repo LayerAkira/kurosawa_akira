@@ -20,7 +20,6 @@ trait INewExchangeBalance<TContractState> {
     fn get_fee_recipient(self: @TContractState) -> ContractAddress;
 
     fn set_fee_recipient(ref self: TContractState,recipient:ContractAddress);
-
 }
 
 

@@ -25,7 +25,6 @@ use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::
     
     #[storage]
     struct Storage {
-        precision:u256,
         orders_trade_info: LegacyMap::<felt252, OrderTradeInfo>
     }
 
@@ -63,20 +62,20 @@ use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::
         // exposed only in contract user
         fn apply_trades_simple(ref self: ComponentState<TContractState>, signed_taker_order:SignedOrder, mut signed_maker_orders:Array<SignedOrder>, total_amount_matched:u256, gas_price:u256) {
             let (exchange, trades) = (get_contract_address(), signed_maker_orders.len().try_into().unwrap());
-            let (precision, contract, taker_order) = (self.precision.read(), self.get_contract(), signed_taker_order.order);
+            let (contract, taker_order) = (self.get_contract(), signed_taker_order.order);
             let taker_hash = taker_order.get_poseidon_hash();
             let mut taker_fill_info = self.orders_trade_info.read(taker_hash);
 
             self._do_part_taker_validate(signed_taker_order, taker_hash, taker_fill_info, trades);
             
-            let (mut amount_out, gas_spent) = self._prepare_taker(taker_order, total_amount_matched, exchange, precision, trades, gas_price, total_amount_matched);
+            let (mut amount_out, gas_spent) = self._prepare_taker(taker_order, total_amount_matched, exchange, trades, gas_price, total_amount_matched);
             
             if amount_out == 0 { // if failed by malicious activity by exchange or router
                 loop {
                     match signed_maker_orders.pop_front(){
                         Option::Some(signed_maker_order) => {
                             let (settle_px, matching_cost, settle_qty, maker_fill_info, maker_hash) = 
-                                        self._do_maker_checks_and_common(signed_maker_order, taker_order, taker_fill_info, precision);
+                                        self._do_maker_checks_and_common(signed_maker_order, taker_order, taker_fill_info);
                             self.punish_router_simple(taker_order.fee.gas_fee, taker_order.fee.router_fee.recipient, 
                                         exchange, signed_maker_order.order.maker, gas_price);
                         },
@@ -95,7 +94,7 @@ use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::
                 match signed_maker_orders.pop_front(){
                     Option::Some(signed_maker_order) => {
                         let (settle_px, matching_cost, settle_qty, mut maker_fill_info, maker_hash) = 
-                                    self._do_maker_checks_and_common(signed_maker_order, taker_order, taker_fill_info, precision);
+                                    self._do_maker_checks_and_common(signed_maker_order, taker_order, taker_fill_info);
                         
                         self.rebalance_after_trade(signed_maker_order.order, taker_order, matching_cost, settle_qty);
                         self.apply_maker_fee(signed_maker_order.order, matching_cost, settle_qty);                        
@@ -142,7 +141,7 @@ use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::
             assert(taker_order.number_of_swaps_allowed >= taker_fill_info.num_trades_happened + trades, 'HIT_SWAPS_ALLOWED');    
         }
 
-        fn _do_maker_checks_and_common(ref self:ComponentState<TContractState>,signed_maker_order:SignedOrder,taker_order:Order,taker_fill_info:OrderTradeInfo, precision:u256)->(u256,u256,u256,OrderTradeInfo,felt252) {
+        fn _do_maker_checks_and_common(ref self:ComponentState<TContractState>,signed_maker_order:SignedOrder,taker_order:Order,taker_fill_info:OrderTradeInfo)->(u256,u256,u256,OrderTradeInfo,felt252) {
             let contract  = self.get_contract();
             let (maker_order, (r,s)) = (signed_maker_order.order, signed_maker_order.sign);
             let maker_hash = maker_order.get_poseidon_hash();
@@ -160,13 +159,15 @@ use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::
             let settle_qty = if maker_qty > taker_qty {taker_qty} else {maker_qty};
             assert(taker_order.qty_address == maker_order.qty_address && taker_order.price_address == maker_order.price_address,'MISMATCH_TICKER');
             assert(taker_order.flags.to_safe_book == maker_order.flags.to_safe_book && !taker_order.flags.to_safe_book, 'WRONG_BOOK_DESTINATION');
-            let matching_cost = settle_px * settle_qty / precision;
+            assert(taker_order.base_asset == maker_order.base_asset, 'WRONG_ASSET_AMOUNT');
+                            
+            let matching_cost = settle_px * settle_qty / maker_order.base_asset;
             assert(matching_cost > 0, '0_MATCHING_COST');
             return (settle_px, matching_cost, settle_qty, maker_fill_info, maker_hash);
 
         }
 
-        fn _prepare_taker(ref self:ComponentState<TContractState>, taker_order:Order, mut out_amount:u256, exchange:ContractAddress, precision:u256,swaps:u8,
+        fn _prepare_taker(ref self:ComponentState<TContractState>, taker_order:Order, mut out_amount:u256, exchange:ContractAddress,swaps:u8,
                             gas_price:u256, total_amount_matched:u256) ->(u256,u256) {
             //Checks that user have:
             //  required allowance of out token that he about to spend

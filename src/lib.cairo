@@ -15,4 +15,5 @@ mod FundsTraits;
 mod SafeTradeComponent;
 mod UnSafeTradeComponent;
 mod LayerAkira;
+mod ILayerAkira;
 mod testing;

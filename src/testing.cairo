@@ -1,3 +1,4 @@
+
 #[cfg(test)]
 mod tests {
     use core::{traits::Into,array::ArrayTrait,option::OptionTrait,traits::TryInto,result::ResultTrait};
@@ -7,7 +8,22 @@ mod tests {
     use core::dict::{Felt252Dict, Felt252DictTrait, SquashedFelt252Dict};
     use kurosawa_akira::LayerAkira::LayerAkira;
 
-    use kurosawa_akira::ExchangeBalanceComponent::{INewExchangeBalanceDispatcher,INewExchangeBalanceDispatcherTrait};
+    use kurosawa_akira::ILayerAkira::{ILayerAkiraDispatcher, ILayerAkiraDispatcherTrait};
+
+
+
+    // fn get_in_base(rate:@Rate,qty:u256) -> u256 {
+    //     let r:Rate = *rate;
+    //     return qty *  (r.quote) / (r.base);
+    // }
+
+
+// qty = 1eth
+// price = 1800usd 
+// 
+
+    fn deposit(account_who_deposits:ContractAddress,amount:ContractAddress) {
+    }
 
     fn print_u(res: u256) {
         let a: felt252 = res.try_into().unwrap();
@@ -40,18 +56,19 @@ mod tests {
         return deployed;
     }
 
-    // #[test]
+    #[test]
     // #[ignore]
     //#[available_gas(10000000000)]
-    // #[fork("latest")]
-    fn test_01() {
+    #[fork("latest")]
+    fn test_deposit() {
         let akira_contract_addr = spawn_exchange();
         let d:ContractAddress = 1.try_into().unwrap();
-        let balancer = INewExchangeBalanceDispatcher{contract_address:akira_contract_addr};
+        let akira = ILayerAkiraDispatcher{contract_address:akira_contract_addr};
         
-        
-        balancer.set_fee_recipient(d);
-        balancer.get_fee_recipient().print();
+        // let r = Rate {base:1000000000000000000,quote:1200000000};
+
+        akira.set_fee_recipient(d);
+        akira.get_fee_recipient().print();
 
         // LayerAkiraDispat
 

@@ -16,6 +16,8 @@ struct GasFee {
 
 
 
+
+
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct FixedFee {
     recipient: ContractAddress,
@@ -55,7 +57,8 @@ struct Order {
     salt: felt252,
     nonce: u32,
     flags: OrderFlags,
-    router_signer: ContractAddress
+    router_signer: ContractAddress,
+    base_asset:u256
 }
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]

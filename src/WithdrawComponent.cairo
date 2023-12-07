@@ -5,7 +5,7 @@ use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
 
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
-struct WithdrawNew {
+struct Withdraw {
     maker: ContractAddress,
     token: ContractAddress,
     amount: u256,
@@ -15,17 +15,17 @@ struct WithdrawNew {
 }
 
 #[derive(Copy, Drop, Serde, PartialEq)]
-struct SignedWithdrawNew {
-    withdraw: WithdrawNew,
+struct SignedWithdraw {
+    withdraw: Withdraw,
     sign: (felt252, felt252),
 }
 
 #[starknet::interface]
 trait IWithdraw<TContractState> {
     // scheduels onchain withdraw so user can actually withdraw by apply_onchain_withdraw
-    fn request_onchain_withdraw(ref self: TContractState, withdraw: WithdrawNew);
+    fn request_onchain_withdraw(ref self: TContractState, withdraw: Withdraw);
 
-    fn get_pending_withdraw(self:@TContractState, maker:ContractAddress,token:ContractAddress)->(SlowModeDelay,WithdrawNew);
+    fn get_pending_withdraw(self:@TContractState, maker:ContractAddress,token:ContractAddress)->(SlowModeDelay,Withdraw);
     
     // can only be performed by the owner
     fn apply_onchain_withdraw(ref self: TContractState, token:ContractAddress, key:felt252);
@@ -37,7 +37,7 @@ mod withdraw_component {
     use kurosawa_akira::FundsTraits::{PoseidonHash,PoseidonHashImpl};
     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as balance_component;
     use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
-    use super::{WithdrawNew,SignedWithdrawNew,SlowModeDelay,IWithdraw,GasFee};
+    use super::{Withdraw,SignedWithdraw,SlowModeDelay,IWithdraw,GasFee};
     use kurosawa_akira::SignerComponent::{ISignerLogic};
     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait, IERC20Dispatcher};
     use starknet::{get_caller_address,get_contract_address,get_block_timestamp,ContractAddress};
@@ -78,21 +78,21 @@ mod withdraw_component {
     #[storage]
     struct Storage {
         delay: SlowModeDelay, // set by exchange, can be updated but no more then original
-        pending_reqs:LegacyMap::<(ContractAddress,ContractAddress),(SlowModeDelay, WithdrawNew)>,
+        pending_reqs:LegacyMap::<(ContractAddress,ContractAddress),(SlowModeDelay, Withdraw)>,
         gas_action:u256, //set by exchange
     }
 
     #[embeddable_as(Withdrawable)]
     impl WithdrawableImpl<TContractState, +HasComponent<TContractState>,+balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of IWithdraw<ComponentState<TContractState>> {
 
-        fn get_pending_withdraw(self:@ComponentState<TContractState>,maker:ContractAddress, token:ContractAddress)->(SlowModeDelay, WithdrawNew) {
+        fn get_pending_withdraw(self:@ComponentState<TContractState>,maker:ContractAddress, token:ContractAddress)->(SlowModeDelay, Withdraw) {
             return self.pending_reqs.read((token,maker));
         }
 
-        fn request_onchain_withdraw(ref self: ComponentState<TContractState>, withdraw: WithdrawNew) {
+        fn request_onchain_withdraw(ref self: ComponentState<TContractState>, withdraw: Withdraw) {
             assert(get_caller_address() == withdraw.maker, 'WRONG_MAKER');
             let key = (withdraw.token, withdraw.maker);            
-            let (pending_ts, w): (SlowModeDelay, WithdrawNew)  =  self.pending_reqs.read(key);
+            let (pending_ts, w): (SlowModeDelay, Withdraw)  =  self.pending_reqs.read(key);
             assert(w == withdraw, 'ALREADY_REQUESTED');
             self.validate(w.maker, w.token, w.amount, w.gas_fee);
             self.pending_reqs.write(key, (SlowModeDelay {block:get_block_number(), ts: get_block_timestamp()}, withdraw));
@@ -104,7 +104,7 @@ mod withdraw_component {
 
         fn apply_onchain_withdraw(ref self: ComponentState<TContractState>,token:ContractAddress, key:felt252) {
             let caller = get_caller_address();
-            let (delay, w_req): (SlowModeDelay,WithdrawNew) = self.pending_reqs.read((token, caller));
+            let (delay, w_req): (SlowModeDelay,Withdraw) = self.pending_reqs.read((token, caller));
             assert(caller == w_req.maker, 'WRONG_MAKER');
             assert(key == w_req.get_poseidon_hash(),'WRING_WITHDRAW');
 
@@ -126,10 +126,10 @@ mod withdraw_component {
             self.delay.write(delay);
         }
         // exposed only in contract user
-        fn apply_withdraw(ref self: ComponentState<TContractState>, signed_withdraw: SignedWithdrawNew) {
+        fn apply_withdraw(ref self: ComponentState<TContractState>, signed_withdraw: SignedWithdraw) {
 
             let hash = signed_withdraw.withdraw.get_poseidon_hash();
-            let (delay, w_req):(SlowModeDelay,WithdrawNew) = self.pending_reqs.read((signed_withdraw.withdraw.token,signed_withdraw.withdraw.maker));
+            let (delay, w_req):(SlowModeDelay,Withdraw) = self.pending_reqs.read((signed_withdraw.withdraw.token,signed_withdraw.withdraw.maker));
             if w_req != signed_withdraw.withdraw { // need to check sign cause offchain withdrawal
                 let (r,s) = signed_withdraw.sign;
                 assert(self.get_contract().check_sign(signed_withdraw.withdraw.maker, hash, r, s), 'WRONG_SIG');
@@ -148,7 +148,7 @@ mod withdraw_component {
             self.cleanup(w_req, delay);
         }
 
-        fn cleanup(ref self:ComponentState<TContractState>,mut w_req:WithdrawNew, delay:SlowModeDelay) {
+        fn cleanup(ref self:ComponentState<TContractState>,mut w_req:Withdraw, delay:SlowModeDelay) {
             let zero_addr:ContractAddress = 0.try_into().unwrap();
             let mut contract = self.get_balancer_mut();
 
