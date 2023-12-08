@@ -33,6 +33,8 @@ use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::
     #[derive(Drop, starknet::Event)]
     enum Event {
         UnsafeTrade: UnsafeTrade,
+        RouterReward:RouterReward,
+        RouterPunish:RouterPunish,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -49,6 +51,31 @@ use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::
         amount_quote: u256,
         is_sell_side: bool,
     }
+
+    #[derive(Drop, starknet::Event)]
+    struct RouterReward {
+        #[key]
+        router:ContractAddress,
+        ticker:(ContractAddress,ContractAddress),
+        order_hash:felt252,
+        amount:u256,
+        taker:ContractAddress,
+        is_sell_side: bool,
+    }
+
+
+    #[derive(Drop, starknet::Event)]
+    struct RouterPunish {
+        #[key]
+        router:ContractAddress,
+        #[key]
+        taker:ContractAddress,
+        taker_hash:felt252,
+        maker_hash:felt252,
+        amount:u256,
+    }
+
+
 
     #[embeddable_as(UnSafeTradable)]
     impl UnSafeTradableImpl<TContractState, +HasComponent<TContractState>,+INonceLogic<TContractState>,+router_component::HasComponent<TContractState>,+balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of super::IUnSafeTradeLogic<ComponentState<TContractState>> {
@@ -108,7 +135,13 @@ use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::
                             amount_out -= matching_cost;
                             taker_received += settle_qty;
                         }
-                        // emit trade event
+
+                        self.emit(UnsafeTrade{
+                            maker:signed_maker_order.order.maker,taker:taker_order.maker, ticker:taker_order.ticker,
+                            router:taker_order.fee.router_fee.recipient,
+                            amount_base:settle_qty,amount_quote:settle_qty, is_sell_side: !taker_order.flags.is_sell_side  
+                        });
+                               
                     },
                     Option::None(_) => { break();}
                 }
@@ -118,7 +151,7 @@ use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::
             self.orders_trade_info.write(taker_hash, taker_fill_info);
 
             // do the reward
-            self.finalize_taker(taker_order, taker_received, amount_out, exchange, gas_price);       
+            self.finalize_taker(taker_order,taker_hash, taker_received, amount_out, exchange, gas_price);       
         }
 
 
@@ -157,7 +190,7 @@ use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::
             let taker_qty = do_taker_price_checks(taker_order, settle_px, taker_fill_info);
                         
             let settle_qty = if maker_qty > taker_qty {taker_qty} else {maker_qty};
-            assert(taker_order.qty_address == maker_order.qty_address && taker_order.price_address == maker_order.price_address,'MISMATCH_TICKER');
+            assert(taker_order.ticker == maker_order.ticker ,'MISMATCH_TICKER');
             assert(taker_order.flags.to_safe_book == maker_order.flags.to_safe_book && !taker_order.flags.to_safe_book, 'WRONG_BOOK_DESTINATION');
             assert(taker_order.base_asset == maker_order.base_asset, 'WRONG_ASSET_AMOUNT');
                             
@@ -175,7 +208,7 @@ use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::
             //  required amount for gas for swaps beforehand
             //  if fails returns 0 else amount that we minted on exchange for him, at the end of execution we return unspent amount back to user
 
-            let (base, quote) = (taker_order.qty_address, taker_order.price_address);
+            let (base, quote) = (taker_order.ticker);
             let mut balancer = self.get_balancer_mut();
             
             let (erc20_base, erc20_quote) = (IERC20Dispatcher{contract_address:base}, IERC20Dispatcher{contract_address:quote});
@@ -218,31 +251,37 @@ use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::
             return (trade_amount, spent_gas);
         }
 
-        fn finalize_taker(ref self:ComponentState<TContractState>, taker_order:Order, received_amount:u256,unspent_amount:u256, exchange:ContractAddress,gas_price:u256) {
+        fn finalize_taker(ref self:ComponentState<TContractState>, taker_order:Order,taker_hash:felt252, received_amount:u256,unspent_amount:u256, exchange:ContractAddress,gas_price:u256) {
             // pay for gas
             // Reward router
             // Transfer unspent amounts to the user back
-            let router_fee = taker_order.fee.router_fee;
-            let mut balancer = self.get_balancer_mut();
-            let mut router = self.get_router_mut();
-            let contract  = self.get_contract();
-            
+            let (router_fee, exhcange_fee) = (taker_order.fee.router_fee,taker_order.fee.trade_fee);
+            let (mut balancer, mut router,contract) = (self.get_balancer_mut(),self.get_router_mut(), self.get_contract());
 
             // do the gas tfer
             let (spent, gas_coin) = super::get_gas_fee_and_coin(taker_order.fee.gas_fee, gas_price, balancer.wrapped_native_token.read());
             balancer.internal_transfer(taker_order.maker, balancer.fee_recipient.read(), spent, gas_coin);
             
 
-            let fee_token = if taker_order.flags.is_sell_side {taker_order.price_address} else {taker_order.qty_address};
-            let fee = get_feeable_qty(router_fee, received_amount, false);
-            if fee > 0 {
-                balancer.burn(taker_order.maker, fee, fee_token);
+            let fee_token = if taker_order.flags.is_sell_side {let (b,q) = taker_order.ticker; q} else {let (b,q) = taker_order.ticker;b};
+            
+            let router_fee_amount = get_feeable_qty(router_fee, received_amount, false);
+            if router_fee_amount > 0 {
+                balancer.burn(taker_order.maker, router_fee_amount, fee_token);
                 let cur_balance = router.token_to_user.read((fee_token,router_fee.recipient));
-                router.token_to_user.write((fee_token, router_fee.recipient), cur_balance + fee);
-                // emit event
+                router.token_to_user.write((fee_token, router_fee.recipient), cur_balance + router_fee_amount);
+                self.emit(
+                    RouterReward{ router:router_fee.recipient, ticker:taker_order.ticker, order_hash:taker_hash, 
+                                    amount:router_fee_amount, taker:taker_order.maker, is_sell_side:!taker_order.flags.is_sell_side
+                });
             }
 
-            let received_amount  = received_amount - fee;
+            let exchange_fee_amount = get_feeable_qty(exhcange_fee, received_amount, false);
+            if exchange_fee_amount > 0 {
+                balancer.internal_transfer(taker_order.maker, exhcange_fee.recipient, exchange_fee_amount, fee_token);
+            }
+
+            let received_amount  = received_amount - router_fee_amount - exchange_fee_amount;
             if received_amount > 0 {
                 let erc = IERC20Dispatcher {contract_address:fee_token};
                 let balance = erc.balanceOf(exchange);
@@ -250,7 +289,7 @@ use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::
                 assert(balance - erc.balanceOf(exchange) >= received_amount, 'OUT_TFER_ERROR');
             }
             if unspent_amount > 0 {
-                let token = if !taker_order.flags.is_sell_side {taker_order.price_address} else {taker_order.qty_address};
+                let token = if !taker_order.flags.is_sell_side {let (b,q) = taker_order.ticker; q} else {let (b,q) = taker_order.ticker;b};
                 let erc = IERC20Dispatcher {contract_address:token};
                 let balance = erc.balanceOf(exchange);
                 erc.transfer(taker_order.maker, unspent_amount);
@@ -264,7 +303,7 @@ use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::
             ref self: ComponentState<TContractState>,
             maker_order:Order, taker_order:Order,amount_base:u256,amount_quote:u256,
         ) {
-            let (mut balancer, base, quote) = (self.get_balancer_mut(), maker_order.qty_address, maker_order.price_address);
+            let (mut balancer, (base, quote)) = (self.get_balancer_mut(), maker_order.ticker);
 
             if maker_order.flags.is_sell_side{ // BASE/QUOTE -> maker sell BASE for QUOTE
                 assert(balancer.balanceOf(base, maker_order.maker) >= amount_base, 'FEW_BALANCE_MAKER');
@@ -283,7 +322,7 @@ use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::
         fn apply_maker_fee(ref self: ComponentState<TContractState>, maker_order:Order, base_amount:u256,quote_amount:u256) {
             let mut balancer = self.get_balancer_mut();
             let fee = maker_order.fee.trade_fee;
-            let maker_fee_token = if maker_order.flags.is_sell_side { maker_order.qty_address } else {maker_order.price_address};
+            let maker_fee_token = if maker_order.flags.is_sell_side { let (b,q) = maker_order.ticker; b } else {let (b,q) = maker_order.ticker; q};
             let maker_fee_amount = get_feeable_qty(fee, if maker_order.flags.is_sell_side { quote_amount } else {base_amount}, true);
             assert(maker_order.fee.router_fee.taker_pbips == 0, 'MAKER_SAFE_REQUIRES_NO_ROUTER');
             
@@ -291,12 +330,13 @@ use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::
                 balancer.internal_transfer(maker_order.maker, fee.recipient, maker_fee_amount, maker_fee_token);
             }
         }
+       
 
         fn punish_router_simple(ref self: ComponentState<TContractState>,gas_fee:GasFee,router_addr:ContractAddress, exchange:ContractAddress, maker:ContractAddress, gas_px:u256) {
             let mut balancer = self.get_balancer_mut();
             let mut router = self.get_router_mut();
             let native_base_token = balancer.get_wrapped_native_token();
-            let charged_fee = gas_fee.gas_per_action * gas_px * router.get_punishment_factor_bips() / 10000;
+            let charged_fee = gas_fee.gas_per_action.into() * gas_px * router.get_punishment_factor_bips() / 10000;
             if charged_fee == 0 {return;}
             let router_balance = router.token_to_user.read((native_base_token, router_addr));
             router.token_to_user.write((native_base_token, router_addr), router_balance - 2 * charged_fee);

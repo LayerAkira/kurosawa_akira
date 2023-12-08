@@ -2,7 +2,7 @@
 use starknet::{get_contract_address, ContractAddress};
 use kurosawa_akira::Order::{SignedOrder,Order,validate_maker_order,validate_taker_order,OrderTradeInfo,OrderFee,FixedFee,
         get_feeable_qty,get_limit_px,do_taker_price_checks,do_maker_checks}; 
- use kurosawa_akira::WithdrawComponent::Withdraw;
+ use kurosawa_akira::WithdrawComponent::{Withdraw,SignedWithdraw};
   use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
 #[starknet::interface]
 trait ILayerAkira<TContractState> {
@@ -104,5 +104,9 @@ trait ILayerAkira<TContractState> {
 
     fn deposit(ref self: TContractState, receiver:ContractAddress, token:ContractAddress, amount:u256);
 
+
+    // layer akira
+
+    fn apply_withdraw(ref self: TContractState, signed_withdraw: SignedWithdraw, gas_price:u256);
+
 }
-  

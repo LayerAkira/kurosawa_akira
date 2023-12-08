@@ -60,12 +60,12 @@ mod safe_trade_component {
             let mut maker_order = *maker_orders.at(0).order;
             let mut maker_hash:felt252  = 0.try_into().unwrap();  
             let mut maker_fill_info = self.orders_trade_info.read(maker_hash);
-            let (contract,balance) = (self.get_contract(), self.get_balancer_mut());
+            let (contract, balance) = (self.get_contract(), self.get_balancer_mut());
             
             let (_, use_prev_maker) = *iters.at(0);
             let mut first_iter = true;
             assert(!use_prev_maker, 'WRONG_FIRST_ITER');
-
+            let (mut total_matching_cost, mut total_qty) = (0,0);
             loop {
                 match iters.pop_front(){
                     Option::Some((trades ,mut use_prev_maker)) => {
@@ -101,7 +101,7 @@ mod safe_trade_component {
                             
                             let taker_qty = do_taker_price_checks(taker_order, settle_px, taker_fill_info);
                             let settle_qty = if maker_qty > taker_qty {taker_qty} else {maker_qty};
-                            assert(taker_order.qty_address == maker_order.qty_address && taker_order.price_address == maker_order.price_address,'Mismatch tickers');
+                            assert(taker_order.ticker == maker_order.ticker,'MISMATCH_TICKER');
                             assert(taker_order.flags.to_safe_book == maker_order.flags.to_safe_book && taker_order.flags.to_safe_book, 'WRONG_BOOK_DESTINATION');
                             assert(taker_order.base_asset == maker_order.base_asset, 'WRONG_ASSET_AMOUNT');
                             let matching_cost = settle_px * settle_qty / maker_order.base_asset;
@@ -117,6 +117,8 @@ mod safe_trade_component {
                         
                         taker_fill_info.num_trades_happened += trades;
                         self.orders_trade_info.write(taker_hash, taker_fill_info);
+
+                        // pay for gas and give exhcange here
 
                     },
                     Option::None(_) => {
@@ -152,9 +154,9 @@ mod safe_trade_component {
 
         fn settle_trade(ref self:ComponentState<TContractState>,maker_order:Order,taker_order:Order,amount_base:u256, amount_quote:u256, gas_px:u256) {
             self.rebalance_after_trade(maker_order, taker_order,amount_base,amount_quote);
-            self.apply_fees(maker_order, taker_order, gas_px, amount_base, amount_quote);
+            self.apply_maker_fee(maker_order,amount_base,amount_quote);
             self.emit(Trade{
-                    maker:maker_order.maker,taker:taker_order.maker, ticker:(taker_order.qty_address,taker_order.price_address),
+                    maker:maker_order.maker,taker:taker_order.maker, ticker:maker_order.ticker,
                     amount_base:amount_base,amount_quote:amount_quote,is_sell_side:maker_order.flags.is_sell_side  });
         }   
 
@@ -162,7 +164,7 @@ mod safe_trade_component {
             ref self: ComponentState<TContractState>,
             maker_order:Order, taker_order:Order,amount_base:u256,amount_quote:u256,
         ) {
-            let (mut balancer, base, quote) = (self.get_balancer_mut(),maker_order.qty_address, maker_order.price_address);
+            let (mut balancer, (base, quote)) = (self.get_balancer_mut(), maker_order.ticker);
 
             if maker_order.flags.is_sell_side{ // BASE/QUOTE -> maker sell BASE for QUOTE
                 assert(balancer.balanceOf(base, maker_order.maker) >= amount_base, 'FEW_BALANCE_MAKER');
@@ -178,9 +180,22 @@ mod safe_trade_component {
             }
         }
 
-        fn apply_fees(
+
+        fn apply_maker_fee(ref self: ComponentState<TContractState>, maker_order:Order, base_amount:u256,quote_amount:u256) {
+            let mut balancer = self.get_balancer_mut();
+            let fee = maker_order.fee.trade_fee;
+            let maker_fee_token = if maker_order.flags.is_sell_side { let (b,q) = maker_order.ticker; b } else {let (b,q) = maker_order.ticker; q};
+            let maker_fee_amount = get_feeable_qty(fee, if maker_order.flags.is_sell_side { quote_amount } else {base_amount}, true);
+            assert(maker_order.fee.router_fee.taker_pbips == 0, 'MAKER_SAFE_REQUIRES_NO_ROUTER');
+            
+            if maker_fee_amount > 0 {
+                balancer.internal_transfer(maker_order.maker, fee.recipient, maker_fee_amount, maker_fee_token);
+            }
+        }
+        
+
+        fn apply_taker_fee(
             ref self: ComponentState<TContractState>,
-            maker_order:Order,
             taker_order:Order,
             gas_price:u256,
             base_amount:u256,
@@ -188,20 +203,9 @@ mod safe_trade_component {
         ) {
             let mut balancer = self.get_balancer_mut();
             
-            let maker_fee_token = if maker_order.flags.is_sell_side { maker_order.qty_address } else {maker_order.price_address};
-            let taker_fee_token = if maker_order.flags.is_sell_side { maker_order.price_address } else {maker_order.qty_address};
-            let maker_fee_amount = get_feeable_qty(maker_order.fee.trade_fee, if maker_order.flags.is_sell_side { quote_amount } else {base_amount},true);
-            let taker_fee_amount = get_feeable_qty(taker_order.fee.trade_fee, if maker_order.flags.is_sell_side { base_amount } else {quote_amount},false);
-            assert(maker_order.fee.router_fee.taker_pbips == 0, 'MAKER_SAFE_REQUIRES_NO_ROUTER');
-            
-            // This we only need to perform once per taker
-            // assert(taker_order.fee.trade_fee.fee_token == maker_order.qty_address, 'TAKER_WRONG_FEE_TOKEN');
-            // assert(taker_order.fee.router_fee.taker_pbips == 0, 'TAKER_SAFE_REQUIRES_NO_ROUTER');
-            // assert(!taker_order.fee.trade_fee.external_call,'TAKER_NO_EXTERNAL_CALLS');
-            
-            if maker_fee_amount > 0 {
-                balancer.internal_transfer(maker_order.maker, maker_order.fee.trade_fee.recipient, maker_fee_amount, maker_fee_token);
-            }
+            let taker_fee_token = if taker_order.flags.is_sell_side { let (b,q) = taker_order.ticker; q} else {let (b,q) = taker_order.ticker; b};
+            let taker_fee_amount = get_feeable_qty(taker_order.fee.trade_fee, if taker_order.flags.is_sell_side { base_amount } else {quote_amount},false);
+            assert(taker_order.fee.router_fee.taker_pbips == 0, 'TAKER_SAFE_REQUIRES_NO_ROUTER');
             if taker_fee_amount > 0 {
                 balancer.internal_transfer(taker_order.maker, taker_order.fee.trade_fee.recipient, taker_fee_amount, taker_fee_token);
             }

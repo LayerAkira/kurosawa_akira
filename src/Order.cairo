@@ -1,3 +1,4 @@
+use core::traits::Into;
 use starknet::ContractAddress;
 use serde::Serde;
 use poseidon::poseidon_hash_span;
@@ -7,13 +8,11 @@ use array::SpanTrait;
 // TODO use this once all stuff rewritten in components
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct GasFee {
-    gas_per_action: u256,
+    gas_per_action: u32,
     fee_token: ContractAddress,
     max_gas_price: u256,
     conversion_rate: (u256, u256),
 }
-
-
 
 
 
@@ -50,8 +49,7 @@ struct Order {
     maker: ContractAddress,
     price: u256,
     quantity: u256,
-    price_address: ContractAddress,
-    qty_address: ContractAddress,
+    ticker:(ContractAddress,ContractAddress),
     fee: OrderFee,
     number_of_swaps_allowed: u8,
     salt: felt252,
@@ -170,7 +168,7 @@ fn get_gas_fee_and_coin(gas_fee: GasFee, cur_gas_price: u256, native_token:Contr
     if cur_gas_price == 0 { return (0, native_token);}
     if gas_fee.gas_per_action == 0 { return (0, native_token);}
     assert(gas_fee.max_gas_price >= cur_gas_price, 'gas_prc <-= user stated prc');
-    let spend_native = gas_fee.gas_per_action * cur_gas_price;
+    let spend_native = gas_fee.gas_per_action.into() * cur_gas_price;
     
     if gas_fee.fee_token == native_token {
         return (spend_native, native_token);

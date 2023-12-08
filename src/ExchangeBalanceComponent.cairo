@@ -49,7 +49,6 @@ mod exchange_balance_logic_component {
         _total_supply: LegacyMap::<ContractAddress, u256>,
         _balances: LegacyMap::<(ContractAddress, ContractAddress), u256>,
         wrapped_native_token: ContractAddress,
-        exchange_address: ContractAddress,
         fee_recipient: ContractAddress,
         latest_gas: u256,
     }
@@ -122,10 +121,10 @@ mod exchange_balance_logic_component {
     impl InternalExchangeBalancebleImpl<
         TContractState, +HasComponent<TContractState>
     > of InternalExchangeBalanceble<TContractState> {
-        fn initializer(ref self: ComponentState<TContractState>,fee_recipient:ContractAddress, wrapped_native_token:ContractAddress, exchange_address: ContractAddress) {
-            self.exchange_address.write(exchange_address);
+        fn initializer(ref self: ComponentState<TContractState>,fee_recipient:ContractAddress, wrapped_native_token:ContractAddress,latest_gas:u256) {
             self.wrapped_native_token.write(wrapped_native_token);
             self.fee_recipient.write(fee_recipient);
+            self.latest_gas.write(latest_gas);
         }
 
         fn mint(
@@ -134,7 +133,6 @@ mod exchange_balance_logic_component {
             amount: u256,
             token: ContractAddress
         ) {
-            assert(get_caller_address() == self.exchange_address.read(), 'Only self');
             self._total_supply.write(token, self._total_supply.read(token) + amount);
             self._balances.write((token, to), self._balances.read((token, to)) + amount);
         }
