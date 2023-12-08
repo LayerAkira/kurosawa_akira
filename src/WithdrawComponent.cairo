@@ -131,10 +131,13 @@ mod withdraw_component {
 
             let hash = signed_withdraw.withdraw.get_poseidon_hash();
             let (delay, w_req):(SlowModeDelay,Withdraw) = self.pending_reqs.read((signed_withdraw.withdraw.token, signed_withdraw.withdraw.maker));
+            
             if w_req != signed_withdraw.withdraw { // need to check sign cause offchain withdrawal
+                assert (w_req.amount != 1, 'ALREADY_APPLIED');
                 let (r,s) = signed_withdraw.sign;
-                assert(self.get_contract().check_sign(signed_withdraw.withdraw.maker, hash, r, s), 'WRONG_SIG');
+                assert(self.get_contract().check_sign(signed_withdraw.withdraw.maker, hash, r, s), 'WRONG_SIGN');
             }
+            let w_req = signed_withdraw.withdraw;
         
             let mut contract = self.get_balancer_mut();
             contract.burn(w_req.maker, w_req.amount, w_req.token);
@@ -150,8 +153,8 @@ mod withdraw_component {
         fn cleanup(ref self:ComponentState<TContractState>,mut w_req:Withdraw, delay:SlowModeDelay) {
             let zero_addr:ContractAddress = 0.try_into().unwrap();
             let mut contract = self.get_balancer_mut();
-            let k = (w_req.token,w_req.maker);
-            w_req.amount = 0;
+            let k = (w_req.token, w_req.maker);
+            w_req.amount = 1;
             w_req.token = zero_addr;
             w_req.maker = zero_addr;
             self.pending_reqs.write(k, (delay, w_req));

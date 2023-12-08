@@ -24,7 +24,9 @@ trait ISignerLogic<TContractState> {
 
 #[starknet::component]
 mod signer_logic_component {
-    use starknet::{ContractAddress, get_caller_address};
+    use core::option::OptionTrait;
+use core::traits::TryInto;
+use starknet::{ContractAddress, get_caller_address};
     use ecdsa::check_ecdsa_signature;
     use super::ISignerLogic;
 

@@ -51,7 +51,21 @@
     }
 
     fn get_trader_address_1()->ContractAddress {
-        return 0x01d8e01188c4c8984fb19f00156491787e64fd2de1c3ce4eb9571924c540cf3b.try_into().unwrap();
+        return 0x0541cf2823e5d004E9a5278ef8B691B97382FD0c9a6B833a56131E12232A7F0F.try_into().unwrap();
+        // return 0x01d8e01188c4c8984fb19f00156491787e64fd2de1c3ce4eb9571924c540cf3b.try_into().unwrap();
+    }
+    fn get_trader_address_2() -> ContractAddress {
+        return 0x024e8044680FEcDe3f23d4E270c7b0fA23c487Ae7B31b812ff72aFa7Bc7f6116.try_into().unwrap();
+    }
+
+    fn get_trader_signer_and_pk_1()->(felt252,felt252){
+        return (0x6599a0c34699a5c48ae6ff359decc0618ce982be00654f2b12945cae5bb6788,
+                                0x0455e57d60556bf07b184308bc6708caa5b64c7b41178a06092bb8a58057d33b);
+    }
+
+    fn get_trader_signer_and_pk_2()->(felt252, felt252) {
+        return (0x61c5ec8851e6e8fcdcc065b6724f75bdf4055857dacf3b6be1ac9f1b3dc6fb2,
+                                0x0295697db67cfcd0e0a04a26ab2e1333ebc6266d9c5c91be8926922ae0f445c4);
     }
 
     fn deposit(trader:ContractAddress, amount:u256, token:ContractAddress, akira:ILayerAkiraDispatcher) {
@@ -67,7 +81,6 @@
     fn prepare_double_gas_fee_native(akira:ILayerAkiraDispatcher, gas_action:u32)-> GasFee {
         let latest_gas_price = akira.get_latest_gas_price();
         let gas_deduct = latest_gas_price * 2 * gas_action.into();
-        akira.get_wrapped_native_token().print();
         GasFee{ gas_per_action:get_withdraw_action_cost(), fee_token:get_eth_addr(), 
                 max_gas_price: latest_gas_price * 2, conversion_rate: (1,1),
         }
