@@ -12,8 +12,10 @@
     use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
     use serde::Serde;
     use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
-
+    use snforge_std::signature::{ StarkCurveKeyPair, StarkCurveKeyPairTrait, Signer, Verifier };
     fn get_eth_addr() -> ContractAddress {0x049D36570D4e46f48e99674bd3fcc84644DdD6b96F7C741B1562B82f9e004dC7.try_into().unwrap()}
+
+    fn get_usdc_addr() ->ContractAddress {0x05a643907b9a4bc6a55e9069c4fd5fd1f5c79a22470690f75556c4736e34426.try_into().unwrap()}
         
     fn tfer_eth_funds_to(reciever: ContractAddress, amount: u256) {
         let caller_who_have_funds: ContractAddress = 0x00121108c052bbd5b273223043ad58a7e51c55ef454f3e02b0a0b4c559a925d4.try_into().unwrap();
@@ -22,6 +24,14 @@
         ETH.transfer(reciever, amount);
         stop_prank(ETH.contract_address);
     }
+    fn tfer_usdc_funds_to(reciever: ContractAddress, amount: u256) {
+        let caller_who_have_funds: ContractAddress = 0x0711c27004518b375e5c3521223a87704d4b72367d353d797665aa0d1edc5f52.try_into().unwrap();
+        let USDC = IERC20Dispatcher { contract_address: get_eth_addr() };
+        start_prank(USDC.contract_address, caller_who_have_funds);
+        USDC.transfer(reciever, amount);
+        stop_prank(USDC.contract_address);
+    }
+
 
     fn get_fee_recipient_exchange()->ContractAddress {0x666.try_into().unwrap()}
 
@@ -84,6 +94,11 @@
         GasFee{ gas_per_action:get_withdraw_action_cost(), fee_token:get_eth_addr(), 
                 max_gas_price: latest_gas_price * 2, conversion_rate: (1,1),
         }
+    }
+
+    fn sign(message_hash:felt252,pub:felt252,priv:felt252)->(felt252, felt252) {
+        let mut signer = StarkCurveKeyPair{public_key:pub, private_key:priv};
+        return signer.sign(message_hash).unwrap();
     }
 
 

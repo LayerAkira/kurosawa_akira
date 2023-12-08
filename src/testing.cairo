@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests_deposit_and_withdrawal {
     use kurosawa_akira::test_utils::test_common::{deposit,get_eth_addr,tfer_eth_funds_to,get_fee_recipient_exchange,get_slow_mode,get_trader_address_1,
-    get_withdraw_action_cost,spawn_exchange,prepare_double_gas_fee_native,get_trader_signer_and_pk_1};
+    get_withdraw_action_cost,spawn_exchange,prepare_double_gas_fee_native,get_trader_signer_and_pk_1,sign};
     use kurosawa_akira::FundsTraits::PoseidonHash;
     use core::{traits::Into,array::ArrayTrait,option::OptionTrait,traits::TryInto,result::ResultTrait};
     use starknet::{ContractAddress,info::get_block_number,get_caller_address};
@@ -15,9 +15,9 @@ mod tests_deposit_and_withdrawal {
     use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
     use serde::Serde;
     use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
-    use snforge_std::signature::{ StarkCurveKeyPair, StarkCurveKeyPairTrait, Signer, Verifier };
     use kurosawa_akira::FundsTraits::check_sign;
-        use ecdsa::check_ecdsa_signature;
+    
+    
     #[test]
     #[fork("block_based")]
     fn test_eth_deposit() {
@@ -118,17 +118,15 @@ mod tests_deposit_and_withdrawal {
         let akira = ILayerAkiraDispatcher{contract_address:spawn_exchange()};
         let (trader, eth_addr, amount_deposit) = (get_trader_address_1(), get_eth_addr(),1_000_000);
         let (pub,priv) = get_trader_signer_and_pk_1();
-        let mut signer = StarkCurveKeyPair{public_key:pub,private_key:priv};
         
         tfer_eth_funds_to(trader, amount_deposit); deposit(trader, amount_deposit, eth_addr, akira); 
         
         let w = get_withdraw(trader, amount_deposit, eth_addr, akira, 0);
 
         start_prank(akira.contract_address, trader); akira.bind_to_signer(pub.try_into().unwrap()); stop_prank(akira.contract_address); 
-        akira.get_signer(trader).print();
-
+       
         start_prank(akira.contract_address, get_fee_recipient_exchange());
-        akira.apply_withdraw(SignedWithdraw{withdraw:w, sign:signer.sign(w.get_poseidon_hash()).unwrap()}, 100);
+        akira.apply_withdraw(SignedWithdraw{withdraw:w, sign: sign(w.get_poseidon_hash(), pub, priv)}, 100);
         stop_prank(akira.contract_address);
     }    
 
@@ -139,7 +137,6 @@ mod tests_deposit_and_withdrawal {
         let akira = ILayerAkiraDispatcher{contract_address:spawn_exchange()};
         let (trader, eth_addr, amount_deposit) = (get_trader_address_1(), get_eth_addr(),1_000_000);
         let (pub,priv) = get_trader_signer_and_pk_1();
-        let mut signer = StarkCurveKeyPair{public_key:pub,private_key:priv};
         
         tfer_eth_funds_to(trader, amount_deposit); deposit(trader, amount_deposit, eth_addr, akira); 
         
@@ -149,12 +146,10 @@ mod tests_deposit_and_withdrawal {
         akira.get_signer(trader).print();
 
         start_prank(akira.contract_address, get_fee_recipient_exchange());
-        akira.apply_withdraw(SignedWithdraw{withdraw:w, sign:signer.sign(w.get_poseidon_hash()).unwrap()}, 100);
-        akira.apply_withdraw(SignedWithdraw{withdraw:w, sign:signer.sign(w.get_poseidon_hash()).unwrap()}, 100);
+        let sign = sign(w.get_poseidon_hash(), pub, priv);
+        akira.apply_withdraw(SignedWithdraw{withdraw:w, sign}, 100);
+        akira.apply_withdraw(SignedWithdraw{withdraw:w, sign}, 100);
         
         stop_prank(akira.contract_address);
     }  
 }
-
-
-// test
