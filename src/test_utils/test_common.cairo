@@ -26,7 +26,7 @@
     }
     fn tfer_usdc_funds_to(reciever: ContractAddress, amount: u256) {
         let caller_who_have_funds: ContractAddress = 0x0711c27004518b375e5c3521223a87704d4b72367d353d797665aa0d1edc5f52.try_into().unwrap();
-        let USDC = IERC20Dispatcher { contract_address: get_eth_addr() };
+        let USDC = IERC20Dispatcher { contract_address: get_usdc_addr() };
         start_prank(USDC.contract_address, caller_who_have_funds);
         USDC.transfer(reciever, amount);
         stop_prank(USDC.contract_address);

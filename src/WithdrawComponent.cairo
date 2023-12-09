@@ -145,7 +145,7 @@ mod withdraw_component {
             self.emit(Withdrawal{maker:w_req.maker, token:w_req.token, amount:w_req.amount, key:hash, reciever:w_req.reciever});
 
             // payment to exchange for gas
-            contract.validate_and_apply_gas_fee_internal(w_req.maker, w_req.gas_fee, gas_price);
+            contract.validate_and_apply_gas_fee_internal(w_req.maker, w_req.gas_fee, gas_price, 1);
 
             self.cleanup(w_req, delay);
         }

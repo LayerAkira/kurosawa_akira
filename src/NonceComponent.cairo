@@ -85,7 +85,7 @@ mod nonce_component {
             assert(nonce_increase.new_nonce > self.nonces.read(nonce_increase.maker), 'WRONG_NONCE');
             
             let mut balancer = self.get_balancer_mut();
-            balancer.validate_and_apply_gas_fee_internal(nonce_increase.maker, nonce_increase.gas_fee, balancer.get_latest_gas_price());
+            balancer.validate_and_apply_gas_fee_internal(nonce_increase.maker, nonce_increase.gas_fee, balancer.get_latest_gas_price(), 1);
             self.nonces.write(nonce_increase.maker, nonce_increase.new_nonce);
 
             self.emit(NonceIncrease{ maker: nonce_increase.maker,new_nonce:nonce_increase.new_nonce});

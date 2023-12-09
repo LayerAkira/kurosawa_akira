@@ -109,4 +109,6 @@ trait ILayerAkira<TContractState> {
 
     fn apply_withdraw(ref self: TContractState, signed_withdraw: SignedWithdraw, gas_price:u256);
 
+    fn apply_safe_trade(ref self: TContractState, taker_orders:Array<SignedOrder>, maker_orders: Array<SignedOrder>, iters:Array<(u8,bool)>, gas_price:u256);
+
 }

@@ -143,8 +143,10 @@ mod exchange_balance_logic_component {
             amount: u256,
             token: ContractAddress
         ) {
+            let balance = self._balances.read((token, from));
+            assert(balance >= amount,'FEW_TO_BURN');
+            self._balances.write((token, from), balance - amount);
             self._total_supply.write(token, self._total_supply.read(token) - amount);
-            self._balances.write((token, from), self._balances.read((token, from)) - amount);
         }
         fn internal_transfer(
             ref self: ComponentState<TContractState>,
@@ -162,12 +164,14 @@ mod exchange_balance_logic_component {
             ref self: ComponentState<TContractState>,
             user: ContractAddress,
             gas_fee: super::GasFee,
-            gas_price: u256
+            gas_price: u256,
+            times:u8,
         ) {
             if gas_price == 0 || gas_fee.gas_per_action == 0 {
                 return;
             }
-            let (spent, coin) = super::get_gas_fee_and_coin(gas_fee, gas_price,self.wrapped_native_token.read());
+            let (spent, coin) = super::get_gas_fee_and_coin(gas_fee, gas_price, self.wrapped_native_token.read());
+            let spent = spent * times.into();
             self.internal_transfer(user, self.fee_recipient.read(), spent, coin);
         }
     }

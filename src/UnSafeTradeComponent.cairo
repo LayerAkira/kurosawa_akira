@@ -151,7 +151,7 @@ use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::
             self.orders_trade_info.write(taker_hash, taker_fill_info);
 
             // do the reward
-            self.finalize_taker(taker_order,taker_hash, taker_received, amount_out, exchange, gas_price);       
+            self.finalize_taker(taker_order,taker_hash, taker_received, amount_out, exchange, gas_price, trades);       
         }
 
 
@@ -190,6 +190,9 @@ use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::
             let taker_qty = do_taker_price_checks(taker_order, settle_px, taker_fill_info);
                         
             let settle_qty = if maker_qty > taker_qty {taker_qty} else {maker_qty};
+            
+            
+            assert(taker_order.flags.is_sell_side != maker_order.flags.is_sell_side, 'WRONG_SIDE');
             assert(taker_order.ticker == maker_order.ticker ,'MISMATCH_TICKER');
             assert(taker_order.flags.to_safe_book == maker_order.flags.to_safe_book && !taker_order.flags.to_safe_book, 'WRONG_BOOK_DESTINATION');
             assert(taker_order.base_asset == maker_order.base_asset, 'WRONG_ASSET_AMOUNT');
@@ -251,7 +254,7 @@ use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::
             return (trade_amount, spent_gas);
         }
 
-        fn finalize_taker(ref self:ComponentState<TContractState>, taker_order:Order,taker_hash:felt252, received_amount:u256,unspent_amount:u256, exchange:ContractAddress,gas_price:u256) {
+        fn finalize_taker(ref self:ComponentState<TContractState>, taker_order:Order,taker_hash:felt252, received_amount:u256,unspent_amount:u256, exchange:ContractAddress,gas_price:u256, trades:u8) {
             // pay for gas
             // Reward router
             // Transfer unspent amounts to the user back
@@ -260,6 +263,7 @@ use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::
 
             // do the gas tfer
             let (spent, gas_coin) = super::get_gas_fee_and_coin(taker_order.fee.gas_fee, gas_price, balancer.wrapped_native_token.read());
+            let spent = spent * trades.into();
             balancer.internal_transfer(taker_order.maker, balancer.fee_recipient.read(), spent, gas_coin);
             
 
@@ -306,14 +310,14 @@ use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::
             let (mut balancer, (base, quote)) = (self.get_balancer_mut(), maker_order.ticker);
 
             if maker_order.flags.is_sell_side{ // BASE/QUOTE -> maker sell BASE for QUOTE
-                assert(balancer.balanceOf(base, maker_order.maker) >= amount_base, 'FEW_BALANCE_MAKER');
-                assert(balancer.balanceOf(quote, taker_order.maker) >= amount_quote, 'FEW_BALANCE_TAKER');
-                balancer.internal_transfer(maker_order.maker,taker_order.maker, amount_base, base);
+                assert(balancer.balanceOf(maker_order.maker, base) >= amount_base, 'FEW_BALANCE_MAKER');
+                assert(balancer.balanceOf(taker_order.maker, quote) >= amount_quote, 'FEW_BALANCE_TAKER');
+                balancer.internal_transfer(maker_order.maker, taker_order.maker, amount_base, base);
                 balancer.internal_transfer(taker_order.maker, maker_order.maker, amount_quote, quote);
             }
             else { // BASE/QUOTE -> maker buy BASE for QUOTE
-                assert(balancer.balanceOf(quote, taker_order.maker) >= amount_quote, 'FEW_BALANCE_MAKER');
-                assert(balancer.balanceOf(base,  maker_order.maker) >= amount_base, 'FEW_BALANCE_TAKER');
+                assert(balancer.balanceOf(maker_order.maker, quote) >= amount_quote, 'FEW_BALANCE_TAKER');
+                assert(balancer.balanceOf(taker_order.maker, base) >= amount_base, 'FEW_BALANCE_MAKER');
                 balancer.internal_transfer(maker_order.maker, taker_order.maker, amount_quote, quote);
                 balancer.internal_transfer(taker_order.maker, maker_order.maker, amount_base, base);
             }
@@ -322,7 +326,7 @@ use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::
         fn apply_maker_fee(ref self: ComponentState<TContractState>, maker_order:Order, base_amount:u256,quote_amount:u256) {
             let mut balancer = self.get_balancer_mut();
             let fee = maker_order.fee.trade_fee;
-            let maker_fee_token = if maker_order.flags.is_sell_side { let (b,q) = maker_order.ticker; b } else {let (b,q) = maker_order.ticker; q};
+            let maker_fee_token = if maker_order.flags.is_sell_side { let (b,q) = maker_order.ticker; q } else {let (b,q) = maker_order.ticker; b};
             let maker_fee_amount = get_feeable_qty(fee, if maker_order.flags.is_sell_side { quote_amount } else {base_amount}, true);
             assert(maker_order.fee.router_fee.taker_pbips == 0, 'MAKER_SAFE_REQUIRES_NO_ROUTER');
             

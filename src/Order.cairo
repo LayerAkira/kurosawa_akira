@@ -20,8 +20,8 @@ struct GasFee {
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct FixedFee {
     recipient: ContractAddress,
-    maker_pbips: u64,
-    taker_pbips: u64
+    maker_pbips: u32,
+    taker_pbips: u32
 }
 
 
@@ -70,8 +70,7 @@ struct SignedOrder {
 struct OrderTradeInfo {
     filled_amount: u256,
     last_traded_px: u256,
-    num_trades_happened: u8,
-    remaining_qty: u256,
+    num_trades_happened: u8
 }
 
 
@@ -117,7 +116,7 @@ fn validate_taker_order(order: Order, orders_trade_info:OrderTradeInfo, nonce:u3
                 assert(orders_trade_info.last_traded_px == settlement_price, 'BEST_LVL_ONLY',);
             }
             
-            return orders_trade_info.remaining_qty;
+            return remaining;
         }
     return order.quantity;
     // FULL_FILL_ONLY_FLAG checked by user of this func and sign too
@@ -127,7 +126,7 @@ fn validate_taker_order(order: Order, orders_trade_info:OrderTradeInfo, nonce:u3
 fn get_feeable_qty(fixed_fee: FixedFee, feeable_qty: u256,is_maker:bool) -> u256 {
     let pbips = if is_maker {fixed_fee.maker_pbips} else {fixed_fee.taker_pbips};
     if pbips == 0 { return 0;}
-    return (feeable_qty * pbips.into() - 1) / 1000000 + 1;
+    return (feeable_qty * pbips.into() - 1) / 1_000_000 + 1;
 }
 
 fn get_limit_px(maker_order:Order, maker_fill_info:OrderTradeInfo) -> (u256, u256){
@@ -146,13 +145,15 @@ fn do_taker_price_checks(taker_order:Order, settle_px:u256, taker_fill_info:Orde
             else { assert(taker_fill_info.last_traded_px >= settle_px, 'SELL_PARTIAL_FILL_ERR');}
         }
     }
-    assert(taker_fill_info.filled_amount - taker_order.quantity > 0, 'FILLED_TAKER_ORDER');
-    return taker_order.quantity - taker_fill_info.filled_amount;
+    let rem = taker_order.quantity - taker_fill_info.filled_amount;
+    assert(rem > 0, 'FILLED_TAKER_ORDER');
+    return rem;
 }
 
 fn do_maker_checks(maker_order:Order, maker_fill_info:OrderTradeInfo,nonce:u32)-> (u256, u256) {
     assert(!maker_order.flags.is_market_order, 'WRONG_MARKET_TYPE');
-    assert(maker_fill_info.filled_amount - maker_order.quantity > 0, 'MAKER_ALREADY_FILLED');
+    let remaining = maker_order.quantity - maker_fill_info.filled_amount;
+    assert(remaining > 0, 'MAKER_ALREADY_FILLED');
     assert(maker_order.nonce >= nonce,'OLD_MAKER_NONCE');
     assert(!maker_order.flags.full_fill_only, 'WRONG_MAKER_FLAG');
 
@@ -160,7 +161,7 @@ fn do_maker_checks(maker_order:Order, maker_fill_info:OrderTradeInfo,nonce:u32)-
         assert(!maker_order.flags.best_level_only && !maker_order.flags.full_fill_only, 'WRONG_MAKER_FLAGS');
     }
     let settle_px = if maker_fill_info.filled_amount > 0 {maker_fill_info.last_traded_px} else {maker_order.price};
-    return (settle_px, maker_order.quantity - maker_fill_info.filled_amount); 
+    return (settle_px, remaining); 
 }
 
 

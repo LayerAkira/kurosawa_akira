@@ -19,6 +19,7 @@ mod LayerAkira {
     use kurosawa_akira::UnSafeTradeComponent::unsafe_trade_component as unsafe_trade_component;
     use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
     use kurosawa_akira::WithdrawComponent::SignedWithdraw;
+    use kurosawa_akira::Order::SignedOrder;
     // use exchange_balance_logic_component::InternalExchangeBalancebleImpl;
     
     component!(path: exchange_balance_logic_component,storage: balancer_s, event:BalancerEvent);
@@ -111,6 +112,14 @@ mod LayerAkira {
     fn apply_withdraw(ref self: ContractState, signed_withdraw: SignedWithdraw, gas_price:u256) {
         assert(self.exchange_invokers.read(get_caller_address()), 'Only whitelisted invokers'); 
         self.withdraw_s.apply_withdraw(signed_withdraw, gas_price);
+        self.balancer_s.latest_gas.write(gas_price);
+    }
+
+    #[external(v0)]
+    fn apply_safe_trade(ref self: ContractState, taker_orders:Array<SignedOrder>, maker_orders: Array<SignedOrder>, iters:Array<(u8,bool)>, gas_price:u256) {
+        assert(self.exchange_invokers.read(get_caller_address()), 'Only whitelisted invokers'); 
+        self.safe_trade_s.apply_trades(taker_orders, maker_orders, iters, gas_price);
+        self.balancer_s.latest_gas.write(gas_price);
     }
 
 
