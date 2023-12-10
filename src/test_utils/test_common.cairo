@@ -42,8 +42,8 @@
     fn spawn_exchange() -> ContractAddress {
         let cls = declare('LayerAkira');
         let mut constructor: Array::<felt252> = ArrayTrait::new();
-        constructor.append(get_fee_recipient_exchange().into());
         constructor.append(get_eth_addr().into());
+        constructor.append(get_fee_recipient_exchange().into());
         
         let mut serialized_slow_mode: Array<felt252> = ArrayTrait::new();
         Serde::serialize(@get_slow_mode(), ref serialized_slow_mode);
@@ -82,7 +82,7 @@
         
         let erc = IERC20Dispatcher{contract_address: token};
         let (prev_total_supply,prev_user_balance) = (akira.total_supply(token), akira.balanceOf(trader, token));
-        start_prank(token, trader);erc.approve(akira.contract_address,amount);stop_prank(token);
+        start_prank(token, trader);erc.approve(akira.contract_address, amount);stop_prank(token);
         start_prank(akira.contract_address, trader); akira.deposit(trader, token, amount); stop_prank(akira.contract_address);
         assert(akira.total_supply(token) == prev_total_supply + amount,'WRONG_MINT');
         assert(akira.balanceOf(trader, token) == prev_user_balance + amount,'WRONG_MINT'); 

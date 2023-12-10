@@ -1,5 +1,5 @@
 use starknet::ContractAddress;
-use kurosawa_akira::Order::{GasFee,get_gas_fee_and_coin};
+use kurosawa_akira::Order::{GasFee,FixedFee,get_gas_fee_and_coin,get_feeable_qty};
 
 
 
@@ -27,22 +27,13 @@ trait INewExchangeBalance<TContractState> {
 #[starknet::component]
 mod exchange_balance_logic_component {
     use starknet::{ContractAddress, get_caller_address};
-    use super::INewExchangeBalance;
-
+    use super::{INewExchangeBalance, FixedFee, get_feeable_qty};
+    
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
-        GasFeeEvent: GasFeeEvent
     }
 
-    #[derive(Drop, starknet::Event)]
-    struct GasFeeEvent {
-        #[key]
-        user: ContractAddress,
-        #[key]
-        coin: ContractAddress,
-        spent: u256
-    }
 
     #[storage]
     struct Storage {
@@ -52,8 +43,6 @@ mod exchange_balance_logic_component {
         fee_recipient: ContractAddress,
         latest_gas: u256,
     }
-
-
 
 
     #[embeddable_as(ExchangeBalanceble)]
@@ -117,6 +106,7 @@ mod exchange_balance_logic_component {
             self.fee_recipient.write(recipient);
         }
     }
+    
     #[generate_trait]
     impl InternalExchangeBalancebleImpl<
         TContractState, +HasComponent<TContractState>
@@ -173,6 +163,40 @@ mod exchange_balance_logic_component {
             let (spent, coin) = super::get_gas_fee_and_coin(gas_fee, gas_price, self.wrapped_native_token.read());
             let spent = spent * times.into();
             self.internal_transfer(user, self.fee_recipient.read(), spent, coin);
+        }
+
+
+        fn rebalance_after_trade(
+            ref self: ComponentState<TContractState>,
+            maker:ContractAddress, taker:ContractAddress,
+            ticker:(ContractAddress, ContractAddress),
+            amount_base:u256, amount_quote:u256,
+            is_maker_seller:bool,
+        ) {
+            let (base, quote) = ticker;
+            if is_maker_seller{ // BASE/QUOTE -> maker sell BASE for QUOTE
+                
+                assert(self.balanceOf(maker, base) >= amount_base, 'FEW_BALANCE_MAKER');
+                self.internal_transfer(maker, taker, amount_base, base);
+                
+                assert(self.balanceOf(taker, quote) >= amount_quote, 'FEW_BALANCE_TAKER');
+                self.internal_transfer(taker, maker, amount_quote, quote);
+            }
+            else { // BASE/QUOTE -> maker buy BASE for QUOTE
+                assert(self.balanceOf(maker, quote) >= amount_quote, 'FEW_BALANCE_MAKER');
+                self.internal_transfer(maker, taker, amount_quote, quote);
+                assert(self.balanceOf(taker, base) >= amount_base, 'FEW_BALANCE_TAKER');
+                self.internal_transfer(taker, maker, amount_base, base);
+            }
+        }
+
+        fn apply_maker_fee(ref self: ComponentState<TContractState>,maker:ContractAddress, fee:FixedFee,is_sell_side:bool,ticker:(ContractAddress,ContractAddress), base_amount:u256, quote_amount:u256) {
+            let maker_fee_token = if is_sell_side { let (b, q) = ticker; q } else {let (b, q) = ticker; b};
+            let maker_fee_amount = get_feeable_qty(fee, if is_sell_side { quote_amount } else {base_amount}, true);
+            
+            if maker_fee_amount > 0 {
+                self.internal_transfer(maker, fee.recipient, maker_fee_amount, maker_fee_token);
+            }
         }
     }
 }

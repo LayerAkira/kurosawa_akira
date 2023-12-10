@@ -57,7 +57,7 @@ mod safe_trade_component {
     +balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of InternalSafeTradable<TContractState> {
 
         // exposed only in contract user
-        fn apply_trades(ref self: ComponentState<TContractState>,mut taker_orders:Array<SignedOrder>, mut maker_orders:Array<SignedOrder>, mut iters:Array<(u8,bool)>,gas_price:u256) {
+        fn apply_trades(ref self: ComponentState<TContractState>,mut taker_orders:Array<SignedOrder>, mut maker_orders:Array<SignedOrder>, mut iters:Array<(u8,bool)>, gas_price:u256) {
             let mut maker_order = *maker_orders.at(0).order;
             let mut maker_hash: felt252  = 0.try_into().unwrap();  
             let mut maker_fill_info = self.orders_trade_info.read(maker_hash);
@@ -164,47 +164,17 @@ mod safe_trade_component {
         }
 
         fn settle_trade(ref self:ComponentState<TContractState>,maker_order:Order,taker_order:Order,amount_base:u256, amount_quote:u256) {
-            self.rebalance_after_trade(maker_order, taker_order, amount_base, amount_quote);
-            self.apply_maker_fee(maker_order,amount_base, amount_quote);
-            self.emit(Trade{
-                    maker:maker_order.maker, taker:taker_order.maker, ticker:maker_order.ticker,
-                    amount_base:amount_base, amount_quote:amount_quote, is_sell_side:maker_order.flags.is_sell_side });
-        }   
-
-        fn rebalance_after_trade(
-            ref self: ComponentState<TContractState>,
-            maker_order:Order, taker_order:Order,amount_base:u256,amount_quote:u256,
-        ) {
-            let (mut balancer, (base, quote)) = (self.get_balancer_mut(), maker_order.ticker);
-
-            if maker_order.flags.is_sell_side{ // BASE/QUOTE -> maker sell BASE for QUOTE
-                assert(balancer.balanceOf(maker_order.maker, base) >= amount_base, 'FEW_BALANCE_MAKER');
-                assert(balancer.balanceOf(taker_order.maker, quote) >= amount_quote, 'FEW_BALANCE_TAKER');
-                balancer.internal_transfer(maker_order.maker, taker_order.maker, amount_base, base);
-                balancer.internal_transfer(taker_order.maker, maker_order.maker, amount_quote, quote);
-            }
-            else { // BASE/QUOTE -> maker buy BASE for QUOTE
-                assert(balancer.balanceOf(maker_order.maker, quote) >= amount_quote, 'FEW_BALANCE_TAKER');
-                assert(balancer.balanceOf(taker_order.maker, base) >= amount_base, 'FEW_BALANCE_MAKER');
-                balancer.internal_transfer(maker_order.maker, taker_order.maker, amount_quote, quote);
-                balancer.internal_transfer(taker_order.maker, maker_order.maker, amount_base, base);
-            }
-        }
-
-
-        fn apply_maker_fee(ref self: ComponentState<TContractState>, maker_order:Order, base_amount:u256, quote_amount:u256) {
             let mut balancer = self.get_balancer_mut();
-            let fee = maker_order.fee.trade_fee;
-            let maker_fee_token = if maker_order.flags.is_sell_side { let (b,q) = maker_order.ticker; q } else {let (b, q) = maker_order.ticker; b};
-            let maker_fee_amount = get_feeable_qty(fee, if maker_order.flags.is_sell_side { quote_amount } else {base_amount}, true);
+            balancer.rebalance_after_trade(maker_order.maker, taker_order.maker,maker_order.ticker, amount_base, amount_quote,maker_order.flags.is_sell_side);
+            balancer.apply_maker_fee(maker_order.maker, maker_order.fee.trade_fee, maker_order.flags.is_sell_side,
+                                 maker_order.ticker, amount_base, amount_quote);
             assert(maker_order.fee.router_fee.taker_pbips == 0, 'MAKER_SAFE_REQUIRES_NO_ROUTER');
             
-            if maker_fee_amount > 0 {
-                balancer.internal_transfer(maker_order.maker, fee.recipient, maker_fee_amount, maker_fee_token);
-            }
-        }
+            self.emit(Trade{
+                    maker:maker_order.maker, taker:taker_order.maker, ticker:maker_order.ticker,
+                    amount_base, amount_quote, is_sell_side:maker_order.flags.is_sell_side });
+        }   
         
-
         fn apply_taker_fee_and_gas(ref self: ComponentState<TContractState>, taker_order:Order, base_amount:u256, quote_amount:u256, gas_price:u256, trades:u8) {
             let mut balancer = self.get_balancer_mut();
             

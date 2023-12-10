@@ -3,11 +3,14 @@
 
 #[starknet::contract]
 mod LayerAkira {
-        use starknet::{ContractAddress, get_caller_address};
+    use kurosawa_akira::FundsTraits::PoseidonHash;
+    use starknet::{ContractAddress, get_caller_address};
 
     use kurosawa_akira::WithdrawComponent::withdraw_component::InternalWithdrawable;
     use starknet::{get_contract_address};
-    use kurosawa_akira::SafeTradeComponent::safe_trade_component::InternalSafeTradable;
+    
+   
+    
     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::InternalExchangeBalanceble;
     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as  exchange_balance_logic_component;
     use kurosawa_akira::SignerComponent::signer_logic_component as  signer_logic_component;
@@ -20,7 +23,12 @@ mod LayerAkira {
     use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
     use kurosawa_akira::WithdrawComponent::SignedWithdraw;
     use kurosawa_akira::Order::SignedOrder;
-    // use exchange_balance_logic_component::InternalExchangeBalancebleImpl;
+
+    use kurosawa_akira::SafeTradeComponent::safe_trade_component::InternalSafeTradable;
+    use kurosawa_akira::UnSafeTradeComponent::unsafe_trade_component::InternalUnSafeTradable;
+    
+    use router_component::InternalRoutable;
+    
     
     component!(path: exchange_balance_logic_component,storage: balancer_s, event:BalancerEvent);
     component!(path: signer_logic_component,storage: signer_s, event:SignerEvent);
@@ -30,6 +38,8 @@ mod LayerAkira {
     component!(path: router_component, storage: router_s, event:RouterEvent);
     component!(path: safe_trade_component, storage: safe_trade_s, event:SafeTradeEvent);
     component!(path: unsafe_trade_component, storage: unsafe_trade_s, event:UnSafeTradeEvent);
+
+    
 
 
     #[abi(embed_v0)]
@@ -78,34 +88,19 @@ mod LayerAkira {
 
     //  
     #[constructor]
-    fn constructor(ref self: ContractState,wrapped_native_token:ContractAddress,fee_recipient:ContractAddress,
-                max_slow_mode_delay:SlowModeDelay, withdraw_max_action_cost:u32, exchange_invoker:ContractAddress) {
+    fn constructor(ref self: ContractState,
+                wrapped_native_token:ContractAddress,
+                fee_recipient:ContractAddress,
+                max_slow_mode_delay:SlowModeDelay, 
+                withdraw_max_action_cost:u32,
+                exchange_invoker:ContractAddress) {
         self.max_slow_mode_delay.write(max_slow_mode_delay);
         self.max_withdraw_action_cost.write(withdraw_max_action_cost);
-        self.balancer_s.initializer(wrapped_native_token, fee_recipient,1000);
+        self.balancer_s.initializer(fee_recipient, wrapped_native_token, 1000);
         self.withdraw_s.initializer(max_slow_mode_delay, withdraw_max_action_cost);
         self.exchange_invokers.write(exchange_invoker, true);
-        // self.balancer_s.wrapped_native_token.write(1.try_into().unwrap());
-        // let ETH_address: ContractAddress =
-        //     0x049D36570D4e46f48e99674bd3fcc84644DdD6b96F7C741B1562B82f9e004dC7
-        //     .try_into()
-        //     .unwrap();
-        // self.ssc_s.name.write('Spotify');
-        // self
-        //     .ssc_s
-        //     .sub_id_to_sub_info
-        //     .write(
-        //         0,
-        //         Subscription {
-        //             payment_amount: 1,
-        //             payment_token: ETH_address,
-        //             sub_period_in_seconds: 1000,
-        //             sub_id: 0,
-        //             max_periods_allowed: 5,
-        //         }
-        //     );
-        // self.ssc_s.fee_recipient.write(get_contract_address());
-        // self.ssc_s.bips_reward.write(0);
+        // 0.2 eth, punishment factor == 10_000 bips
+        self.router_s.initializer(max_slow_mode_delay, wrapped_native_token, 200_000_000_000_000_000, 10_000);
     }
 
     #[external(v0)]
@@ -121,6 +116,15 @@ mod LayerAkira {
         self.safe_trade_s.apply_trades(taker_orders, maker_orders, iters, gas_price);
         self.balancer_s.latest_gas.write(gas_price);
     }
+
+    #[external(v0)]
+    fn apply_unsafe_trade(ref self: ContractState, taker_order:SignedOrder, maker_orders: Array<SignedOrder>, total_amount_matched:u256,  gas_price:u256) -> bool {
+        assert(self.exchange_invokers.read(get_caller_address()), 'Only whitelisted invokers');
+        let res = self.unsafe_trade_s.apply_trades_simple(taker_order, maker_orders, total_amount_matched, gas_price);
+        self.balancer_s.latest_gas.write(gas_price);
+        return res;
+    }
+
 
 
     #[event]

@@ -30,6 +30,8 @@ trait ILayerAkira<TContractState> {
 
 
 
+    fn get_router(self:@TContractState, signer:ContractAddress) -> ContractAddress;
+    fn get_route_amount(self:@TContractState) -> u256;
 
     fn router_deposit(ref self:TContractState, router:ContractAddress, coin:ContractAddress, amount:u256);
     
@@ -40,10 +42,10 @@ trait ILayerAkira<TContractState> {
     fn register_router(ref self: TContractState);
 
     // if router wish to bind new signers
-    fn add_binding(ref self: TContractState, signer: ContractAddress);
+    fn add_router_binding(ref self: TContractState, signer: ContractAddress);
 
     // if some signer key gets compromised router can safely remove them
-    fn remove_binding(ref self: TContractState, signer: ContractAddress);
+    fn remove_router_binding(ref self: TContractState, signer: ContractAddress);
 
     fn request_onchain_deregister(ref self: TContractState);
     
@@ -53,7 +55,7 @@ trait ILayerAkira<TContractState> {
     fn validate_router(self: @TContractState, message: felt252, signature: (felt252, felt252), signer: ContractAddress, router:ContractAddress) -> bool;
 
     // in case of failed action due to wrong taker we charge this amount
-    fn get_punishment_factor_bips(self: @TContractState) -> u256;
+    fn get_punishment_factor_bips(self: @TContractState) -> u16;
 
     fn is_registered(self: @TContractState, router: ContractAddress) -> bool;
 
@@ -110,5 +112,6 @@ trait ILayerAkira<TContractState> {
     fn apply_withdraw(ref self: TContractState, signed_withdraw: SignedWithdraw, gas_price:u256);
 
     fn apply_safe_trade(ref self: TContractState, taker_orders:Array<SignedOrder>, maker_orders: Array<SignedOrder>, iters:Array<(u8,bool)>, gas_price:u256);
-
+    
+    fn apply_unsafe_trade(ref self: TContractState, taker_order:SignedOrder, maker_orders: Array<SignedOrder>, total_amount_matched:u256,  gas_price:u256) -> bool; 
 }

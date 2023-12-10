@@ -16,10 +16,10 @@ trait IRouter<TContractState> {
     fn register_router(ref self: TContractState);
 
     // if router wish to bind new signers
-    fn add_binding(ref self: TContractState, signer: ContractAddress);
+    fn add_router_binding(ref self: TContractState, signer: ContractAddress);
 
     // if some signer key gets compromised router can safely remove them
-    fn remove_binding(ref self: TContractState, signer: ContractAddress);
+    fn remove_router_binding(ref self: TContractState, signer: ContractAddress);
 
     fn request_onchain_deregister(ref self: TContractState);
     
@@ -29,13 +29,17 @@ trait IRouter<TContractState> {
     fn validate_router(self: @TContractState, message: felt252, signature: (felt252, felt252), signer: ContractAddress, router:ContractAddress) -> bool;
 
     // in case of failed action due to wrong taker we charge this amount
-    fn get_punishment_factor_bips(self: @TContractState) -> u256;
+    fn get_punishment_factor_bips(self: @TContractState) -> u16;
 
     fn is_registered(self: @TContractState, router: ContractAddress) -> bool;
 
     fn have_sufficient_amount_to_route(self: @TContractState, router:ContractAddress) -> bool;
 
     fn balance_of_router(self:@TContractState, router:ContractAddress, coin:ContractAddress)->u256;
+
+    fn get_router(self:@TContractState, signer:ContractAddress) -> ContractAddress;
+
+    fn get_route_amount(self:@TContractState) -> u256;
 }
 
 
@@ -46,7 +50,6 @@ mod router_component {
     use starknet::{get_caller_address,get_contract_address,get_block_timestamp};
     use starknet::info::get_block_number;
     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait, IERC20Dispatcher};
-    
 
 
 
@@ -107,13 +110,15 @@ mod router_component {
         registered:LegacyMap::<ContractAddress,bool>,
         native_base_token:ContractAddress,
         signer_to_router:LegacyMap<ContractAddress,ContractAddress>,
-        pinishment_bips:u256
-
-        
+        pinishment_bips:u16   
     }
 
     #[embeddable_as(Routable)]
     impl RoutableImpl<TContractState, +HasComponent<TContractState>> of super::IRouter<ComponentState<TContractState>> {
+
+        fn get_router(self:@ComponentState<TContractState>, signer:ContractAddress) -> ContractAddress { self.signer_to_router.read(signer)}
+
+        fn get_route_amount(self:@ComponentState<TContractState>) -> u256 { 2 * self.min_to_route.read() }
         
         fn router_deposit(ref self:ComponentState<TContractState>, router:ContractAddress, coin:ContractAddress, amount:u256) {
             let erc20 = IERC20Dispatcher{contract_address: coin};
@@ -122,10 +127,11 @@ mod router_component {
             
             let pre = erc20.balanceOf(contract_addr);
             erc20.transferFrom(caller, contract_addr, amount);
-            assert(erc20.balanceOf(contract_addr) - pre == amount, 'WRING_TFER');
+            assert(erc20.balanceOf(contract_addr) - pre == amount, 'WRONG_TFER');
             
-            self.token_to_user.write((coin,router),self.token_to_user.read((coin,router)) + amount);
-            self.emit(Deposit{router:router,token:coin,funder:caller,amount:amount});
+            let new_balance = self.token_to_user.read((coin, router)) + amount;
+            self.token_to_user.write((coin, router), new_balance);
+            self.emit(Deposit{router:router, token:coin, funder:caller, amount:amount});
         }
 
         fn router_withdraw(ref self: ComponentState<TContractState>, coin: ContractAddress, amount: u256, receiver:ContractAddress) {
@@ -146,10 +152,10 @@ mod router_component {
             let native_balance = self.token_to_user.read( (self.native_base_token.read(), caller));
             assert(native_balance >= 2 * self.min_to_route.read(), 'FEW_DEPOSITED');
             self.registered.write(caller, true);
-            self.emit(Registration{router:caller,status:0});
+            self.emit(Registration{router:caller, status:0});
         }
 
-        fn add_binding(ref self: ComponentState<TContractState>, signer: ContractAddress){
+        fn add_router_binding(ref self: ComponentState<TContractState>, signer: ContractAddress){
             let router = get_caller_address();
             assert(self.registered.read(router) ,'NOT_REGISTERED');
             let cur_router = self.signer_to_router.read(signer);
@@ -158,7 +164,7 @@ mod router_component {
             self.emit(Binding{router,signer,is_added:true});
         }
         // TODO: LATER MAKE IT WITH DELAY TO AVOID ON_PURPOSE_REMOVAL
-        fn remove_binding(ref self: ComponentState<TContractState>, signer: ContractAddress){
+        fn remove_router_binding(ref self: ComponentState<TContractState>, signer: ContractAddress){
             let router = get_caller_address();
             assert(self.registered.read(router) ,'NOT_REGISTERED');
             let cur_router = self.signer_to_router.read(signer);
@@ -194,12 +200,12 @@ mod router_component {
             let actual_router = self.signer_to_router.read(signer);
             if actual_router != router {return false;}
             assert(self.registered.read(router),'NOT_REGISTERED');
-            let (sig_r,sig_s) = signature;
+            let (sig_r, sig_s) = signature;
             return check_ecdsa_signature(message, signer.into(), sig_r, sig_s);
         }
 
 
-        fn get_punishment_factor_bips(self: @ComponentState<TContractState>) -> u256 { return self.pinishment_bips.read();}
+        fn get_punishment_factor_bips(self: @ComponentState<TContractState>) -> u16 { return self.pinishment_bips.read();}
 
         
         fn is_registered(self: @ComponentState<TContractState>, router: ContractAddress) -> bool{ return self.registered.read(router);}
@@ -210,6 +216,16 @@ mod router_component {
 
         fn balance_of_router(self:@ComponentState<TContractState>, router:ContractAddress, coin:ContractAddress)-> u256 {
             return self.token_to_user.read((coin,router));
+        }
+    }
+
+    #[generate_trait]
+    impl InternalRoutableImpl<TContractState, +HasComponent<TContractState>> of InternalRoutable<TContractState> {
+        fn initializer(ref self: ComponentState<TContractState>, delay:SlowModeDelay, wrapped_native_token:ContractAddress, min_to_route:u256, pinishment_bips:u16 ) {
+            self.min_to_route.write(min_to_route); 
+            self.native_base_token.write(wrapped_native_token);
+            self.pinishment_bips.write(pinishment_bips);
+            self.delay.write(delay);            
         }
     }
 
