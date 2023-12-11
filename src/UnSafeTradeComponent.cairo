@@ -96,9 +96,8 @@ mod unsafe_trade_component {
             let taker_order = signed_taker_order.order;
             let taker_hash = taker_order.get_poseidon_hash();
             let mut taker_fill_info = self.orders_trade_info.read(taker_hash);
-
             self._do_part_taker_validate(signed_taker_order, taker_hash, taker_fill_info, trades);
-            
+                        
             // TODO bit dumb that it fires exception, how reimburse in that case? cause custom contract can force fails
             let (mut amount_out, gas_spent) = if check_sign(taker_order.maker, taker_hash, signed_taker_order.router_sign) {
                             self._prepare_taker(taker_order, total_amount_matched, exchange, trades, gas_price, total_amount_matched)  } 
@@ -108,20 +107,28 @@ mod unsafe_trade_component {
             let mut balancer = self.get_balancer_mut();
             let taker_fees = taker_order.fee;
 
+            let fee_recipinet = balancer.fee_recipient.read();
+            assert(taker_order.fee.trade_fee.recipient == fee_recipinet, 'WRONG_TAKER_FEE_RECIPIENT');
+            
+
             let failed = amount_out == 0;
             let mut taker_received = 0;
             loop {
                 match signed_maker_orders.pop_front(){
                     Option::Some(signed_maker_order) => {
+                        let maker_order = signed_maker_order.order;
+                        
                         let (settle_px, amount_quote, amount_base, mut maker_fill_info, maker_hash) = 
                                     self._do_maker_checks_and_common(signed_maker_order, taker_order, taker_fill_info);
+                        
+                        assert(maker_order.fee.trade_fee.recipient == fee_recipinet, 'WRONG_MAKER_FEE_RECIPEINT');
+            
                         if failed {
                             self.punish_router_simple(taker_fees.gas_fee, taker_fees.router_fee.recipient, 
                                         signed_maker_order.order.maker, taker_order.maker, gas_price, taker_hash, maker_hash);
                             continue;
                         }
-                        let maker_order = signed_maker_order.order;
-                        let (b,q) = taker_order.ticker; 
+                        let (b, q) = taker_order.ticker; 
                         balancer.rebalance_after_trade(maker_order.maker, 
                                 taker_order.maker,taker_order.ticker, amount_base, amount_quote, maker_order.flags.is_sell_side);
                         balancer.apply_maker_fee(maker_order.maker, maker_order.fee.trade_fee, maker_order.flags.is_sell_side,

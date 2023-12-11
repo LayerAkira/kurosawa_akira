@@ -67,12 +67,15 @@ mod safe_trade_component {
             let mut first_iter = true;
             assert(!use_prev_maker, 'WRONG_FIRST_ITER');
 
+            let fee_recipient = balance.fee_recipient.read();
+
             let (mut total_base, mut total_quote) = (0,0);
             loop {
                 match iters.pop_front(){
                     Option::Some((trades ,mut use_prev_maker)) => {
                         let signed_taker_order = taker_orders.pop_front().unwrap();
                         let (taker_order, taker_hash, mut taker_fill_info) =  self.part_validate_taker(signed_taker_order, trades); 
+                        assert(taker_order.fee.trade_fee.recipient == fee_recipient, 'WRONG_TAKER_FEE_RECIPIENT');
                         let mut cur = 0;
 
                         loop {
@@ -88,6 +91,9 @@ mod safe_trade_component {
                                 maker_fill_info = self.orders_trade_info.read(maker_hash);
 
                                 do_maker_checks(maker_order, maker_fill_info, contract.get_nonce(maker_order.maker));
+                                assert(maker_order.fee.trade_fee.recipient == fee_recipient, 'WRONG_MAKER_FEE_RECIPIENT');
+            
+
                                 let (r, s) = signed_order.sign;
                                 assert(contract.check_sign(signed_order.order.maker, maker_hash, r, s), 'WRONG_SIGN_MAKER');
                                 use_prev_maker = false;
