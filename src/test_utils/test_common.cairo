@@ -33,11 +33,11 @@
     }
 
 
-    fn get_fee_recipient_exchange()->ContractAddress {0x666.try_into().unwrap()}
+    fn get_fee_recipient_exchange()->ContractAddress {0x6fd7354452299b66076d0a7e88a1635cb08506f738434e95ef5cf4ee5af2e0c.try_into().unwrap()}
 
-    fn get_slow_mode()->SlowModeDelay { SlowModeDelay {block:5,ts:5*60}}  //5 blocks and 300seconds
+    fn get_slow_mode()->SlowModeDelay { SlowModeDelay {block:5, ts:5 * 60}}  //5 blocks and 300seconds
 
-    fn get_withdraw_action_cost()->u32 {100} 
+    fn get_withdraw_action_cost()->u32 { 100 } 
 
     fn spawn_exchange() -> ContractAddress {
         let cls = declare('LayerAkira');
@@ -56,6 +56,10 @@
         constructor.append(get_withdraw_action_cost().into());
 
         constructor.append(get_fee_recipient_exchange().into());
+        // 'STARRT'.print();
+        // constructor.clone().print();
+        // 'STOP'.print();
+        
         let deployed = cls.deploy(@constructor).unwrap();
         return deployed;
     }

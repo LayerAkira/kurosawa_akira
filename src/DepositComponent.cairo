@@ -23,9 +23,7 @@ mod deposit_component {
     struct Deposit {
         #[key]
         receiver: ContractAddress,
-        #[key]
         token: ContractAddress,
-        #[key]
         funder:ContractAddress,
         amount: u256
     }
