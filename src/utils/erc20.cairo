@@ -15,10 +15,10 @@ trait IERC20<TContractState> {
         ref self: TContractState, sender: ContractAddress, recipient: ContractAddress, amount: u256
     ) -> bool;
     fn approve(ref self: TContractState, spender: ContractAddress, amount: u256) -> bool;
-    fn increase_allowance(
+    fn increaseAllowance(
         ref self: TContractState, spender: ContractAddress, added_value: u256
     ) -> bool;
-    fn decrease_allowance(
+    fn decreaseAllowance(
         ref self: TContractState, spender: ContractAddress, subtracted_value: u256
     ) -> bool;
 }
