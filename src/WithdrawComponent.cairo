@@ -58,10 +58,8 @@ mod withdraw_component {
         maker: ContractAddress,
         #[key]
         token: ContractAddress,
-        reciever:ContractAddress,
         amount: u256,
-        salt: felt252,
-        gas_fee: GasFee,
+        key:felt252
     }
 
     #[derive(Drop, starknet::Event)]
@@ -97,8 +95,7 @@ mod withdraw_component {
             self.validate(withdraw.maker, withdraw.token, withdraw.amount, withdraw.gas_fee);
             self.pending_reqs.write(key, (SlowModeDelay {block:get_block_number(), ts: get_block_timestamp()}, withdraw));
             self.emit(ReqOnChainWithdraw{
-                maker:withdraw.maker,token:withdraw.token,amount:withdraw.amount,salt:withdraw.salt,gas_fee:withdraw.gas_fee,
-                        reciever:withdraw.reciever});
+                maker:withdraw.maker,token:withdraw.token,amount:withdraw.amount, key: withdraw.get_poseidon_hash()});
             
         }
 
