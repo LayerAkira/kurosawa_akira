@@ -32,6 +32,31 @@ mod exchange_balance_logic_component {
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
+        Mint:Mint,
+        Transfer:Transfer,
+        Burn:Burn
+    }
+
+    // Debug events
+    #[derive(Drop, starknet::Event)]
+    struct Mint {
+        token:ContractAddress,
+        to:ContractAddress,
+        amount:u256
+    }
+    #[derive(Drop, starknet::Event)]
+    struct Burn {
+        from:ContractAddress,
+        token:ContractAddress,
+        amount:u256
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct Transfer {
+        token: ContractAddress,
+        from: ContractAddress,
+        to: ContractAddress,
+        amount: u256
     }
 
 
@@ -125,6 +150,7 @@ mod exchange_balance_logic_component {
         ) {
             self._total_supply.write(token, self._total_supply.read(token) + amount);
             self._balances.write((token, to), self._balances.read((token, to)) + amount);
+            self.emit(Mint{to, token, amount});
         }
 
         fn burn(
@@ -137,6 +163,7 @@ mod exchange_balance_logic_component {
             assert(balance >= amount,'FEW_TO_BURN');
             self._balances.write((token, from), balance - amount);
             self._total_supply.write(token, self._total_supply.read(token) - amount);
+            self.emit(Burn{from,token,amount});
         }
         fn internal_transfer(
             ref self: ComponentState<TContractState>,
@@ -148,6 +175,7 @@ mod exchange_balance_logic_component {
             assert(self._balances.read((token, from)) >= amount, 'Few balance');
             self._balances.write((token, from), self._balances.read((token, from)) - amount);
             self._balances.write((token, to), self._balances.read((token, to)) + amount);
+            self.emit(Transfer{from, to, token, amount});
         }
 
         fn validate_and_apply_gas_fee_internal(
@@ -156,13 +184,14 @@ mod exchange_balance_logic_component {
             gas_fee: super::GasFee,
             gas_price: u256,
             times:u8,
-        ) {
+        ) -> u256 {
             if gas_price == 0 || gas_fee.gas_per_action == 0 {
-                return;
+                return 0;
             }
             let (spent, coin) = super::get_gas_fee_and_coin(gas_fee, gas_price, self.wrapped_native_token.read());
             let spent = spent * times.into();
             self.internal_transfer(user, self.fee_recipient.read(), spent, coin);
+            return spent;
         }
 
 
@@ -200,3 +229,8 @@ mod exchange_balance_logic_component {
         }
     }
 }
+
+
+// Created new encrypted keystore file: /Users/mac/.starkli-wallets/deployer/keystore.json
+// Public key: 0x06599a0c34699a5c48ae6ff359decc0618ce982be00654f2b12945cae5bb6788
+// 0x0455e57d60556bf07b184308bc6708caa5b64c7b41178a06092bb8a58057d33b

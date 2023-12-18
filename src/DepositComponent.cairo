@@ -30,9 +30,7 @@ mod deposit_component {
 
 
     #[storage]
-    struct Storage {
-
-    }
+    struct Storage {}
 
     #[embeddable_as(Depositable)]
     impl DepositableImpl<TContractState, +HasComponent<TContractState>,+balance_component::HasComponent<TContractState>,+Drop<TContractState>> of super::IDeposit<ComponentState<TContractState>> {

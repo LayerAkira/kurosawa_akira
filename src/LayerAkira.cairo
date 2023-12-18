@@ -3,6 +3,7 @@
 
 #[starknet::contract]
 mod LayerAkira {
+    use kurosawa_akira::NonceComponent::nonce_component::InternalNonceable;
     use kurosawa_akira::FundsTraits::PoseidonHash;
     use starknet::{ContractAddress, get_caller_address};
 
@@ -22,8 +23,9 @@ mod LayerAkira {
     use kurosawa_akira::UnSafeTradeComponent::unsafe_trade_component as unsafe_trade_component;
     use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
     use kurosawa_akira::WithdrawComponent::SignedWithdraw;
-    use kurosawa_akira::Order::SignedOrder;
-
+    use kurosawa_akira::Order::{SignedOrder};
+    use kurosawa_akira::NonceComponent::SignedIncreaseNonce;
+    
     use kurosawa_akira::SafeTradeComponent::safe_trade_component::InternalSafeTradable;
     use kurosawa_akira::UnSafeTradeComponent::unsafe_trade_component::InternalUnSafeTradable;
     
@@ -40,7 +42,6 @@ mod LayerAkira {
     component!(path: unsafe_trade_component, storage: unsafe_trade_s, event:UnSafeTradeEvent);
 
     
-
 
     #[abi(embed_v0)]
     impl ExchangeBalancebleImpl = exchange_balance_logic_component::ExchangeBalanceble<ContractState>;
@@ -59,7 +60,7 @@ mod LayerAkira {
     #[abi(embed_v0)]
     impl UnSafeTradableImpl = unsafe_trade_component::UnSafeTradable<ContractState>;
 
-
+    
 
     #[storage]
     struct Storage {
@@ -104,14 +105,46 @@ mod LayerAkira {
     }
 
     #[external(v0)]
+    fn apply_increase_nonce(ref self: ContractState, signed_nonce: SignedIncreaseNonce, gas_price:u256) {
+        assert(self.exchange_invokers.read(get_caller_address()), 'Only whitelisted invokers');
+        self.nonce_s.apply_increase_nonce(signed_nonce,gas_price);
+        self.balancer_s.latest_gas.write(gas_price);
+    }
+
+    #[external(v0)]
+    fn apply_increase_nonces(ref self: ContractState, mut signed_nonces: Array<SignedIncreaseNonce>, gas_price:u256) {
+        assert(self.exchange_invokers.read(get_caller_address()), 'Only whitelisted invokers');
+        loop {
+            match signed_nonces.pop_front(){
+                Option::Some(signed_nonce) => { self.nonce_s.apply_increase_nonce(signed_nonce,gas_price);},
+                Option::None(_) => {break;}
+            };
+        };
+        self.balancer_s.latest_gas.write(gas_price);
+    }
+
+    #[external(v0)]
     fn apply_withdraw(ref self: ContractState, signed_withdraw: SignedWithdraw, gas_price:u256) {
-        assert(self.exchange_invokers.read(get_caller_address()), 'Only whitelisted invokers'); 
+        assert(self.exchange_invokers.read(get_caller_address()), 'Only whitelisted invokers');
         self.withdraw_s.apply_withdraw(signed_withdraw, gas_price);
         self.balancer_s.latest_gas.write(gas_price);
     }
 
     #[external(v0)]
-    fn apply_safe_trade(ref self: ContractState, taker_orders:Array<SignedOrder>, maker_orders: Array<SignedOrder>, iters:Array<(u8,bool)>, gas_price:u256) {
+    fn apply_withdraws(ref self: ContractState, mut signed_withdraws: Array<SignedWithdraw>, gas_price:u256) {
+        assert(self.exchange_invokers.read(get_caller_address()), 'Only whitelisted invokers');
+        loop {
+            match signed_withdraws.pop_front(){
+                Option::Some(signed_withdraw) => {self.withdraw_s.apply_withdraw(signed_withdraw, gas_price)},
+                Option::None(_) => {break;}
+            };
+        };
+        self.balancer_s.latest_gas.write(gas_price);
+
+    }
+
+    #[external(v0)]
+    fn apply_safe_trade(ref self: ContractState, taker_orders:Array<SignedOrder>, maker_orders: Array<SignedOrder>, iters:Array<(u8, bool)>, gas_price:u256) {
         assert(self.exchange_invokers.read(get_caller_address()), 'Only whitelisted invokers'); 
         self.safe_trade_s.apply_trades(taker_orders, maker_orders, iters, gas_price);
         self.balancer_s.latest_gas.write(gas_price);

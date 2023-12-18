@@ -44,6 +44,8 @@ struct OrderFlags {
     to_safe_book: bool
 }
 
+// TODO created at
+
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct Order {
     maker: ContractAddress,
@@ -56,7 +58,8 @@ struct Order {
     nonce: u32,
     flags: OrderFlags,
     router_signer: ContractAddress,
-    base_asset:u256
+    base_asset: u256,
+    created_at:u32
 }
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
@@ -73,7 +76,6 @@ struct OrderTradeInfo {
     num_trades_happened: u8
 }
 
-
 fn validate_maker_order(order: Order, orders_trade_info:OrderTradeInfo, nonce:u32, settlement_price:u256) -> (u256,u256) {
     let remaining = order.quantity - orders_trade_info.filled_amount;
     assert(!order.flags.is_market_order, 'WRONG_MARKET_TYPE');
@@ -87,7 +89,7 @@ fn validate_maker_order(order: Order, orders_trade_info:OrderTradeInfo, nonce:u3
     assert(!order.flags.full_fill_only, 'WRONG_MAKER_FLAG');
 
     if orders_trade_info.filled_amount > 0 {
-        return (remaining,orders_trade_info.last_traded_px);
+        return (remaining, orders_trade_info.last_traded_px);
     }
     return (remaining, order.price);
 }
@@ -100,9 +102,9 @@ fn validate_taker_order(order: Order, orders_trade_info:OrderTradeInfo, nonce:u3
     assert(remaining > 0, 'MAKER_ALREADY_FILLED');
     assert(order.nonce >= nonce, 'OLD_NONCE');
     if !order.flags.is_sell_side {
-        assert(order.price <= settlement_price, 'BUY_PROTECTION_PRICE_FAILED');
+        assert(settlement_price <= order.price, 'BUY_PROTECTION_PRICE_FAILED');
     } else {
-        assert(order.price >= settlement_price, 'SELL_PROTECTION_PRICE_FAILED');
+        assert(settlement_price >= order.price, 'SELL_PROTECTION_PRICE_FAILED');
     }
     
         if orders_trade_info.filled_amount > 0 {
@@ -135,8 +137,12 @@ fn get_limit_px(maker_order:Order, maker_fill_info:OrderTradeInfo) -> (u256, u25
 }
 
 fn do_taker_price_checks(taker_order:Order, settle_px:u256, taker_fill_info:OrderTradeInfo)->u256 {
-    if !taker_order.flags.is_sell_side { assert(taker_order.price <= settle_px, 'BUY_PROTECTION_PRICE_FAILED');}
-    else { assert(taker_order.price >= settle_px, 'SELL_PROTECTION_PRICE_FAILED'); }
+    if !taker_order.flags.is_sell_side { 
+        assert(settle_px <= taker_order.price, 'BUY_PROTECTION_PRICE_FAILED');
+    }
+    else { 
+        assert(settle_px >= taker_order.price, 'SELL_PROTECTION_PRICE_FAILED'); 
+    }
 
     if taker_fill_info.filled_amount > 0 {
         if taker_order.flags.best_level_only { assert(taker_fill_info.last_traded_px == settle_px , 'BEST_LVL_ONLY',);}

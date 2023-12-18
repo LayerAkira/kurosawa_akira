@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod tests_deposit_and_withdrawal {
+mod tests_deposit_and_withdrawal_and_nonce {
     use kurosawa_akira::test_utils::test_common::{deposit,get_eth_addr,tfer_eth_funds_to,get_fee_recipient_exchange,get_slow_mode,get_trader_address_1,
     get_withdraw_action_cost,spawn_exchange,prepare_double_gas_fee_native,get_trader_signer_and_pk_1,sign};
     use kurosawa_akira::FundsTraits::PoseidonHash;
@@ -16,7 +16,7 @@ mod tests_deposit_and_withdrawal {
     use serde::Serde;
     use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
     use kurosawa_akira::FundsTraits::check_sign;
-    
+    use kurosawa_akira::NonceComponent::{IncreaseNonce,SignedIncreaseNonce};
     
     #[test]
     #[fork("block_based")]
@@ -30,13 +30,13 @@ mod tests_deposit_and_withdrawal {
 
     fn get_withdraw(trader:ContractAddress, amount:u256, token:ContractAddress, akira:ILayerAkiraDispatcher, salt:felt252)-> Withdraw {
         let gas_fee = prepare_double_gas_fee_native(akira,100);
-        let amount = if token == akira.get_wrapped_native_token() { amount - gas_fee.gas_per_action.into() * gas_fee.max_gas_price} else {amount};
+        let amount = if token == akira.get_wrapped_native_token() { amount} else {amount};
         return Withdraw {maker:trader, token, amount, salt, gas_fee, reciever:trader};
         
     }
 
     fn request_onchain_withdraw(trader:ContractAddress, amount:u256, token:ContractAddress, akira:ILayerAkiraDispatcher, salt:felt252)-> (Withdraw,SlowModeDelay) {
-        let withdraw = get_withdraw(trader,amount,token,akira,salt);
+        let withdraw = get_withdraw(trader, amount, token, akira, salt);
         start_prank(akira.contract_address, trader); akira.request_onchain_withdraw(withdraw); stop_prank(akira.contract_address);
         let (request_time, w) = akira.get_pending_withdraw(trader, token);
         assert(withdraw == w, 'WRONG_WTIHDRAW_RETURNED');
@@ -90,7 +90,7 @@ mod tests_deposit_and_withdrawal {
 
     #[test]
     #[fork("block_based")]
-    #[should_panic(expected: ('WRONG_MAKER',))]
+    #[should_panic(expected: ('ALREADY_COMPLETED',))]
     fn test_withdraw_eth_direct_delayed_cant_apply_twice() {
         let akira = ILayerAkiraDispatcher{contract_address:spawn_exchange()};
         let (trader,eth_addr,amount_deposit) = (get_trader_address_1(), get_eth_addr(),1_000_000);
@@ -108,10 +108,17 @@ mod tests_deposit_and_withdrawal {
         let (trader, eth_addr, amount_deposit) = (get_trader_address_1(), get_eth_addr(),1_000_000);
         tfer_eth_funds_to(trader, amount_deposit); deposit(trader, amount_deposit, eth_addr, akira); 
         let(withdraw, _) = request_onchain_withdraw(trader, amount_deposit, eth_addr, akira, 0);
+
+        let erc = IERC20Dispatcher{contract_address: eth_addr};
+        let b = erc.balanceOf(trader);
+
         start_prank(akira.contract_address, get_fee_recipient_exchange());
         akira.apply_withdraw(SignedWithdraw{withdraw, sign:(0.into(), 0.into())}, 100);
         stop_prank(akira.contract_address);
+        assert(amount_deposit - withdraw.gas_fee.gas_per_action.into() * 100 == erc.balanceOf(trader) - b ,'WRONG_SEND');
+        assert(akira.balanceOf(trader, eth_addr) == 0,'WRONG_BURN');
     }
+
     #[test]
     #[fork("block_based")]
     fn test_withdraw_eth_indirect() {
@@ -132,7 +139,7 @@ mod tests_deposit_and_withdrawal {
 
     #[test]
     #[fork("block_based")]
-    #[should_panic(expected: ('ALREADY_APPLIED',))]
+    #[should_panic(expected: ('ALREADY_COMPLETED',))]
     fn test_withdraw_eth_indirect_twice() {
         let akira = ILayerAkiraDispatcher{contract_address:spawn_exchange()};
         let (trader, eth_addr, amount_deposit) = (get_trader_address_1(), get_eth_addr(),1_000_000);
@@ -150,7 +157,47 @@ mod tests_deposit_and_withdrawal {
         akira.apply_withdraw(SignedWithdraw{withdraw:w, sign}, 100);
         
         stop_prank(akira.contract_address);
-    }  
+    } 
+    #[test]
+    #[fork("block_based")]
+    fn test_increase_nonce() {
+        let akira = ILayerAkiraDispatcher{contract_address:spawn_exchange()};
+        let (trader, eth_addr, amount_deposit) = (get_trader_address_1(), get_eth_addr(),1_000_000);
+        let (pub, priv) = get_trader_signer_and_pk_1();
+        tfer_eth_funds_to(trader, amount_deposit); deposit(trader, amount_deposit, eth_addr, akira); 
+        let nonce = IncreaseNonce{maker:trader ,new_nonce:1, gas_fee:prepare_double_gas_fee_native(akira,100), salt:0};
+
+        start_prank(akira.contract_address, trader); akira.bind_to_signer(pub.try_into().unwrap()); stop_prank(akira.contract_address); 
+
+        start_prank(akira.contract_address, get_fee_recipient_exchange());
+        let sign = sign(nonce.get_poseidon_hash(), pub, priv);
+        akira.apply_increase_nonce(SignedIncreaseNonce{increase_nonce:nonce, sign}, 100);        
+        stop_prank(akira.contract_address);
+    } 
+
+    #[test]
+    #[fork("block_based")]
+    fn dd() {
+
+        let w = Withdraw{
+            maker: 0x024e8044680FEcDe3f23d4E270c7b0fA23c487Ae7B31b812ff72aFa7Bc7f6116.try_into().unwrap(),
+            token:0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7.try_into().unwrap(),
+            amount:199311999985,
+            gas_fee:GasFee{gas_per_action:3000,
+                         fee_token: 0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7.try_into().unwrap(),
+                         max_gas_price:1000, conversion_rate:(1, 1)
+                         },
+                         
+            salt:0,
+            reciever:0x024e8044680FEcDe3f23d4E270c7b0fA23c487Ae7B31b812ff72aFa7Bc7f6116.try_into().unwrap()
+        };
+
+        let mut serialized: Array<felt252> = ArrayTrait::new();
+        Serde::<Withdraw>::serialize(@w, ref serialized);
+        // serialized.print();
+        w.get_poseidon_hash().print();
+    }
+
 }
 
 mod test_common_trade {
@@ -221,7 +268,8 @@ mod test_common_trade {
                 router_fee: router_fee,
                 gas_fee: prepare_double_gas_fee_native(akira, get_swap_gas_cost())
             },
-            flags
+            flags,
+            created_at:0
         };
         let hash = order.get_poseidon_hash();
         let (pub, pk) = if maker == get_trader_address_1() {
@@ -393,7 +441,7 @@ mod tests_unsafe_trade {
 
     use super::test_common_trade:: {prepare, get_maker_taker_fees, get_swap_gas_cost,spawn_order, get_zero_router_fee, zero_router,register_router};
     
-    fn grant_allowances(akira:ILayerAkiraDispatcher,trader:ContractAddress,token:ContractAddress, amount:u256) {
+    fn grant_allowances(akira:ILayerAkiraDispatcher, trader:ContractAddress, token:ContractAddress, amount:u256) {
         start_prank(token, trader);
         IERC20Dispatcher{contract_address:token}.increaseAllowance(akira.contract_address,amount);
         stop_prank(token);
@@ -554,6 +602,9 @@ mod tests_unsafe_trade {
     }  
 
 
+
+
+
     #[test]
     #[fork("block_based")]
     fn test_punish_router() {
@@ -588,4 +639,20 @@ mod tests_unsafe_trade {
         let charge = 2 * gas_fee * akira.get_punishment_factor_bips().into() / 10000;
         assert(router_b - akira.balance_of_router(router, eth) == charge, 'WRONG_RECEIVED');
     }  
+
 }
+
+//     set_up = f"--rpc {node_url} --account {account} --keystore {keystore} --keystore-password {keystore_password}"
+
+
+// starkli declare target/dev/kurosawa_akira_LayerAkira.compiled_contract_class.json --network=goerli-1 --compiler-version=2.1.0 
+
+
+
+// starkli declare target/dev/kurosawa_akira_LayerAkira.compiled_contract_class.json --network=goerli-1 --compiler-version=2.1.0 --rpc https://starknet-testnet.public.blastapi.io --network=goerli-1 --account 0x06599a0c34699a5c48ae6ff359decc0618ce982be00654f2b12945cae5bb6788
+
+
+// Enter private key: 
+// Enter password: 
+// Created new encrypted keystore file: /Users/mac/.starkli-wallets/deployer/keystore.json
+// Public key: 0x06599a0c34699a5c48ae6ff359decc0618ce982be00654f2b12945cae5bb6788

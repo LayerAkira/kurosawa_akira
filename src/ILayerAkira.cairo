@@ -2,8 +2,10 @@
 use starknet::{get_contract_address, ContractAddress};
 use kurosawa_akira::Order::{SignedOrder,Order,validate_maker_order,validate_taker_order,OrderTradeInfo,OrderFee,FixedFee,
         get_feeable_qty,get_limit_px,do_taker_price_checks,do_maker_checks}; 
- use kurosawa_akira::WithdrawComponent::{Withdraw,SignedWithdraw};
-  use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
+use kurosawa_akira::WithdrawComponent::{Withdraw,SignedWithdraw};
+use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
+use kurosawa_akira::NonceComponent::SignedIncreaseNonce;
+
 #[starknet::interface]
 trait ILayerAkira<TContractState> {
     fn total_supply(self: @TContractState, token: ContractAddress) -> u256;
@@ -108,6 +110,8 @@ trait ILayerAkira<TContractState> {
 
 
     // layer akira
+
+    fn apply_increase_nonce(ref self: TContractState, signed_nonce: SignedIncreaseNonce, gas_price:u256);
 
     fn apply_withdraw(ref self: TContractState, signed_withdraw: SignedWithdraw, gas_price:u256);
 

@@ -77,15 +77,15 @@ mod nonce_component {
      #[generate_trait]
     impl InternalWithdrawableImpl<TContractState, +HasComponent<TContractState>,
     +balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of InternalNonceable<TContractState> {
-        fn apply_increase_nonce(ref self: ComponentState<TContractState>, signed_nonce_increase: super::SignedIncreaseNonce) {
+        fn apply_increase_nonce(ref self: ComponentState<TContractState>, signed_nonce_increase: super::SignedIncreaseNonce, gas_price:u256) {
             let nonce_increase = signed_nonce_increase.increase_nonce;
             let key = nonce_increase.get_poseidon_hash();
             let (r,s) = signed_nonce_increase.sign;
-            assert(self.get_contract().check_sign(nonce_increase.maker,key,r,s),'WRONG_SIG');
+            assert(self.get_contract().check_sign(nonce_increase.maker, key, r, s),'WRONG_SIG');
             assert(nonce_increase.new_nonce > self.nonces.read(nonce_increase.maker), 'WRONG_NONCE');
             
             let mut balancer = self.get_balancer_mut();
-            balancer.validate_and_apply_gas_fee_internal(nonce_increase.maker, nonce_increase.gas_fee, balancer.get_latest_gas_price(), 1);
+            balancer.validate_and_apply_gas_fee_internal(nonce_increase.maker, nonce_increase.gas_fee, gas_price, 1);
             self.nonces.write(nonce_increase.maker, nonce_increase.new_nonce);
 
             self.emit(NonceIncrease{ maker: nonce_increase.maker,new_nonce:nonce_increase.new_nonce});
