@@ -119,48 +119,39 @@ mod unsafe_trade_component {
                 match signed_maker_orders.pop_front(){
                     Option::Some(signed_maker_order) => {
                         let maker_order = signed_maker_order.order;
-                        
                         let (settle_px, amount_quote, amount_base, mut maker_fill_info, maker_hash) = 
                                     self._do_maker_checks_and_common(signed_maker_order, taker_order, taker_fill_info);
-                        
                         assert(maker_order.fee.trade_fee.recipient == fee_recipinet, 'WRONG_MAKER_FEE_RECIPEINT');
             
                         if failed {
                             self.punish_router_simple(taker_fees.gas_fee, taker_fees.router_fee.recipient, 
                                         signed_maker_order.order.maker, taker_order.maker, gas_price, taker_hash, maker_hash);
-                            self.emit(UnsafeTrade{
-                                maker:signed_maker_order.order.maker,taker:taker_order.maker, ticker:taker_order.ticker,
-                                router:taker_order.fee.router_fee.recipient,
-                                amount_base, amount_quote, is_sell_side: !taker_order.flags.is_sell_side, is_failed:true
-                            });
-                            continue;
-                        }
-                        let (b, q) = taker_order.ticker; 
-                        balancer.rebalance_after_trade(maker_order.maker, 
-                                taker_order.maker,taker_order.ticker, amount_base, amount_quote, maker_order.flags.is_sell_side);
-                        balancer.apply_maker_fee(maker_order.maker, maker_order.fee.trade_fee, maker_order.flags.is_sell_side,
-                                 maker_order.ticker, amount_base, amount_quote);
-                                    
+                        } else {
+                            let (b, q) = taker_order.ticker; 
+                            balancer.rebalance_after_trade(maker_order.maker, 
+                                    taker_order.maker, taker_order.ticker, amount_base, amount_quote, maker_order.flags.is_sell_side);
+                            balancer.apply_maker_fee(maker_order.maker, maker_order.fee.trade_fee, maker_order.flags.is_sell_side,
+                                    maker_order.ticker, amount_base, amount_quote);
+
+                            if taker_order.flags.is_sell_side { amount_out -= amount_base; taker_received += amount_quote;
+                            } else { amount_out -= amount_quote; taker_received += amount_base;}
+                        }    
                         maker_fill_info.filled_amount += amount_base;
                         taker_fill_info.filled_amount += amount_base;
                         maker_fill_info.last_traded_px = settle_px;
                         taker_fill_info.last_traded_px = settle_px;
-                        if taker_order.flags.is_sell_side {
-                            amount_out -= amount_base; taker_received += amount_quote;
-                        } else {
-                            amount_out -= amount_quote; taker_received += amount_base;
-                        }
+                        
+                        
                         self.orders_trade_info.write(maker_hash, maker_fill_info);
-
                         self.emit(UnsafeTrade{
                             maker:signed_maker_order.order.maker,taker:taker_order.maker, ticker:taker_order.ticker,
                             router:taker_order.fee.router_fee.recipient,
-                            amount_base, amount_quote, is_sell_side: !taker_order.flags.is_sell_side, is_failed:false
+                            amount_base, amount_quote, is_sell_side: !taker_order.flags.is_sell_side, is_failed:failed
                         });
                                
                     },
                     Option::None(_) => { 
-                        if amount_out == 0 {
+                        if failed {
                             taker_fill_info.filled_amount = taker_order.quantity;
                             self.orders_trade_info.write(taker_hash, taker_fill_info);
                         } else {
