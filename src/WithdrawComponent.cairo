@@ -26,6 +26,8 @@ trait IWithdraw<TContractState> {
     fn request_onchain_withdraw(ref self: TContractState, withdraw: Withdraw);
 
     fn get_pending_withdraw(self:@TContractState, maker:ContractAddress, token:ContractAddress)->(SlowModeDelay,Withdraw);
+
+    fn get_pending_withdraws(self:@TContractState,reqs:Array<(ContractAddress, ContractAddress)>)-> Array<(SlowModeDelay,Withdraw)>;
     
     // can only be performed by the owner
     fn apply_onchain_withdraw(ref self: TContractState, token:ContractAddress, key:felt252);
@@ -91,6 +93,17 @@ mod withdraw_component {
         fn get_pending_withdraw(self:@ComponentState<TContractState>,maker:ContractAddress, token:ContractAddress)->(SlowModeDelay, Withdraw) {
             return self.pending_reqs.read((token, maker));
         }
+
+        fn get_pending_withdraws(self:@ComponentState<TContractState>, mut reqs:Array<(ContractAddress, ContractAddress)>) -> Array<(SlowModeDelay,Withdraw)> {
+            let mut res: Array = ArrayTrait::new();            
+            loop {
+                match reqs.pop_front(){
+                    Option::Some((maker,token)) => { res.append(self.pending_reqs.read((token, maker)));}, Option::None(_) => {break;}
+                };
+            };
+            return res;
+        }
+
 
         // get completed status
 
