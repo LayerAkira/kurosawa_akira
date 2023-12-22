@@ -8,7 +8,8 @@ trait IUnSafeTradeLogic<TContractState> {
 
 #[starknet::component]
 mod unsafe_trade_component {
-    use kurosawa_akira::ExchangeBalanceComponent::INewExchangeBalance;
+    use kurosawa_akira::RouterComponent::router_component::InternalRoutable;
+use kurosawa_akira::ExchangeBalanceComponent::INewExchangeBalance;
     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::InternalExchangeBalanceble;
     use core::{traits::TryInto,option::OptionTrait,array::ArrayTrait};
     use kurosawa_akira::FundsTraits::{PoseidonHash,PoseidonHashImpl,check_sign};
@@ -40,9 +41,7 @@ mod unsafe_trade_component {
 
     #[derive(Drop, starknet::Event)]
     struct UnsafeTrade {
-        #[key]
         maker:ContractAddress,
-        #[key]
         taker:ContractAddress,
         #[key]
         ticker:(ContractAddress,ContractAddress),
@@ -70,15 +69,11 @@ mod unsafe_trade_component {
     struct RouterPunish {
         #[key]
         router:ContractAddress,
-        #[key]
         taker:ContractAddress,
         taker_hash:felt252,
         maker_hash:felt252,
         amount:u256,
     }
-
-
-
 
     #[embeddable_as(UnSafeTradable)]
     impl UnSafeTradableImpl<TContractState, +HasComponent<TContractState>,+INonceLogic<TContractState>,+balance_component::HasComponent<TContractState>,+router_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>,> of super::IUnSafeTradeLogic<ComponentState<TContractState>> {
@@ -289,8 +284,7 @@ mod unsafe_trade_component {
             let router_fee_amount = get_feeable_qty(router_fee, received_amount, false);
             if router_fee_amount > 0 {
                 balancer.burn(taker_order.maker, router_fee_amount, fee_token);
-                let cur_balance = router.token_to_user.read((fee_token,router_fee.recipient));
-                router.token_to_user.write((fee_token, router_fee.recipient), cur_balance + router_fee_amount);
+                router.mint(router_fee.recipient, fee_token, router_fee_amount);
                 self.emit(
                     RouterReward{ router:router_fee.recipient, ticker:taker_order.ticker, order_hash:taker_hash, 
                                     amount:router_fee_amount, taker:taker_order.maker, is_sell_side:!taker_order.flags.is_sell_side
@@ -328,11 +322,8 @@ mod unsafe_trade_component {
             let native_base_token = balancer.get_wrapped_native_token();
             let charged_fee = gas_fee.gas_per_action.into() * gas_px * router.get_punishment_factor_bips().into() / 10000;
             if charged_fee == 0 {return;}
-            let router_balance = router.token_to_user.read((native_base_token, router_addr));
             
-            assert(router_balance >= 2 * charged_fee, 'FEW_BALANCE_TO_PUNISH');
-            router.token_to_user.write((native_base_token, router_addr), router_balance - 2 * charged_fee);
-            
+            router.burn(router_addr, native_base_token, 2 * charged_fee);
             balancer.mint(balancer.fee_recipient.read(), charged_fee, native_base_token);
             balancer.mint(maker, charged_fee, native_base_token);
 

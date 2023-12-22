@@ -34,9 +34,7 @@ mod safe_trade_component {
 
     #[derive(Drop, starknet::Event)]
     struct Trade {
-        #[key]
         maker:ContractAddress,
-        #[key]
         taker:ContractAddress,
         #[key]
         ticker:(ContractAddress,ContractAddress),

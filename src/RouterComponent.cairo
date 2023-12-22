@@ -59,7 +59,9 @@ mod router_component {
         Deposit:  Deposit,
         Withdraw: Withdraw,
         RouterRegistration:Registration,
-        Binding:Binding
+        Binding:Binding,
+        RouterMint:RouterMint,
+        RouterBurn:RouterBurn
     }
 
     #[derive(Drop, starknet::Event)]
@@ -97,14 +99,23 @@ mod router_component {
         is_added:bool
     }
 
-
-
+    #[derive(Drop, starknet::Event)]
+    struct RouterMint {
+        token:ContractAddress,
+        router:ContractAddress,
+        amount:u256
+    }
+    #[derive(Drop, starknet::Event)]
+    struct RouterBurn {
+        router:ContractAddress,
+        token:ContractAddress,
+        amount:u256
+    }
 
     #[storage]
     struct Storage {
         pending_unregister:LegacyMap::<felt252, SlowModeDelay>,
         delay: SlowModeDelay, // set by exchange, can be updated but no more then original
- 
         min_to_route:u256,
         token_to_user:LegacyMap::<(ContractAddress,ContractAddress),u256>,
         registered:LegacyMap::<ContractAddress,bool>,
@@ -128,9 +139,7 @@ mod router_component {
             let pre = erc20.balanceOf(contract_addr);
             erc20.transferFrom(caller, contract_addr, amount);
             assert(erc20.balanceOf(contract_addr) - pre == amount, 'WRONG_TFER');
-            
-            let new_balance = self.token_to_user.read((coin, router)) + amount;
-            self.token_to_user.write((coin, router), new_balance);
+            self.mint(router, coin, amount);
             self.emit(Deposit{router:router, token:coin, funder:caller, amount:amount});
         }
 
@@ -139,11 +148,10 @@ mod router_component {
             let balance:u256 = self.token_to_user.read((coin,router)); 
             assert(balance >= amount, 'FEW_COINS');
             assert(self.registered.read(router) || balance - amount >= 2 * self.min_to_route.read(), 'FEW_FOR_ROUTE');
-
-            self.token_to_user.write((coin,router), balance - amount);
+            self.burn(router, coin, amount);
             let erc20 = IERC20Dispatcher{contract_address: coin};
             erc20.transfer(receiver,amount);
-            self.emit(Withdraw{router:router,token:coin,amount:amount,receiver:receiver});
+            self.emit(Withdraw{router:router, token:coin, amount:amount, receiver:receiver});
         }
 
         fn register_router(ref self: ComponentState<TContractState>) {
@@ -226,6 +234,19 @@ mod router_component {
             self.native_base_token.write(wrapped_native_token);
             self.pinishment_bips.write(pinishment_bips);
             self.delay.write(delay);            
+        }
+
+        fn mint(ref self: ComponentState<TContractState>,router:ContractAddress,token:ContractAddress, amount:u256){
+            let new_balance = self.token_to_user.read((token, router)) + amount;
+            self.token_to_user.write((token, router), new_balance);
+            self.emit(RouterMint{router, token, amount});
+        }
+
+        fn burn(ref self: ComponentState<TContractState>,router:ContractAddress,token:ContractAddress, amount:u256) {
+            let balance:u256 = self.token_to_user.read((token, router)); 
+            assert(balance >= amount, 'FEW_TO_BURN_ROUTER');
+            self.token_to_user.write((token, router), balance - amount);
+            self.emit(RouterBurn{router, token, amount});
         }
     }
 
