@@ -83,7 +83,6 @@ mod LayerAkira {
 
         max_slow_mode_delay:SlowModeDelay,
         max_withdraw_action_cost:u32,
-
         exchange_invokers:LegacyMap::<ContractAddress,bool>
     }
 
@@ -94,14 +93,15 @@ mod LayerAkira {
                 fee_recipient:ContractAddress,
                 max_slow_mode_delay:SlowModeDelay, 
                 withdraw_max_action_cost:u32,
-                exchange_invoker:ContractAddress) {
+                exchange_invoker:ContractAddress,
+                min_to_route:u256) {
         self.max_slow_mode_delay.write(max_slow_mode_delay);
         self.max_withdraw_action_cost.write(withdraw_max_action_cost);
         self.balancer_s.initializer(fee_recipient, wrapped_native_token, 1000);
         self.withdraw_s.initializer(max_slow_mode_delay, withdraw_max_action_cost);
         self.exchange_invokers.write(exchange_invoker, true);
         // 0.2 eth, punishment factor == 10_000 bips
-        self.router_s.initializer(max_slow_mode_delay, wrapped_native_token, 200_000_000_000_000_000, 10_000);
+        self.router_s.initializer(max_slow_mode_delay, wrapped_native_token, min_to_route, 10_000);
     }
 
     #[external(v0)]
@@ -140,7 +140,6 @@ mod LayerAkira {
             };
         };
         self.balancer_s.latest_gas.write(gas_price);
-
     }
 
     #[external(v0)]
@@ -158,7 +157,22 @@ mod LayerAkira {
         return res;
     }
 
-
+    #[external(v0)]
+    fn apply_unsafe_trades(ref self: ContractState,  mut bulk:Array<(SignedOrder, Array<SignedOrder>, u256)>,  gas_price:u256) -> Array<bool> { 
+        assert(self.exchange_invokers.read(get_caller_address()), 'Only whitelisted invokers');
+        let mut res: Array<bool> = ArrayTrait::new();
+            
+        loop {
+            match bulk.pop_front(){
+                Option::Some((taker_order, maker_orders, total_amount_matched)) => {
+                    res.append(self.unsafe_trade_s.apply_trades_simple(taker_order, maker_orders, total_amount_matched, gas_price));
+                },
+                Option::None(_) => {break;}
+            };
+        };
+        self.balancer_s.latest_gas.write(gas_price);
+        return res;
+    }
 
     #[event]
     #[derive(Drop, starknet::Event)]

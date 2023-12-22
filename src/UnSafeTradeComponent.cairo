@@ -51,6 +51,7 @@ mod unsafe_trade_component {
         amount_base: u256,
         amount_quote: u256,
         is_sell_side: bool,
+        is_failed:bool
     }
 
     #[derive(Drop, starknet::Event)]
@@ -86,6 +87,7 @@ mod unsafe_trade_component {
         }
         
     }
+    // TODO add min for totla amount matched
 
      #[generate_trait]
     impl InternalUnSafeTradableImpl<TContractState, +HasComponent<TContractState>,+INonceLogic<TContractState>, +balance_component::HasComponent<TContractState>, +router_component::HasComponent<TContractState>, +Drop<TContractState>, +ISignerLogic<TContractState>> of InternalUnSafeTradable<TContractState> {
@@ -100,7 +102,7 @@ mod unsafe_trade_component {
                         
             // TODO bit dumb that it fires exception, how reimburse in that case? cause custom contract can force fails
             let (mut amount_out, gas_spent) = if check_sign(taker_order.maker, taker_hash, signed_taker_order.router_sign) {
-                            self._prepare_taker(taker_order, total_amount_matched, exchange, trades, gas_price, total_amount_matched)  } 
+                            self._prepare_taker(taker_order, total_amount_matched, exchange, trades, gas_price)  } 
                     else {
                         (0,0)
             };
@@ -126,6 +128,11 @@ mod unsafe_trade_component {
                         if failed {
                             self.punish_router_simple(taker_fees.gas_fee, taker_fees.router_fee.recipient, 
                                         signed_maker_order.order.maker, taker_order.maker, gas_price, taker_hash, maker_hash);
+                            self.emit(UnsafeTrade{
+                                maker:signed_maker_order.order.maker,taker:taker_order.maker, ticker:taker_order.ticker,
+                                router:taker_order.fee.router_fee.recipient,
+                                amount_base, amount_quote, is_sell_side: !taker_order.flags.is_sell_side, is_failed:true
+                            });
                             continue;
                         }
                         let (b, q) = taker_order.ticker; 
@@ -148,7 +155,7 @@ mod unsafe_trade_component {
                         self.emit(UnsafeTrade{
                             maker:signed_maker_order.order.maker,taker:taker_order.maker, ticker:taker_order.ticker,
                             router:taker_order.fee.router_fee.recipient,
-                            amount_base, amount_quote, is_sell_side: !taker_order.flags.is_sell_side  
+                            amount_base, amount_quote, is_sell_side: !taker_order.flags.is_sell_side, is_failed:false
                         });
                                
                     },
@@ -221,7 +228,7 @@ mod unsafe_trade_component {
         }
 
         fn _prepare_taker(ref self:ComponentState<TContractState>, taker_order:Order, mut out_amount:u256, exchange:ContractAddress,swaps:u8,
-                            gas_price:u256, total_amount_matched:u256) ->(u256,u256) {
+                            gas_price:u256) ->(u256,u256) {
             //Checks that user have:
             //  required allowance of out token that he about to spend
             //  required amount of out token that he about to spent

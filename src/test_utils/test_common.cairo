@@ -56,6 +56,10 @@
         constructor.append(get_withdraw_action_cost().into());
 
         constructor.append(get_fee_recipient_exchange().into());
+
+        let min_to_route = 200_000_000_000_000_000;
+        constructor.append(min_to_route);
+        constructor.append(0);
         // 'STARRT'.print();
         // constructor.clone().print();
         // 'STOP'.print();
