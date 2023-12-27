@@ -58,7 +58,7 @@ mod router_component {
     enum Event {
         Deposit:  Deposit,
         Withdraw: Withdraw,
-        RouterRegistration:Registration,
+        RouterRegistration:RouterRegistration,
         Binding:Binding,
         RouterMint:RouterMint,
         RouterBurn:RouterBurn
@@ -85,7 +85,7 @@ mod router_component {
     }
 
     #[derive(Drop, starknet::Event)]
-    struct Registration {
+    struct RouterRegistration {
         #[key]
         router:ContractAddress,
         status: u8, //0registered,1scheduled unregister,2unregsiter
@@ -160,7 +160,7 @@ mod router_component {
             let native_balance = self.token_to_user.read( (self.native_base_token.read(), caller));
             assert(native_balance >= 2 * self.min_to_route.read(), 'FEW_DEPOSITED');
             self.registered.write(caller, true);
-            self.emit(Registration{router:caller, status:0});
+            self.emit(RouterRegistration{router:caller, status:0});
         }
 
         fn add_router_binding(ref self: ComponentState<TContractState>, signer: ContractAddress){
@@ -188,7 +188,7 @@ mod router_component {
             let ongoing:SlowModeDelay = self.pending_unregister.read(router.into());
             assert(ongoing.block == 0, 'ALREADY_REQUESTED');
             self.pending_unregister.write(router.into(), SlowModeDelay{block:get_block_number(),ts:get_block_timestamp()});
-            self.emit(Registration{router:router,status:1});
+            self.emit(RouterRegistration{router:router,status:1});
         }
          
         fn apply_onchain_deregister(ref self: ComponentState<TContractState>) {
@@ -201,7 +201,7 @@ mod router_component {
             
             self.registered.write(router, false);
             self.pending_unregister.write(router.into(), SlowModeDelay{block:0,ts:0});
-            self.emit(Registration{router:router,status:2});
+            self.emit(RouterRegistration{router:router,status:2});
         }
 
         fn validate_router(self: @ComponentState<TContractState>, message: felt252, signature: (felt252, felt252), signer: ContractAddress, router:ContractAddress) -> bool {

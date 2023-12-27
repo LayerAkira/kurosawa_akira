@@ -1,9 +1,10 @@
 use kurosawa_akira::Order::{SignedOrder,Order,validate_maker_order,validate_taker_order,OrderTradeInfo,OrderFee,FixedFee,
-            get_feeable_qty,get_limit_px,do_taker_price_checks,do_maker_checks};
+            get_feeable_qty,get_limit_px, do_taker_price_checks, do_maker_checks};
 
 #[starknet::interface]
 trait ISafeTradeLogic<TContractState> {
     fn get_safe_trade_info(self: @TContractState, order_hash: felt252) -> OrderTradeInfo;
+    fn get_safe_trades_info(self: @TContractState, order_hashes: Array<felt252>) -> Array<OrderTradeInfo>;
 }
 
 #[starknet::component]
@@ -47,6 +48,15 @@ mod safe_trade_component {
     impl SafeTradableImpl<TContractState, +HasComponent<TContractState>,+INonceLogic<TContractState>,+balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of super::ISafeTradeLogic<ComponentState<TContractState>> {
         fn get_safe_trade_info(self: @ComponentState<TContractState>, order_hash: felt252) -> OrderTradeInfo {
             return self.orders_trade_info.read(order_hash);
+        }
+        fn get_safe_trades_info(self: @ComponentState<TContractState>, mut order_hashes: Array<felt252>) -> Array<OrderTradeInfo> {
+            let mut res = ArrayTrait::new();
+            loop {
+                match order_hashes.pop_front(){
+                    Option::Some(order_hash) => {res.append(self.get_safe_trade_info(order_hash))}, Option::None(_) => {break();}
+                }
+            };
+            return res; 
         }
     }
 

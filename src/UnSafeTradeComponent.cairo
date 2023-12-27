@@ -4,12 +4,13 @@ use kurosawa_akira::Order::{SignedOrder,Order,validate_maker_order,validate_take
 #[starknet::interface]
 trait IUnSafeTradeLogic<TContractState> {
     fn get_unsafe_trade_info(self: @TContractState, order_hash: felt252) -> OrderTradeInfo;
+    fn get_unsafe_trades_info(self: @TContractState, order_hashes: Array<felt252>) -> Array<OrderTradeInfo>;
 }
 
 #[starknet::component]
 mod unsafe_trade_component {
     use kurosawa_akira::RouterComponent::router_component::InternalRoutable;
-use kurosawa_akira::ExchangeBalanceComponent::INewExchangeBalance;
+    use kurosawa_akira::ExchangeBalanceComponent::INewExchangeBalance;
     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::InternalExchangeBalanceble;
     use core::{traits::TryInto,option::OptionTrait,array::ArrayTrait};
     use kurosawa_akira::FundsTraits::{PoseidonHash,PoseidonHashImpl,check_sign};
@@ -79,6 +80,15 @@ use kurosawa_akira::ExchangeBalanceComponent::INewExchangeBalance;
     impl UnSafeTradableImpl<TContractState, +HasComponent<TContractState>,+INonceLogic<TContractState>,+balance_component::HasComponent<TContractState>,+router_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>,> of super::IUnSafeTradeLogic<ComponentState<TContractState>> {
         fn get_unsafe_trade_info(self: @ComponentState<TContractState>, order_hash: felt252) -> OrderTradeInfo {
             return self.orders_trade_info.read(order_hash);
+        }
+        fn get_unsafe_trades_info(self: @ComponentState<TContractState>, mut order_hashes: Array<felt252>) -> Array<OrderTradeInfo> {
+            let mut res = ArrayTrait::new();
+            loop {
+                match order_hashes.pop_front(){
+                    Option::Some(order_hash) => {res.append(self.get_unsafe_trade_info(order_hash))}, Option::None(_) => {break();}
+                }
+            };
+            return res; 
         }
         
     }
