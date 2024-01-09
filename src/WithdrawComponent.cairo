@@ -35,6 +35,7 @@ trait IWithdraw<TContractState> {
     fn get_withdraw_steps(self: @TContractState) -> u32;
 
     fn is_request_completed(self: @TContractState, w_hash:felt252) -> bool;
+    fn is_requests_completed(self: @TContractState, reqs:Array<felt252>) -> Array<bool>;
 }
 
 
@@ -43,7 +44,7 @@ mod withdraw_component {
     use kurosawa_akira::FundsTraits::{PoseidonHash,PoseidonHashImpl};
     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as balance_component;
     use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
-    use super::{Withdraw,SignedWithdraw,SlowModeDelay,IWithdraw,GasFee};
+    use super::{Withdraw, SignedWithdraw, SlowModeDelay, IWithdraw, GasFee};
     use kurosawa_akira::SignerComponent::{ISignerLogic};
     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait, IERC20Dispatcher};
     use starknet::{get_caller_address, get_contract_address, get_block_timestamp, ContractAddress};
@@ -61,9 +62,7 @@ mod withdraw_component {
     struct ReqOnChainWithdraw {
         #[key]
         maker: ContractAddress,
-        token: ContractAddress,
-        amount: u256,
-        key:felt252
+        withdraw:Withdraw
     }
 
     #[derive(Drop, starknet::Event)]
@@ -72,8 +71,11 @@ mod withdraw_component {
         maker: ContractAddress,
         token: ContractAddress,
         reciever:ContractAddress,
-        key:felt252,
+        salt:felt252,
         amount: u256,
+        gas_price:u256,
+        gas_fee: GasFee,
+        direct:bool
     }
 
     #[storage]
@@ -88,6 +90,13 @@ mod withdraw_component {
     impl WithdrawableImpl<TContractState, +HasComponent<TContractState>,+balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of IWithdraw<ComponentState<TContractState>> {
 
         fn is_request_completed(self:@ComponentState<TContractState>, w_hash:felt252) -> bool { self.completed_reqs.read(w_hash)}
+        fn is_requests_completed(self:@ComponentState<TContractState>, mut reqs:Array<felt252>) -> Array<bool> {
+            let mut res: Array = ArrayTrait::new();            
+            loop {
+                match reqs.pop_front(){ Option::Some(hash) => { res.append(self.completed_reqs.read(hash));}, Option::None(_) => {break;}};
+            };
+            return res;
+        }
 
 
         fn get_pending_withdraw(self:@ComponentState<TContractState>,maker:ContractAddress, token:ContractAddress)->(SlowModeDelay, Withdraw) {
@@ -121,9 +130,7 @@ mod withdraw_component {
             self.validate(withdraw.maker, withdraw.token, withdraw.amount, withdraw.gas_fee);
             
             self.pending_reqs.write(key, (SlowModeDelay {block:get_block_number(), ts: get_block_timestamp()}, withdraw));
-            self.emit(ReqOnChainWithdraw{
-                maker:withdraw.maker,token:withdraw.token,amount:withdraw.amount, key: w_hash});
-            
+            self.emit(ReqOnChainWithdraw{maker:withdraw.maker, withdraw});
         }
 
         fn get_withdraw_steps(self: @ComponentState<TContractState>) -> u32 { self.gas_action.read()}
@@ -142,7 +149,8 @@ mod withdraw_component {
             let mut balancer = self.get_balancer_mut();
             balancer.burn(w_req.maker, w_req.amount, w_req.token);
             IERC20Dispatcher{ contract_address: w_req.token}.transfer(w_req.reciever, w_req.amount);
-            self.emit(Withdrawal{maker:w_req.maker, token:w_req.token, amount:w_req.amount, key:key, reciever:w_req.reciever});
+            self.emit(Withdrawal{maker:w_req.maker, token:w_req.token, amount:w_req.amount, salt:w_req.salt, reciever:w_req.reciever, gas_price:0,
+                        gas_fee:w_req.gas_fee,direct:true});
             
             self.completed_reqs.write(key, true);
         }
@@ -176,7 +184,8 @@ mod withdraw_component {
 
             contract.burn(w_req.maker, tfer_amount, w_req.token);
             IERC20Dispatcher { contract_address: w_req.token }.transfer(w_req.maker, tfer_amount);
-            self.emit(Withdrawal{maker:w_req.maker, token:w_req.token, amount: w_req.amount, key:hash, reciever:w_req.reciever});
+            self.emit(Withdrawal{maker:w_req.maker, token:w_req.token, amount: w_req.amount, salt:w_req.salt, reciever:w_req.reciever,gas_price,
+                        gas_fee:w_req.gas_fee, direct:w_req == signed_withdraw.withdraw});
 
            self.completed_reqs.write(hash, true);
         }
