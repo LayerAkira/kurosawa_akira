@@ -23,7 +23,7 @@ mod safe_trade_component {
     #[storage]
     struct Storage {
         orders_trade_info: LegacyMap::<felt252, OrderTradeInfo>,
-        last_taker_order_and_foc:(felt252, bool, u256),
+        // last_taker_order_and_foc:(felt252, bool, u256),
     }
 
 
@@ -139,7 +139,7 @@ mod safe_trade_component {
                             cur += 1;
                         };
 
-                        self.last_taker_order_and_foc.write((taker_hash, taker_order.flags.full_fill_only, taker_order.quantity - taker_fill_info.filled_amount));
+                        // self.last_taker_order_and_foc.write((taker_hash, taker_order.flags.full_fill_only, taker_order.quantity - taker_fill_info.filled_amount));
                         
                         taker_fill_info.num_trades_happened += trades;
 
@@ -167,11 +167,10 @@ mod safe_trade_component {
             assert(taker_order.number_of_swaps_allowed >= taker_fill_info.num_trades_happened + swaps, 'HIT_SWAPS_ALLOWED');
             assert(!taker_order.flags.post_only, 'WRONG_TAKER_FLAG');
             assert(taker_order.nonce >= contract.get_nonce(taker_order.maker),'OLD_TAKER_NONCE');
-            
-            let (last_fill_taker_hash, is_foc, remaining):(felt252, bool, u256) = self.last_taker_order_and_foc.read();
-            if last_fill_taker_hash != taker_order_hash { assert(!is_foc || remaining == 0, 'FOK_PREVIOUS');}
-
-            if taker_fill_info.filled_amount > 0 { assert(last_fill_taker_hash == taker_order_hash, 'IF_PARTIAL=>PREV_SAME');}
+            // NASTY for now omit because headache if we lost info about order
+            // let (last_fill_taker_hash, is_foc, remaining):(felt252, bool, u256) = self.last_taker_order_and_foc.read();
+            // if last_fill_taker_hash != taker_order_hash { assert(!is_foc || remaining == 0, 'FOK_PREVIOUS');}
+            // if taker_fill_info.filled_amount > 0 { assert(last_fill_taker_hash == taker_order_hash, 'IF_PARTIAL=>PREV_SAME');}
 
             assert(taker_order.fee.router_fee.taker_pbips == 0, 'TAKER_SAFE_REQUIRES_NO_ROUTER');
             assert (taker_order.quantity - taker_fill_info.filled_amount > 0, 'TAKER_ALREADY_FILLED');
