@@ -24,7 +24,7 @@ impl PoseidonHashImpl<T, impl TSerde: Serde<T>, impl TDestruct: Destruct<T>> of 
 fn check_sign(account: ContractAddress, hash: felt252, sign: (felt252, felt252)) -> bool {
     let mut calldata = ArrayTrait::new();
     let (r,s) = sign;
-    calldata.append(r);calldata.append(s);
-    let res = AccountABIDispatcher{contract_address:account}.is_valid_signature(hash,calldata);
+    calldata.append(r); calldata.append(s);
+    let res = AccountABIDispatcher{contract_address:account}.is_valid_signature(hash, calldata);
     return res == 'VALID';
 }

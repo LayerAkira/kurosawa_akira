@@ -220,7 +220,7 @@ mod test_common_trade {
     use serde::Serde;
     use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
     use kurosawa_akira::FundsTraits::check_sign;
-    use kurosawa_akira::Order::{SignedOrder, Order, FixedFee,OrderFee,OrderFlags, get_feeable_qty};
+    use kurosawa_akira::Order::{SignedOrder, Order,TakerSelfTradePreventionMode, FixedFee,OrderFee,OrderFlags, get_feeable_qty};
 
 
     fn prepare() ->(ILayerAkiraDispatcher, ContractAddress, ContractAddress, ContractAddress, ContractAddress, u256, u256) {
@@ -269,7 +269,8 @@ mod test_common_trade {
                 gas_fee: prepare_double_gas_fee_native(akira, get_swap_gas_cost())
             },
             flags,
-            created_at:0
+            created_at:0,
+            stp:TakerSelfTradePreventionMode::NONE
         };
         let hash = order.get_poseidon_hash();
         let (pub, pk) = if maker == get_trader_address_1() {
@@ -572,7 +573,7 @@ mod tests_unsafe_trade {
         let (eth_b, usdc_b, router_b) = (eth_erc.balanceOf(taker), usdc_erc.balanceOf(taker), akira.balance_of_router(router, usdc));
 
         start_prank(akira.contract_address, get_fee_recipient_exchange());
-        assert(akira.apply_unsafe_trade(sell_order, maker_orders,  eth_amount+10000000, 100), 'FAILED_MATCH');
+        assert(akira.apply_unsafe_trade(sell_order, maker_orders,  eth_amount, 100), 'FAILED_MATCH');
         stop_prank(akira.contract_address);
          
         assert(akira.balanceOf(sell_order.order.maker, eth) == 0, 'WRONG_UNSAFE_BALANCE_ETH');
@@ -600,9 +601,6 @@ mod tests_unsafe_trade {
 
         
     }  
-
-
-
 
 
     #[test]

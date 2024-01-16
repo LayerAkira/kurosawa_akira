@@ -3,23 +3,18 @@ use starknet::ContractAddress;
 
 #[starknet::interface]
 trait ISignerLogic<TContractState> {
-    // Binds caller contract address to signer
-    // So signer can execute trades on behalf of caller address 
+    // Binds caller contract address (trading account) to signer.
+    // Signer is responbile for generating signature on behalf of caller address 
     fn bind_to_signer(ref self: TContractState, signer: ContractAddress);
 
     // Validates that trader's  signer is correct signer of the message
-    fn check_sign(
-        self: @TContractState,
-        trader: ContractAddress,
-        message: felt252,
-        sig_r: felt252,
-        sig_s: felt252
-    ) -> bool;
+    fn check_sign(self: @TContractState, trader: ContractAddress, message: felt252, sig_r: felt252, sig_s: felt252) -> bool;
     //  returns zero address in case of no binding
     fn get_signer(self: @TContractState, trader: ContractAddress) -> ContractAddress;
     //  returns zero address in case of no binding
     fn get_signers(self: @TContractState, traders: Span<ContractAddress>) -> Array<ContractAddress>;
-// TODO: later support rebinding 
+    
+    // TODO: later support rebinding 
 }
 
 #[starknet::component]
@@ -61,15 +56,12 @@ mod signer_logic_component {
             self.emit(NewBinding { trading_account: caller, signer: signer });
         }
 
-        fn get_signer(
-            self: @ComponentState<TContractState>, trader: ContractAddress
-        ) -> ContractAddress {
+        fn get_signer(self: @ComponentState<TContractState>, trader: ContractAddress) -> ContractAddress {
             return self.trader_to_signer.read(trader);
         }
 
-        fn get_signers(
-            self: @ComponentState<TContractState>, traders: Span<ContractAddress>
-        ) -> Array<ContractAddress> {
+        fn get_signers(self: @ComponentState<TContractState>, traders: Span<ContractAddress>) -> Array<ContractAddress> {
+            //Note traders should not be empty
             let mut res: Array<ContractAddress> = ArrayTrait::new();
             let sz = traders.len();
             let mut idx = 0;
@@ -84,14 +76,9 @@ mod signer_logic_component {
             return res;
         }
 
-        fn check_sign(
-            self: @ComponentState<TContractState>,
-            trader: ContractAddress,
-            message: felt252,
-            sig_r: felt252,
-            sig_s: felt252
-        ) -> bool {
+        fn check_sign(self: @ComponentState<TContractState>, trader: ContractAddress, message: felt252, sig_r: felt252, sig_s: felt252) -> bool {
             let signer: ContractAddress = self.trader_to_signer.read(trader);
+            assert(signer != 0.try_into().unwrap(), 'UNDEFINED_SIGNER');
             return check_ecdsa_signature(message, signer.into(), sig_r, sig_s);
         }
     }

@@ -1,5 +1,5 @@
 use starknet::ContractAddress;
-use kurosawa_akira::Order::{GasFee,FixedFee,get_gas_fee_and_coin,get_feeable_qty};
+use kurosawa_akira::Order::{GasFee, FixedFee, get_gas_fee_and_coin, get_feeable_qty};
 
 
 
@@ -9,9 +9,7 @@ trait INewExchangeBalance<TContractState> {
 
     fn balanceOf(self: @TContractState, address: ContractAddress, token: ContractAddress) -> u256;
 
-    fn balancesOf(
-        self: @TContractState, addresses: Span<ContractAddress>, tokens: Span<ContractAddress>
-    ) -> Array<Array<u256>>;
+    fn balancesOf(self: @TContractState, addresses: Span<ContractAddress>, tokens: Span<ContractAddress>) -> Array<Array<u256>>;
 
     fn get_wrapped_native_token(self: @TContractState) -> ContractAddress;
 
@@ -19,7 +17,6 @@ trait INewExchangeBalance<TContractState> {
 
     fn get_fee_recipient(self: @TContractState) -> ContractAddress;
 
-    fn set_fee_recipient(ref self: TContractState,recipient:ContractAddress);
 }
 
 
@@ -46,7 +43,7 @@ mod exchange_balance_logic_component {
     }
     #[derive(Drop, starknet::Event)]
     struct Burn {
-        from:ContractAddress,
+        from_:ContractAddress,
         token:ContractAddress,
         amount:u256
     }
@@ -54,7 +51,7 @@ mod exchange_balance_logic_component {
     #[derive(Drop, starknet::Event)]
     struct Transfer {
         token: ContractAddress,
-        from: ContractAddress,
+        from_: ContractAddress,
         to: ContractAddress,
         amount: u256
     }
@@ -62,36 +59,25 @@ mod exchange_balance_logic_component {
 
     #[storage]
     struct Storage {
-        _total_supply: LegacyMap::<ContractAddress, u256>,
-        _balances: LegacyMap::<(ContractAddress, ContractAddress), u256>,
-        wrapped_native_token: ContractAddress,
-        fee_recipient: ContractAddress,
-        latest_gas: u256,
+        _total_supply: LegacyMap::<ContractAddress, u256>, // TVL per token
+        _balances: LegacyMap::<(ContractAddress, ContractAddress), u256>, // (token, address) -> balance
+        wrapped_native_token: ContractAddress, // ERC20 token in which rollup executer pays the gas fee to sequencer
+        fee_recipient: ContractAddress, // receiver of exchange fees
+        latest_gas: u256, // latest gas price estimation
     }
 
 
     #[embeddable_as(ExchangeBalanceble)]
     impl ExchangeBalancebleImpl<TContractState, +HasComponent<TContractState>> of INewExchangeBalance<ComponentState<TContractState>> {
-        // TODO add modifier that this is internal method ?
         
+        fn total_supply(self: @ComponentState<TContractState>, token: ContractAddress) -> u256 {return self._total_supply.read(token);}
 
-        fn total_supply(self: @ComponentState<TContractState>, token: ContractAddress) -> u256 {
-            return self._total_supply.read(token);
-        }
-
-        
-
-        fn balanceOf(
-            self: @ComponentState<TContractState>, address: ContractAddress, token: ContractAddress
-        ) -> u256 {
+        fn balanceOf(self: @ComponentState<TContractState>, address: ContractAddress, token: ContractAddress) -> u256 {
             return self._balances.read((token, address));
         }
 
-        fn balancesOf(
-            self: @ComponentState<TContractState>,
-            addresses: Span<ContractAddress>,
-            tokens: Span<ContractAddress>
-        ) -> Array<Array<u256>> {
+        fn balancesOf(self: @ComponentState<TContractState>, addresses: Span<ContractAddress>, tokens: Span<ContractAddress>) -> Array<Array<u256>> {
+            // Note addresses and tokens should be not empty
             let mut res: Array<Array<u256>> = ArrayTrait::new();
             let sz_addr = addresses.len();
             let sz_token = tokens.len();
@@ -104,107 +90,64 @@ mod exchange_balance_logic_component {
                     let token = *tokens.at(idx_token);
                     sub_res.append(self._balances.read((token, addr)));
                     idx_token += 1;
-                    if sz_token == idx_token {
-                        break;
-                    }
+                    if sz_token == idx_token { break;}
                 };
                 res.append(sub_res);
                 idx_addr += 1;
-                if sz_addr == idx_addr {
-                    break;
-                }
+                if sz_addr == idx_addr { break;}
             };
             return res;
         }
 
-        fn get_wrapped_native_token(self: @ComponentState<TContractState>) -> ContractAddress {
-            return self.wrapped_native_token.read();
-        }
+        fn get_wrapped_native_token(self: @ComponentState<TContractState>) -> ContractAddress { return self.wrapped_native_token.read();}
 
-        fn get_fee_recipient(self: @ComponentState<TContractState>) -> ContractAddress {
-            return self.fee_recipient.read();
-        }
-        fn get_latest_gas_price(self: @ComponentState<TContractState>) -> u256 {
-            return self.latest_gas.read();
-        }
-        fn set_fee_recipient(ref self: ComponentState<TContractState>,recipient:ContractAddress) {
-            self.fee_recipient.write(recipient);
-        }
+        fn get_fee_recipient(self: @ComponentState<TContractState>) -> ContractAddress { return self.fee_recipient.read();}
+        fn get_latest_gas_price(self: @ComponentState<TContractState>) -> u256 { return self.latest_gas.read();}
     }
     
     #[generate_trait]
     impl InternalExchangeBalancebleImpl<
         TContractState, +HasComponent<TContractState>
     > of InternalExchangeBalanceble<TContractState> {
-        fn initializer(ref self: ComponentState<TContractState>,fee_recipient:ContractAddress, wrapped_native_token:ContractAddress,latest_gas:u256) {
+        fn initializer(ref self: ComponentState<TContractState>, fee_recipient:ContractAddress, wrapped_native_token:ContractAddress) {
             self.wrapped_native_token.write(wrapped_native_token);
             self.fee_recipient.write(fee_recipient);
-            self.latest_gas.write(latest_gas);
+            self.latest_gas.write(1000); // some non zero placeholder on init
         }
 
-        fn mint(
-            ref self: ComponentState<TContractState>,
-            to: ContractAddress,
-            amount: u256,
-            token: ContractAddress
-        ) {
+        fn mint(ref self: ComponentState<TContractState>,to: ContractAddress, amount: u256, token: ContractAddress) {
             self._total_supply.write(token, self._total_supply.read(token) + amount);
             self._balances.write((token, to), self._balances.read((token, to)) + amount);
             self.emit(Mint{to, token, amount});
         }
 
-        fn burn(
-            ref self: ComponentState<TContractState>,
-            from: ContractAddress,
-            amount: u256,
-            token: ContractAddress
-        ) {
+        fn burn(ref self: ComponentState<TContractState>, from: ContractAddress, amount: u256, token: ContractAddress) {
             let balance = self._balances.read((token, from));
             assert(balance >= amount,'FEW_TO_BURN');
             self._balances.write((token, from), balance - amount);
             self._total_supply.write(token, self._total_supply.read(token) - amount);
-            self.emit(Burn{from,token,amount});
+            self.emit(Burn{from_:from,token,amount});
         }
-        fn internal_transfer(
-            ref self: ComponentState<TContractState>,
-            from: ContractAddress,
-            to: ContractAddress,
-            amount: u256,
-            token: ContractAddress
-        ) {
+        fn internal_transfer(ref self: ComponentState<TContractState>, from: ContractAddress, to: ContractAddress, amount: u256, token: ContractAddress) {
             assert(self._balances.read((token, from)) >= amount, 'Few balance');
             self._balances.write((token, from), self._balances.read((token, from)) - amount);
             self._balances.write((token, to), self._balances.read((token, to)) + amount);
-            self.emit(Transfer{from, to, token, amount});
+            self.emit(Transfer{from_:from, to, token, amount});
         }
 
-        fn validate_and_apply_gas_fee_internal(
-            ref self: ComponentState<TContractState>,
-            user: ContractAddress,
-            gas_fee: super::GasFee,
-            gas_price: u256,
-            times:u8,
-        ) -> u256 {
-            if gas_price == 0 || gas_fee.gas_per_action == 0 {
-                return 0;
-            }
+        fn validate_and_apply_gas_fee_internal(ref self: ComponentState<TContractState>, user: ContractAddress, gas_fee: super::GasFee, gas_price: u256, times:u8) -> u256 {
+            // Validates that gas_fee correctly specified, calculate how many coins and in what token we tfer from user to exchange  
+            if gas_price == 0 || gas_fee.gas_per_action == 0 { return 0;}
             let (spent, coin) = super::get_gas_fee_and_coin(gas_fee, gas_price, self.wrapped_native_token.read());
-            let spent = spent * times.into();
+            let spent = spent * times.into(); // we can do gas_price * times.into() to avoid zero spnet  but prefer this way
             self.internal_transfer(user, self.fee_recipient.read(), spent, coin);
             return spent;
         }
 
-
-        fn rebalance_after_trade(
-            ref self: ComponentState<TContractState>,
-            maker:ContractAddress, taker:ContractAddress,
-            ticker:(ContractAddress, ContractAddress),
-            amount_base:u256, amount_quote:u256,
-            is_maker_seller:bool,
-        ) {
+        fn rebalance_after_trade(ref self: ComponentState<TContractState>, maker:ContractAddress, taker:ContractAddress, ticker:(ContractAddress, ContractAddress),
+            amount_base:u256, amount_quote:u256, is_maker_seller:bool) {
             let (base, quote) = ticker;
             if is_maker_seller{ // BASE/QUOTE -> maker sell BASE for QUOTE
-                
                 assert(self.balanceOf(maker, base) >= amount_base, 'FEW_BALANCE_MAKER');
                 self.internal_transfer(maker, taker, amount_base, base);
                 
@@ -219,18 +162,11 @@ mod exchange_balance_logic_component {
             }
         }
 
-        fn apply_maker_fee(ref self: ComponentState<TContractState>,maker:ContractAddress, fee:FixedFee,is_sell_side:bool,ticker:(ContractAddress,ContractAddress), base_amount:u256, quote_amount:u256) {
+        fn apply_maker_fee(ref self: ComponentState<TContractState>, maker:ContractAddress, fee:FixedFee, is_sell_side:bool, ticker:(ContractAddress,ContractAddress), base_amount:u256, quote_amount:u256) {
             let maker_fee_token = if is_sell_side { let (b, q) = ticker; q } else {let (b, q) = ticker; b};
             let maker_fee_amount = get_feeable_qty(fee, if is_sell_side { quote_amount } else {base_amount}, true);
             
-            if maker_fee_amount > 0 {
-                self.internal_transfer(maker, fee.recipient, maker_fee_amount, maker_fee_token);
-            }
+            if maker_fee_amount > 0 { self.internal_transfer(maker, fee.recipient, maker_fee_amount, maker_fee_token);}
         }
     }
 }
-
-
-// Created new encrypted keystore file: /Users/mac/.starkli-wallets/deployer/keystore.json
-// Public key: 0x06599a0c34699a5c48ae6ff359decc0618ce982be00654f2b12945cae5bb6788
-// 0x0455e57d60556bf07b184308bc6708caa5b64c7b41178a06092bb8a58057d33b

@@ -6,36 +6,40 @@ use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct Withdraw {
-    maker: ContractAddress,
-    token: ContractAddress,
-    amount: u256,
-    salt: felt252,
-    gas_fee: GasFee,
-    reciever:ContractAddress
+    maker: ContractAddress, // trading account that want to withdraw
+    token: ContractAddress, // address of erc20 token of interest, 
+    amount: u256, // amount of token, at the end user will receive amount of token diff from gas fee or amount - gas_fee, so user can always withdraw all his balances 
+    salt: felt252, // random salt
+    gas_fee: GasFee, // for some paths, this activity to be executed requires gasfee
+    reciever: ContractAddress // receiver of withdrawal tokens
 }
 
 #[derive(Copy, Drop, Serde, PartialEq)]
 struct SignedWithdraw {
     withdraw: Withdraw,
-    sign: (felt252, felt252),
+    sign: (felt252, felt252)
 }
 
 #[starknet::interface]
 trait IWithdraw<TContractState> {
-    // scheduels onchain withdraw so user can actually withdraw by apply_onchain_withdraw
+    // schedules onchain withdrawal, so user can actually withdraw by invoking apply_onchain_withdraw
     fn request_onchain_withdraw(ref self: TContractState, withdraw: Withdraw);
-
+    // get information about current pending onchain withdrawal by (maker, token), it returns ts and block when it happened and withdrawal struct
     fn get_pending_withdraw(self:@TContractState, maker:ContractAddress, token:ContractAddress)->(SlowModeDelay,Withdraw);
 
     fn get_pending_withdraws(self:@TContractState,reqs:Array<(ContractAddress, ContractAddress)>)-> Array<(SlowModeDelay,Withdraw)>;
     
-    // can only be performed by the owner
+    // once user requested onchain withdraw and passed enouhg time user can execute apply_onchain_withdraw and therefore finalizing 2-step delayed withdrawal 
+    // after request_onchain_withdraw user must wait some seconds and blocks pass
+    // this is neccesary to not break trading flow other exchange participants
     fn apply_onchain_withdraw(ref self: TContractState, token:ContractAddress, key:felt252);
 
+    // for user to build GasFee for onchain withdrawal he need withdraw_steps and gas_price (get_latest_gas())
     fn get_withdraw_steps(self: @TContractState) -> u32;
 
-    fn is_request_completed(self: @TContractState, w_hash:felt252) -> bool;
-    fn is_requests_completed(self: @TContractState, reqs:Array<felt252>) -> Array<bool>;
+    // checks if withdraw request (w_hash is poseidon hash of Withdraw) completed or not
+    fn is_request_completed(self: @TContractState, w_hash: felt252) -> bool;
+    fn is_requests_completed(self: @TContractState, reqs: Array<felt252>) -> Array<bool>;
 }
 
 
@@ -70,20 +74,20 @@ mod withdraw_component {
         #[key]
         maker: ContractAddress,
         token: ContractAddress,
-        reciever:ContractAddress,
-        salt:felt252,
+        reciever: ContractAddress,
+        salt: felt252,
         amount: u256,
-        gas_price:u256,
+        gas_price: u256,
         gas_fee: GasFee,
-        direct:bool
+        direct: bool
     }
 
     #[storage]
     struct Storage {
         delay: SlowModeDelay, // set by exchange, can be updated but no more then original
-        pending_reqs:LegacyMap::<(ContractAddress,ContractAddress),(SlowModeDelay, Withdraw)>,
-        completed_reqs:LegacyMap::<felt252,bool>,
-        gas_action:u32, //set by exchange
+        pending_reqs: LegacyMap::<(ContractAddress,ContractAddress),(SlowModeDelay, Withdraw)>,
+        completed_reqs: LegacyMap::<felt252,bool>,
+        gas_steps: u16, //set by us, mirrors estimation from offchain engine
     }
 
     #[embeddable_as(Withdrawable)]
@@ -104,6 +108,7 @@ mod withdraw_component {
         }
 
         fn get_pending_withdraws(self:@ComponentState<TContractState>, mut reqs:Array<(ContractAddress, ContractAddress)>) -> Array<(SlowModeDelay,Withdraw)> {
+            //note reqs must not be empty
             let mut res: Array = ArrayTrait::new();            
             loop {
                 match reqs.pop_front(){
@@ -113,10 +118,11 @@ mod withdraw_component {
             return res;
         }
 
-
-        // get completed status
-
         fn request_onchain_withdraw(ref self: ComponentState<TContractState>, withdraw: Withdraw) {
+            // Onchain withdrawals have several constraints:
+            // 1) Only maker itself can execute it
+            // 2) Only one in progress onchain withdrawal per token allowed
+            // 3) We require user to have GasFee with latest_gas_price * 2 for exchange be able to execute it on behalf of user once it is possible
             assert(get_caller_address() == withdraw.maker, 'WRONG_MAKER');
             assert(withdraw.amount > 0, 'WITHDRAW_CANT_BE_ZERO');
             let key = (withdraw.token, withdraw.maker);            
@@ -133,10 +139,11 @@ mod withdraw_component {
             self.emit(ReqOnChainWithdraw{maker:withdraw.maker, withdraw});
         }
 
-        fn get_withdraw_steps(self: @ComponentState<TContractState>) -> u32 { self.gas_action.read()}
+        fn get_withdraw_steps(self: @ComponentState<TContractState>) -> u32 { self.gas_steps.read().into()}
 
 
         fn apply_onchain_withdraw(ref self: ComponentState<TContractState>, token:ContractAddress, key:felt252) {
+            // Here user will not be charged for gasFee because he is the actual executor
             let caller = get_caller_address();
             let (delay, w_req): (SlowModeDelay,Withdraw) = self.pending_reqs.read((token, caller));
             assert(caller == w_req.maker, 'WRONG_MAKER');
@@ -160,11 +167,14 @@ mod withdraw_component {
      #[generate_trait]
     impl InternalWithdrawableImpl<TContractState, +HasComponent<TContractState>,
     +balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of InternalWithdrawable<TContractState> {
-        fn initializer(ref self: ComponentState<TContractState>,delay:SlowModeDelay, gas_action_cost:u32) {
+        fn initializer(ref self: ComponentState<TContractState> ,delay:SlowModeDelay, gas_steps_cost:u16) {
             self.delay.write(delay);
-            self.gas_action.write(gas_action_cost);
+            self.gas_steps.write(gas_steps_cost);
         }
-        // exposed only in contract user
+
+        // Exchange can execute offchain withdrawal by makers if siganture is correct
+        // or if there is ongoing pending withdrawal, exchange can process, 
+        // in this case no need for signature verifaction because user already scheduled withdrawal onchain
         fn apply_withdraw(ref self: ComponentState<TContractState>, signed_withdraw: SignedWithdraw, gas_price:u256) {
             let hash = signed_withdraw.withdraw.get_poseidon_hash();
             let (delay, w_req):(SlowModeDelay, Withdraw) = self.pending_reqs.read((signed_withdraw.withdraw.token, signed_withdraw.withdraw.maker));
@@ -191,10 +201,10 @@ mod withdraw_component {
         }
 
 
-        fn validate(self:@ComponentState<TContractState>,maker:ContractAddress,token:ContractAddress, amount:u256, gas_fee:GasFee) {
+        fn validate(self:@ComponentState<TContractState>,maker:ContractAddress, token:ContractAddress, amount:u256, gas_fee:GasFee) {
             let balancer =  self.get_balancer();
             let balance = balancer.balanceOf(maker, token);
-            assert(gas_fee.gas_per_action == self.gas_action.read(), 'WRONG_GAS_PER_ACTION');
+            assert(gas_fee.gas_per_action == self.gas_steps.read().into(), 'WRONG_GAS_PER_ACTION');
             assert(gas_fee.fee_token == balancer.wrapped_native_token.read(), 'WRONG_GAS_FEE_TOKEN');
             let required_gas = balancer.get_latest_gas_price() * 2 * gas_fee.gas_per_action.into();  //require  reserve a bit more
             assert(balance >= amount , 'FEW_BALANCE');

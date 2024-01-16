@@ -17,7 +17,6 @@ struct SignedIncreaseNonce {
 
 #[starknet::interface]
 trait INonceLogic<TContractState> {
-    // fn apply_increase_nonce(ref self: TContractState, signed_nonce_increase: SignedIncreaseNonce);
     fn get_nonce(self: @TContractState, maker: ContractAddress) -> u32;
     fn get_nonces(self: @TContractState, makers: Span<ContractAddress>)-> Array<u32>;
 }
@@ -48,7 +47,7 @@ mod nonce_component {
 
     #[storage]
     struct Storage {
-        nonces: LegacyMap::<ContractAddress, u32>,
+        nonces: LegacyMap::<ContractAddress, u32>, // user address to his trading nonce
     }
 
     #[embeddable_as(Nonceable)]
@@ -56,11 +55,10 @@ mod nonce_component {
     +balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of super::INonceLogic<ComponentState<TContractState>> {
 
         
-        fn get_nonce(self: @ComponentState<TContractState>, maker: ContractAddress) -> u32 {
-            self.nonces.read(maker)
-        }
+        fn get_nonce(self: @ComponentState<TContractState>, maker: ContractAddress) -> u32 { self.nonces.read(maker)}
 
         fn get_nonces(self: @ComponentState<TContractState>, makers: Span<ContractAddress>) -> Array<u32> {
+            //Note makers should not be zero
             let mut res: Array<u32> = ArrayTrait::new();
             let mut idx = 0;
             let sz = makers.len(); 
@@ -88,7 +86,7 @@ mod nonce_component {
             balancer.validate_and_apply_gas_fee_internal(nonce_increase.maker, nonce_increase.gas_fee, gas_price, 1);
             self.nonces.write(nonce_increase.maker, nonce_increase.new_nonce);
 
-            self.emit(NonceIncrease{ maker: nonce_increase.maker,new_nonce:nonce_increase.new_nonce});
+            self.emit(NonceIncrease{ maker: nonce_increase.maker, new_nonce:nonce_increase.new_nonce});
         }
     }
 

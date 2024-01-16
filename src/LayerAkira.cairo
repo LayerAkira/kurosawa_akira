@@ -81,28 +81,72 @@ mod LayerAkira {
         #[substorage(v0)]
         unsafe_trade_s: unsafe_trade_component::Storage,
 
-        max_slow_mode_delay:SlowModeDelay,
-        max_withdraw_action_cost:u32,
-        exchange_invokers:LegacyMap::<ContractAddress,bool>
+        max_slow_mode_delay:SlowModeDelay, // upper bound for all delayed actions
+        max_withdraw_action_cost:u16, // upper bound for onchain withdraw gas steps estimation
+        exchange_invokers: LegacyMap::<ContractAddress,bool>,
+        owner: ContractAddress // owner of contact that have permissions to grant and revoke role for invokers and update slow mode and max_withdraw_action_cost
     }
 
-    //  
     #[constructor]
     fn constructor(ref self: ContractState,
                 wrapped_native_token:ContractAddress,
                 fee_recipient:ContractAddress,
                 max_slow_mode_delay:SlowModeDelay, 
-                withdraw_max_action_cost:u32,
+                withdraw_max_action_cost:u16, // propably u16
                 exchange_invoker:ContractAddress,
-                min_to_route:u256) {
+                min_to_route:u256, // minimum amount neccesary to start to provide 
+                owner:ContractAddress) {
         self.max_slow_mode_delay.write(max_slow_mode_delay);
         self.max_withdraw_action_cost.write(withdraw_max_action_cost);
-        self.balancer_s.initializer(fee_recipient, wrapped_native_token, 1000);
+        self.balancer_s.initializer(fee_recipient, wrapped_native_token);
         self.withdraw_s.initializer(max_slow_mode_delay, withdraw_max_action_cost);
         self.exchange_invokers.write(exchange_invoker, true);
-        // 0.2 eth, punishment factor == 10_000 bips
+        self.owner.write(owner);
         self.router_s.initializer(max_slow_mode_delay, wrapped_native_token, min_to_route, 10_000);
     }
+
+    #[external(v0)]
+    fn update_exchange_invokers(ref self: ContractState, invoker:ContractAddress, enabled:bool) {
+        assert(self.owner.read() == get_caller_address(), 'Only owner');
+        self.exchange_invokers.write(invoker, enabled);
+    }
+
+    // methods to update some components properties
+    #[external(v0)]
+    fn update_withdraw_component_params(ref self: ContractState, new_withdraw_steps: u16, new_delay:SlowModeDelay) {
+        assert(self.owner.read() == get_caller_address(), 'Only owner');
+        let max = self.max_slow_mode_delay.read();
+        assert(new_delay.block <= max.block && new_delay.ts <= max.ts, 'MAX_VIOLATED');
+        assert(new_withdraw_steps <= self.max_withdraw_action_cost.read() , 'MAX_WITHDRAW_VIOLATED');
+        self.withdraw_s.delay.write(new_delay);
+        self.withdraw_s.gas_steps.write(new_withdraw_steps);
+    }
+
+
+
+    #[external(v0)]
+    fn update_balance_component_params(ref self: ContractState, new_fee_recipient: ContractAddress, new_base_token:ContractAddress) {
+        assert(self.owner.read() == get_caller_address(), 'Only owner');
+        self.balancer_s.fee_recipient.write(new_fee_recipient);
+        self.balancer_s.wrapped_native_token.write(new_base_token);
+        self.router_s.native_base_token.write(new_base_token); // same so we need update it here as well
+    }
+
+    #[external(v0)]
+    fn update_router_component_params(ref self: ContractState, new_fee_recipient: ContractAddress, new_base_token:ContractAddress, 
+                    new_delay:SlowModeDelay, min_amount_to_route:u256, new_punishment_bips:u16) {
+        assert(self.owner.read() == get_caller_address(), 'Only owner');
+        let max = self.max_slow_mode_delay.read();
+        assert(new_delay.block <= max.block && new_delay.ts <= max.ts, 'MAX_VIOLATED');
+        
+        self.balancer_s.wrapped_native_token.write(new_base_token); // same so we need update it here as well
+        self.router_s.native_base_token.write(new_base_token);
+        self.router_s.delay.write(new_delay);
+        self.router_s.min_to_route.write(min_amount_to_route);
+        self.router_s.pinishment_bips.write(new_punishment_bips);
+    }
+    
+    // apply methods performed by exchange invokers
 
     #[external(v0)]
     fn apply_increase_nonce(ref self: ContractState, signed_nonce: SignedIncreaseNonce, gas_price:u256) {
@@ -110,6 +154,7 @@ mod LayerAkira {
         self.nonce_s.apply_increase_nonce(signed_nonce,gas_price);
         self.balancer_s.latest_gas.write(gas_price);
     }
+
 
     #[external(v0)]
     fn apply_increase_nonces(ref self: ContractState, mut signed_nonces: Array<SignedIncreaseNonce>, gas_price:u256) {

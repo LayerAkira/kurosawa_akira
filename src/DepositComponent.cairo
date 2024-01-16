@@ -11,7 +11,7 @@ mod deposit_component {
     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as balance_component;
     use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait, IERC20Dispatcher};
-    use starknet::{get_caller_address,get_contract_address,ContractAddress};
+    use starknet::{get_caller_address, get_contract_address, ContractAddress};
 
     #[event]
     #[derive(Drop, starknet::Event)]
@@ -36,9 +36,9 @@ mod deposit_component {
     impl DepositableImpl<TContractState, +HasComponent<TContractState>,+balance_component::HasComponent<TContractState>,+Drop<TContractState>> of super::IDeposit<ComponentState<TContractState>> {
 
         fn deposit(ref self: ComponentState<TContractState>, receiver:ContractAddress, token:ContractAddress, amount:u256) {
-            let caller = get_caller_address();
-            let contract = get_contract_address();
-            let mut b_contract = self.get_balancer_mut();
+            // User invokes this method and exchange will tfer amount of token to receiver
+            // Note user must grant allowance to exhchange to invoke transferFrom method
+            let (caller, contract, mut b_contract) = (get_caller_address(), get_contract_address(), self.get_balancer_mut());
             let erc20 = IERC20Dispatcher { contract_address: token };
 
             let pre = erc20.balanceOf(contract);

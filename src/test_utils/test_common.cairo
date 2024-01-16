@@ -60,6 +60,8 @@
         let min_to_route = 200_000_000_000_000_000;
         constructor.append(min_to_route);
         constructor.append(0);
+
+        constructor.append(get_fee_recipient_exchange().into());
         // 'STARRT'.print();
         // constructor.clone().print();
         // 'STOP'.print();

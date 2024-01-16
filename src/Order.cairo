@@ -5,7 +5,6 @@ use poseidon::poseidon_hash_span;
 use array::ArrayTrait;
 use array::SpanTrait;
 
-// TODO use this once all stuff rewritten in components
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct GasFee {
     gas_per_action: u32,
@@ -13,9 +12,6 @@ struct GasFee {
     max_gas_price: u256,
     conversion_rate: (u256, u256),
 }
-
-
-
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct FixedFee {
@@ -44,29 +40,42 @@ struct OrderFlags {
     to_safe_book: bool
 }
 
-// TODO created at
+
+
+// later trade group id can be binned together if multisig happens, offchain execution
+
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+enum TakerSelfTradePreventionMode {
+    NONE, // allow self trading
+    EXPIRE_TAKER, // on contract side wont allow orders to match if they have same order signer, on exchange expiring remaining qty of taker
+    EXPIRE_MAKER, // on contract side wont allow orders to match if they have same order signer, on exchange expiring remaining qty of maker's orders
+    EXPIRE_BOTH, // on contract side wont allow orders to match, on exchange expiring remaining qty of taker and makers orders
+} // semantic take place only depending on takers' order mode
+
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct Order {
-    maker: ContractAddress,
-    price: u256,
-    quantity: u256,
-    ticker:(ContractAddress,ContractAddress),
-    fee: OrderFee,
-    number_of_swaps_allowed: u8,
-    salt: felt252,
-    nonce: u32,
-    flags: OrderFlags,
-    router_signer: ContractAddress,
-    base_asset: u256,
-    created_at:u32
-}
+    maker: ContractAddress, // trading account that created order
+    price: u256, // price in quote asset raw amount, for taker order serves as protection price, for passive order executoin price
+    quantity: u256, // quantity in base asset raw amount
+    ticker: (ContractAddress, ContractAddress), // (base asset address, quote asset address) eg ETH/USDC
+    fee: OrderFee, // order fees that user must fulfill once trade happens
+    number_of_swaps_allowed: u8, // if order is taker, one can limit maximum number of trades can happens with this taker order (necesasry becase taker order incur gas fees)
+    salt: felt252, // random salt for security
+    nonce: u32, // maker nonce, for order be valid this nonce must be >= in Nonce component
+    flags: OrderFlags, // various order flags of order
+    router_signer: ContractAddress, // if taker order is unsafe aka trader outside of our ecosystem then this is router that router this trader to us, for makers and safe order always 0
+    base_asset: u256, // raw amount of base asset representing 1, eg 1 eth is 10**18
+    created_at: u32, // epoch time in seconds, time when order was created by user
+    stp: TakerSelfTradePreventionMode
+
+}   
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct SignedOrder {
     order: Order,
-    sign: (felt252, felt252),
-    router_sign: (felt252,felt252)
+    sign: (felt252, felt252), // makers' signer signature of poseidon hash of order,
+    router_sign: (felt252,felt252) // router_signer signature of poseidon hash of order in case of unsafe taker order, else (0, 0)
 }
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
@@ -75,55 +84,6 @@ struct OrderTradeInfo {
     last_traded_px: u256,
     num_trades_happened: u8
 }
-
-fn validate_maker_order(order: Order, orders_trade_info:OrderTradeInfo, nonce:u32, settlement_price:u256) -> (u256,u256) {
-    let remaining = order.quantity - orders_trade_info.filled_amount;
-    assert(!order.flags.is_market_order, 'WRONG_MARKET_TYPE');
-    assert(remaining > 0, 'MAKER_ALREADY_FILLED');
-    assert(order.nonce >= nonce, 'OLD_NONCE');
-    
-    if order.flags.post_only {
-        assert(!order.flags.best_level_only && !order.flags.full_fill_only, 'WRONG_MAKER_FLAGS');
-        return (order.quantity - orders_trade_info.filled_amount, order.price);
-    }
-    assert(!order.flags.full_fill_only, 'WRONG_MAKER_FLAG');
-
-    if orders_trade_info.filled_amount > 0 {
-        return (remaining, orders_trade_info.last_traded_px);
-    }
-    return (remaining, order.price);
-}
-
-
-fn validate_taker_order(order: Order, orders_trade_info:OrderTradeInfo, nonce:u32, settlement_price:u256) -> u256 {
-    let remaining = order.quantity - orders_trade_info.filled_amount;
-    assert(order.number_of_swaps_allowed > orders_trade_info.num_trades_happened, 'HIT_SWAPS_ALLOWED');
-    assert(!order.flags.post_only, 'WRONG_TAKER_FLAG');
-    assert(remaining > 0, 'MAKER_ALREADY_FILLED');
-    assert(order.nonce >= nonce, 'OLD_NONCE');
-    if !order.flags.is_sell_side {
-        assert(settlement_price <= order.price, 'BUY_PROTECTION_PRICE_FAILED');
-    } else {
-        assert(settlement_price >= order.price, 'SELL_PROTECTION_PRICE_FAILED');
-    }
-    
-        if orders_trade_info.filled_amount > 0 {
-            if !order.flags.is_sell_side {
-                assert(orders_trade_info.last_traded_px <= settlement_price, 'BUY_PARTIAL_FILL_ERR');
-            } 
-            else {
-                assert(orders_trade_info.last_traded_px >= settlement_price, 'SELL_PARTIAL_FILL_ERR');
-            }
-            if order.flags.best_level_only {
-                assert(orders_trade_info.last_traded_px == settlement_price, 'BEST_LVL_ONLY',);
-            }
-            
-            return remaining;
-        }
-    return order.quantity;
-    // FULL_FILL_ONLY_FLAG checked by user of this func and sign too
-}
-
 
 fn get_feeable_qty(fixed_fee: FixedFee, feeable_qty: u256,is_maker:bool) -> u256 {
     let pbips = if is_maker {fixed_fee.maker_pbips} else {fixed_fee.taker_pbips};

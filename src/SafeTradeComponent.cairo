@@ -1,5 +1,5 @@
-use kurosawa_akira::Order::{SignedOrder,Order,validate_maker_order,validate_taker_order,OrderTradeInfo,OrderFee,FixedFee,
-            get_feeable_qty,get_limit_px, do_taker_price_checks, do_maker_checks};
+use kurosawa_akira::Order::{SignedOrder,Order, OrderTradeInfo, OrderFee, FixedFee,
+            get_feeable_qty,get_limit_px, do_taker_price_checks, do_maker_checks,TakerSelfTradePreventionMode};
 
 #[starknet::interface]
 trait ISafeTradeLogic<TContractState> {
@@ -18,12 +18,11 @@ mod safe_trade_component {
     
     use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
     use starknet::{get_contract_address, ContractAddress};
-    use super::{do_taker_price_checks,do_maker_checks,get_feeable_qty,get_limit_px,SignedOrder,Order,validate_maker_order,validate_taker_order,OrderTradeInfo,OrderFee,FixedFee};
+    use super::{do_taker_price_checks,do_maker_checks,get_feeable_qty, get_limit_px, SignedOrder,Order, TakerSelfTradePreventionMode, OrderTradeInfo, OrderFee, FixedFee};
 
     #[storage]
     struct Storage {
-        orders_trade_info: LegacyMap::<felt252, OrderTradeInfo>,
-        // last_taker_order_and_foc:(felt252, bool, u256),
+        orders_trade_info: LegacyMap::<felt252, OrderTradeInfo>
     }
 
 
@@ -106,11 +105,16 @@ mod safe_trade_component {
 
                                 let (r, s) = signed_order.sign;
                                 assert(contract.check_sign(signed_order.order.maker, maker_hash, r, s), 'WRONG_SIGN_MAKER');
+
                             } else {
                                 assert(maker_order.quantity - maker_fill_info.filled_amount > 0, 'MAKER_ALREADY_PREVIOUSLY_FILLED');
                                 use_prev_maker = false;
                             }
                             
+                            if (taker_order.stp != TakerSelfTradePreventionMode::NONE) { // check stp mode, if not None reuqire prevention
+                                assert(contract.get_signer(maker_order.maker) != contract.get_signer(taker_order.maker), 'STP_VIOLATED');
+                            }
+
                             let (settle_px, maker_qty) = get_limit_px(maker_order, maker_fill_info);   
                                          
                             let taker_qty = do_taker_price_checks(taker_order, settle_px, taker_fill_info);
@@ -138,8 +142,6 @@ mod safe_trade_component {
                             
                             cur += 1;
                         };
-
-                        // self.last_taker_order_and_foc.write((taker_hash, taker_order.flags.full_fill_only, taker_order.quantity - taker_fill_info.filled_amount));
                         
                         taker_fill_info.num_trades_happened += trades;
 

@@ -1,7 +1,6 @@
 
 use starknet::{get_contract_address, ContractAddress};
-use kurosawa_akira::Order::{SignedOrder,Order,validate_maker_order,validate_taker_order,OrderTradeInfo,OrderFee,FixedFee,
-        get_feeable_qty,get_limit_px,do_taker_price_checks,do_maker_checks}; 
+use kurosawa_akira::Order::{SignedOrder,Order, OrderTradeInfo,OrderFee,FixedFee}; 
 use kurosawa_akira::WithdrawComponent::{Withdraw,SignedWithdraw};
 use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
 use kurosawa_akira::NonceComponent::SignedIncreaseNonce;
@@ -21,10 +20,6 @@ trait ILayerAkira<TContractState> {
     fn get_latest_gas_price(self: @TContractState)->u256;
 
     fn get_fee_recipient(self: @TContractState) -> ContractAddress;
-
-    fn set_fee_recipient(ref self: TContractState,recipient:ContractAddress);
-
-
 
     fn get_nonce(self: @TContractState, maker: ContractAddress) -> u32;
     fn get_nonces(self: @TContractState, makers: Span<ContractAddress>)-> Array<u32>;
