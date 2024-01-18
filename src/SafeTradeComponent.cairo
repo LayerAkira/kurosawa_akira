@@ -19,6 +19,7 @@ mod safe_trade_component {
     use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
     use starknet::{get_contract_address, ContractAddress};
     use super::{do_taker_price_checks,do_maker_checks,get_feeable_qty, get_limit_px, SignedOrder,Order, TakerSelfTradePreventionMode, OrderTradeInfo, OrderFee, FixedFee};
+    use kurosawa_akira::utils::common::DisplayContractAddress;
 
     #[storage]
     struct Storage {
@@ -72,7 +73,7 @@ mod safe_trade_component {
             
             let (_, use_prev_maker) = *iters.at(0);
             let mut first_iter = true;
-            assert(!use_prev_maker, 'WRONG_FIRST_ITER');
+            assert!(!use_prev_maker, "WRONG_FIRST_ITER");
 
             let fee_recipient = balance.fee_recipient.read();
 
@@ -83,7 +84,7 @@ mod safe_trade_component {
             
                         let signed_taker_order = taker_orders.pop_front().unwrap();
                         let (taker_order, taker_hash, mut taker_fill_info) =  self.part_validate_taker(signed_taker_order, trades); 
-                        assert(taker_order.fee.trade_fee.recipient == fee_recipient, 'WRONG_TAKER_FEE_RECIPIENT');
+                        assert!(taker_order.fee.trade_fee.recipient == fee_recipient, "WRONG_TAKER_FEE_RECIPIENT: expected {} got {}", fee_recipient, taker_order.fee.trade_fee.recipient);
                         
                         let mut cur = 0;
 
@@ -100,19 +101,19 @@ mod safe_trade_component {
                                 maker_fill_info = self.orders_trade_info.read(maker_hash);
 
                                 do_maker_checks(maker_order, maker_fill_info, contract.get_nonce(maker_order.maker));
-                                assert(maker_order.fee.trade_fee.recipient == fee_recipient, 'WRONG_MAKER_FEE_RECIPIENT');
+                                assert!(maker_order.fee.trade_fee.recipient == fee_recipient, "WRONG_MAKER_FEE_RECIPIENT: expected {} got {}", fee_recipient, maker_order.fee.trade_fee.recipient);
             
 
                                 let (r, s) = signed_order.sign;
-                                assert(contract.check_sign(signed_order.order.maker, maker_hash, r, s), 'WRONG_SIGN_MAKER');
+                                assert!(contract.check_sign(signed_order.order.maker, maker_hash, r, s), "WRONG_SIGN_MAKER: (maker_hash, r, s) : ({}, {} ,{})", maker_hash, r, s);
 
                             } else {
-                                assert(maker_order.quantity - maker_fill_info.filled_amount > 0, 'MAKER_ALREADY_PREVIOUSLY_FILLED');
+                                assert!(maker_order.quantity > maker_fill_info.filled_amount, "MAKER_ALREADY_PREVIOUSLY_FILLED");
                                 use_prev_maker = false;
                             }
                             
                             if (taker_order.stp != TakerSelfTradePreventionMode::NONE) { // check stp mode, if not None reuqire prevention
-                                assert(contract.get_signer(maker_order.maker) != contract.get_signer(taker_order.maker), 'STP_VIOLATED');
+                                assert!(contract.get_signer(maker_order.maker) != contract.get_signer(taker_order.maker), "STP_VIOLATED");
                             }
 
                             let (settle_px, maker_qty) = get_limit_px(maker_order, maker_fill_info);   
@@ -120,12 +121,12 @@ mod safe_trade_component {
                             let taker_qty = do_taker_price_checks(taker_order, settle_px, taker_fill_info);
                             let settle_base_amount = if maker_qty > taker_qty {taker_qty} else {maker_qty};
 
-                            assert(taker_order.flags.is_sell_side != maker_order.flags.is_sell_side, 'WRONG_SIDE');
-                            assert(taker_order.ticker == maker_order.ticker,'MISMATCH_TICKER');
-                            assert(taker_order.flags.to_safe_book == maker_order.flags.to_safe_book && taker_order.flags.to_safe_book, 'WRONG_BOOK_DESTINATION');
-                            assert(taker_order.base_asset == maker_order.base_asset, 'WRONG_ASSET_AMOUNT');
+                            assert!(taker_order.flags.is_sell_side != maker_order.flags.is_sell_side, "WRONG_SIDE");
+                            assert!(taker_order.ticker == maker_order.ticker,"MISMATCH_TICKER");
+                            assert!(taker_order.flags.to_safe_book == maker_order.flags.to_safe_book && taker_order.flags.to_safe_book, "WRONG_BOOK_DESTINATION");
+                            assert!(taker_order.base_asset == maker_order.base_asset, "WRONG_ASSET_AMOUNT");
                             let settle_quote_amount = settle_px * settle_base_amount / maker_order.base_asset;
-                            assert(settle_quote_amount > 0, '0_QUOTE_AMOUNT');
+                            assert!(settle_quote_amount > 0, "0_QUOTE_AMOUNT");
                             
                             
                             self.settle_trade(maker_order, taker_order, settle_base_amount, settle_quote_amount);
@@ -151,7 +152,7 @@ mod safe_trade_component {
 
                     },
                     Option::None(_) => {
-                        assert (taker_orders.len() == 0 && maker_orders.len() == 0 && iters.len() == 0, 'MISMATCH');
+                        assert!(taker_orders.len() == 0 && maker_orders.len() == 0 && iters.len() == 0, "MISMATCH");
                         // update state for last maker that gone
                         self.orders_trade_info.write(maker_hash, maker_fill_info);
                         break();
@@ -165,17 +166,17 @@ mod safe_trade_component {
             let taker_order_hash = taker_order.get_poseidon_hash();
             let taker_fill_info = self.orders_trade_info.read(taker_order_hash);
             
-            assert(contract.check_sign(taker_order.maker, taker_order_hash, r, s), 'WRONG_SIGN_TAKER');
-            assert(taker_order.number_of_swaps_allowed >= taker_fill_info.num_trades_happened + swaps, 'HIT_SWAPS_ALLOWED');
-            assert(!taker_order.flags.post_only, 'WRONG_TAKER_FLAG');
-            assert(taker_order.nonce >= contract.get_nonce(taker_order.maker),'OLD_TAKER_NONCE');
+            assert!(contract.check_sign(taker_order.maker, taker_order_hash, r, s), "WRONG_SIGN_TAKER: (taker_order_hash, r, s) = ({}, {}, {})", taker_order_hash, r, s);
+            assert!(taker_order.number_of_swaps_allowed >= taker_fill_info.num_trades_happened + swaps, "HIT_SWAPS_ALLOWED");
+            assert!(!taker_order.flags.post_only, "WRONG_TAKER_FLAG");
+            assert!(taker_order.nonce >= contract.get_nonce(taker_order.maker),"OLD_TAKER_NONCE");
             // NASTY for now omit because headache if we lost info about order
             // let (last_fill_taker_hash, is_foc, remaining):(felt252, bool, u256) = self.last_taker_order_and_foc.read();
             // if last_fill_taker_hash != taker_order_hash { assert(!is_foc || remaining == 0, 'FOK_PREVIOUS');}
             // if taker_fill_info.filled_amount > 0 { assert(last_fill_taker_hash == taker_order_hash, 'IF_PARTIAL=>PREV_SAME');}
 
-            assert(taker_order.fee.router_fee.taker_pbips == 0, 'TAKER_SAFE_REQUIRES_NO_ROUTER');
-            assert (taker_order.quantity - taker_fill_info.filled_amount > 0, 'TAKER_ALREADY_FILLED');
+            assert!(taker_order.fee.router_fee.taker_pbips == 0, "TAKER_SAFE_REQUIRES_NO_ROUTER");
+            assert!(taker_order.quantity > taker_fill_info.filled_amount, "TAKER_ALREADY_FILLED");
 
             return (taker_order, taker_order_hash, taker_fill_info);
         }
@@ -185,7 +186,7 @@ mod safe_trade_component {
             balancer.rebalance_after_trade(maker_order.maker, taker_order.maker,maker_order.ticker, amount_base, amount_quote,maker_order.flags.is_sell_side);
             balancer.apply_maker_fee(maker_order.maker, maker_order.fee.trade_fee, maker_order.flags.is_sell_side,
                                  maker_order.ticker, amount_base, amount_quote);
-            assert(maker_order.fee.router_fee.taker_pbips == 0, 'MAKER_SAFE_REQUIRES_NO_ROUTER');
+            assert!(maker_order.fee.router_fee.taker_pbips == 0, "MAKER_SAFE_REQUIRES_NO_ROUTER");
             
             self.emit(Trade{
                     maker:maker_order.maker, taker:taker_order.maker, ticker:maker_order.ticker,
@@ -197,7 +198,7 @@ mod safe_trade_component {
             
             let taker_fee_token = if taker_order.flags.is_sell_side { let (b,q) = taker_order.ticker; q} else {let (b,q) = taker_order.ticker; b};
             let taker_fee_amount = get_feeable_qty(taker_order.fee.trade_fee, if taker_order.flags.is_sell_side { quote_amount } else {base_amount}, false);
-            assert(taker_order.fee.router_fee.taker_pbips == 0, 'TAKER_SAFE_REQUIRES_NO_ROUTER');
+            assert!(taker_order.fee.router_fee.taker_pbips == 0, "TAKER_SAFE_REQUIRES_NO_ROUTER");
             if taker_fee_amount > 0 {
                 balancer.internal_transfer(taker_order.maker, taker_order.fee.trade_fee.recipient, taker_fee_amount, taker_fee_token);
             }
