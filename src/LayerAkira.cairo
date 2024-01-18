@@ -107,17 +107,17 @@ mod LayerAkira {
 
     #[external(v0)]
     fn update_exchange_invokers(ref self: ContractState, invoker:ContractAddress, enabled:bool) {
-        assert(self.owner.read() == get_caller_address(), 'Only owner');
+        assert!(self.owner.read() == get_caller_address(), "Access denied: update_exchange_invokers is only for the owner's use");
         self.exchange_invokers.write(invoker, enabled);
     }
 
     // methods to update some components properties
     #[external(v0)]
     fn update_withdraw_component_params(ref self: ContractState, new_withdraw_steps: u16, new_delay:SlowModeDelay) {
-        assert(self.owner.read() == get_caller_address(), 'Only owner');
+        assert!(self.owner.read() == get_caller_address(), "Access denied: update_withdraw_component_params is only for the owner's use");
         let max = self.max_slow_mode_delay.read();
-        assert(new_delay.block <= max.block && new_delay.ts <= max.ts, 'MAX_VIOLATED');
-        assert(new_withdraw_steps <= self.max_withdraw_action_cost.read() , 'MAX_WITHDRAW_VIOLATED');
+        assert!(new_delay.block <= max.block && new_delay.ts <= max.ts, "Failed withdraw params update: new_delay <= max_slow_mode_delay");
+        assert!(new_withdraw_steps <= self.max_withdraw_action_cost.read() , "Failed withdraw params update: new_withdraw_steps ({}) <= max_withdraw_action_cost ({})", new_withdraw_steps, self.max_withdraw_action_cost.read());
         self.withdraw_s.delay.write(new_delay);
         self.withdraw_s.gas_steps.write(new_withdraw_steps);
     }
@@ -126,7 +126,7 @@ mod LayerAkira {
 
     #[external(v0)]
     fn update_balance_component_params(ref self: ContractState, new_fee_recipient: ContractAddress, new_base_token:ContractAddress) {
-        assert(self.owner.read() == get_caller_address(), 'Only owner');
+        assert!(self.owner.read() == get_caller_address(), "Access denied: update_balance_component_params is only for the owner's use");
         self.balancer_s.fee_recipient.write(new_fee_recipient);
         self.balancer_s.wrapped_native_token.write(new_base_token);
         self.router_s.native_base_token.write(new_base_token); // same so we need update it here as well
@@ -135,9 +135,9 @@ mod LayerAkira {
     #[external(v0)]
     fn update_router_component_params(ref self: ContractState, new_fee_recipient: ContractAddress, new_base_token:ContractAddress, 
                     new_delay:SlowModeDelay, min_amount_to_route:u256, new_punishment_bips:u16) {
-        assert(self.owner.read() == get_caller_address(), 'Only owner');
+        assert!(self.owner.read() == get_caller_address(), "Access denied: update_router_component_params is only for the owner's use");
         let max = self.max_slow_mode_delay.read();
-        assert(new_delay.block <= max.block && new_delay.ts <= max.ts, 'MAX_VIOLATED');
+        assert!(new_delay.block <= max.block && new_delay.ts <= max.ts, "Failed router params update: new_delay <= max_slow_mode_delay");
         
         self.balancer_s.wrapped_native_token.write(new_base_token); // same so we need update it here as well
         self.router_s.native_base_token.write(new_base_token);
@@ -148,9 +148,13 @@ mod LayerAkira {
     
     // apply methods performed by exchange invokers
 
+    fn asset_whitelisted_invokers(self: @ContractState) {
+        assert!(self.exchange_invokers.read(get_caller_address()), "Access denied: Only whitelisted invokers");
+    }
+
     #[external(v0)]
     fn apply_increase_nonce(ref self: ContractState, signed_nonce: SignedIncreaseNonce, gas_price:u256) {
-        assert(self.exchange_invokers.read(get_caller_address()), 'Only whitelisted invokers');
+        asset_whitelisted_invokers(@self);
         self.nonce_s.apply_increase_nonce(signed_nonce,gas_price);
         self.balancer_s.latest_gas.write(gas_price);
     }
@@ -158,7 +162,7 @@ mod LayerAkira {
 
     #[external(v0)]
     fn apply_increase_nonces(ref self: ContractState, mut signed_nonces: Array<SignedIncreaseNonce>, gas_price:u256) {
-        assert(self.exchange_invokers.read(get_caller_address()), 'Only whitelisted invokers');
+        asset_whitelisted_invokers(@self);
         loop {
             match signed_nonces.pop_front(){
                 Option::Some(signed_nonce) => { self.nonce_s.apply_increase_nonce(signed_nonce,gas_price);},
@@ -170,14 +174,14 @@ mod LayerAkira {
 
     #[external(v0)]
     fn apply_withdraw(ref self: ContractState, signed_withdraw: SignedWithdraw, gas_price:u256) {
-        assert(self.exchange_invokers.read(get_caller_address()), 'Only whitelisted invokers');
+        asset_whitelisted_invokers(@self);
         self.withdraw_s.apply_withdraw(signed_withdraw, gas_price);
         self.balancer_s.latest_gas.write(gas_price);
     }
 
     #[external(v0)]
     fn apply_withdraws(ref self: ContractState, mut signed_withdraws: Array<SignedWithdraw>, gas_price:u256) {
-        assert(self.exchange_invokers.read(get_caller_address()), 'Only whitelisted invokers');
+        asset_whitelisted_invokers(@self);
         loop {
             match signed_withdraws.pop_front(){
                 Option::Some(signed_withdraw) => {self.withdraw_s.apply_withdraw(signed_withdraw, gas_price)},
@@ -189,14 +193,14 @@ mod LayerAkira {
 
     #[external(v0)]
     fn apply_safe_trade(ref self: ContractState, taker_orders:Array<SignedOrder>, maker_orders: Array<SignedOrder>, iters:Array<(u8, bool)>, gas_price:u256) {
-        assert(self.exchange_invokers.read(get_caller_address()), 'Only whitelisted invokers'); 
+        asset_whitelisted_invokers(@self);
         self.safe_trade_s.apply_trades(taker_orders, maker_orders, iters, gas_price);
         self.balancer_s.latest_gas.write(gas_price);
     }
 
     #[external(v0)]
     fn apply_unsafe_trade(ref self: ContractState, taker_order:SignedOrder, maker_orders: Array<SignedOrder>, total_amount_matched:u256,  gas_price:u256) -> bool {
-        assert(self.exchange_invokers.read(get_caller_address()), 'Only whitelisted invokers');
+        asset_whitelisted_invokers(@self);
         let res = self.unsafe_trade_s.apply_trades_simple(taker_order, maker_orders, total_amount_matched, gas_price);
         self.balancer_s.latest_gas.write(gas_price);
         return res;
@@ -204,7 +208,7 @@ mod LayerAkira {
 
     #[external(v0)]
     fn apply_unsafe_trades(ref self: ContractState,  mut bulk:Array<(SignedOrder, Array<SignedOrder>, u256)>,  gas_price:u256) -> Array<bool> { 
-        assert(self.exchange_invokers.read(get_caller_address()), 'Only whitelisted invokers');
+        asset_whitelisted_invokers(@self);
         let mut res: Array<bool> = ArrayTrait::new();
             
         loop {
