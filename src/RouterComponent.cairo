@@ -69,8 +69,7 @@ mod router_component {
     use starknet::{get_caller_address, get_contract_address, get_block_timestamp};
     use starknet::info::get_block_number;
     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait, IERC20Dispatcher};
-    use core::fmt;
-    use result::Result;
+    use kurosawa_akira::utils::common::DisplayContractAddress;
 
 
 
@@ -143,13 +142,6 @@ mod router_component {
         native_base_token:ContractAddress,
         signer_to_router:LegacyMap<ContractAddress,ContractAddress>,
         pinishment_bips:u16   
-    }
-
-    impl DisplayContractAddress of fmt::Display<ContractAddress> {
-        fn fmt(self: @ContractAddress, ref f: fmt::Formatter) -> Result<(), fmt::Error> {
-            let a: felt252 = (*self).into();
-            a.fmt(ref f)
-        }
     }
 
     #[embeddable_as(Routable)]

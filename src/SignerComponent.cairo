@@ -24,6 +24,7 @@ mod signer_logic_component {
     use starknet::{ContractAddress, get_caller_address};
     use ecdsa::check_ecdsa_signature;
     use super::ISignerLogic;
+    use kurosawa_akira::utils::common::DisplayContractAddress;
 
 
     #[event]
@@ -51,7 +52,7 @@ mod signer_logic_component {
     > of ISignerLogic<ComponentState<TContractState>> {
         fn bind_to_signer(ref self: ComponentState<TContractState>, signer: ContractAddress) {
             let caller = get_caller_address();
-            assert(self.trader_to_signer.read(caller) == 0.try_into().unwrap(), 'ALREADY BINDED');
+            assert!(self.trader_to_signer.read(caller) == 0.try_into().unwrap(), "ALREADY BINDED: signer = {}", self.trader_to_signer.read(caller));
             self.trader_to_signer.write(caller, signer);
             self.emit(NewBinding { trading_account: caller, signer: signer });
         }
@@ -78,7 +79,7 @@ mod signer_logic_component {
 
         fn check_sign(self: @ComponentState<TContractState>, trader: ContractAddress, message: felt252, sig_r: felt252, sig_s: felt252) -> bool {
             let signer: ContractAddress = self.trader_to_signer.read(trader);
-            assert(signer != 0.try_into().unwrap(), 'UNDEFINED_SIGNER');
+            assert!(signer != 0.try_into().unwrap(), "UNDEFINED_SIGNER: no signer for this trader {}", trader);
             return check_ecdsa_signature(message, signer.into(), sig_r, sig_s);
         }
     }
