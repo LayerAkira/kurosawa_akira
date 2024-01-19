@@ -123,13 +123,13 @@ mod exchange_balance_logic_component {
 
         fn burn(ref self: ComponentState<TContractState>, from: ContractAddress, amount: u256, token: ContractAddress) {
             let balance = self._balances.read((token, from));
-            assert(balance >= amount,'FEW_TO_BURN');
+            assert!(balance >= amount,"FEW_TO_BURN");
             self._balances.write((token, from), balance - amount);
             self._total_supply.write(token, self._total_supply.read(token) - amount);
             self.emit(Burn{from_:from,token,amount});
         }
         fn internal_transfer(ref self: ComponentState<TContractState>, from: ContractAddress, to: ContractAddress, amount: u256, token: ContractAddress) {
-            assert(self._balances.read((token, from)) >= amount, 'Few balance');
+            assert!(self._balances.read((token, from)) >= amount, "FEW_BALANCE");
             self._balances.write((token, from), self._balances.read((token, from)) - amount);
             self._balances.write((token, to), self._balances.read((token, to)) + amount);
             self.emit(Transfer{from_:from, to, token, amount});

@@ -121,7 +121,7 @@ fn do_maker_checks(maker_order:Order, maker_fill_info:OrderTradeInfo,nonce:u32)-
     assert!(!maker_order.flags.full_fill_only, "WRONG_MAKER_FLAG: maker_order can't be full_fill_only");
 
     if maker_order.flags.post_only {
-        assert(!maker_order.flags.best_level_only && !maker_order.flags.full_fill_only, 'WRONG_MAKER_FLAGS');
+        assert!(!maker_order.flags.best_level_only && !maker_order.flags.full_fill_only, "WRONG_MAKER_FLAGS");
     }
     let settle_px = if maker_fill_info.filled_amount > 0 {maker_fill_info.last_traded_px} else {maker_order.price};
     return (settle_px, remaining); 

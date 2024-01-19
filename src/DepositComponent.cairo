@@ -44,7 +44,7 @@ mod deposit_component {
             let pre = erc20.balanceOf(contract);
             erc20.transferFrom(caller, contract, amount);
             let fact_received = erc20.balanceOf(contract) - pre;
-            assert(fact_received == amount, 'WRONG_AMOUNT');
+            assert!(fact_received == amount, "WRONG_AMOUNT: expected {}, got {}", amount, fact_received);
 
             b_contract.mint(receiver, amount, token);
             self.emit(Deposit{receiver:receiver, token:token, funder:caller, amount:amount});
