@@ -35,7 +35,7 @@ trait ILayerAkira<TContractState> {
     //  native  token can be withdrawn up to amount specified to be eligible of being router
     fn router_withdraw(ref self: TContractState, coin: ContractAddress, amount: u256, receiver:ContractAddress);
     
-    // register router so the required amount is holded while he is router
+    // register router so the required amount is held while he is router
     fn register_router(ref self: TContractState);
 
     // if router wish to bind new signers

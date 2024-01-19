@@ -133,8 +133,8 @@ mod unsafe_trade_component {
             };
             let (mut balancer, taker_fees) = (self.get_balancer_mut(), taker_order.fee);
 
-            let fee_recipinet = balancer.fee_recipient.read();
-            assert!(taker_order.fee.trade_fee.recipient == fee_recipinet, "WRONG_TAKER_FEE_RECIPIENT: expected {}, got {}", fee_recipinet, taker_order.fee.trade_fee.recipient);
+            let fee_recipient = balancer.fee_recipient.read();
+            assert!(taker_order.fee.trade_fee.recipient == fee_recipient, "WRONG_TAKER_FEE_RECIPIENT: expected {}, got {}", fee_recipient, taker_order.fee.trade_fee.recipient);
             
 
             let failed = amount_out == 0;
@@ -145,7 +145,7 @@ mod unsafe_trade_component {
                         let maker_order = signed_maker_order.order;
                         let (settle_px, amount_quote, amount_base, mut maker_fill_info, maker_hash) = 
                                     self._do_maker_checks_and_common(signed_maker_order, taker_order, taker_fill_info);
-                        assert!(maker_order.fee.trade_fee.recipient == fee_recipinet, "WRONG_MAKER_FEE_RECIPEINT: expected {}, got {}", fee_recipinet, maker_order.fee.trade_fee.recipient);
+                        assert!(maker_order.fee.trade_fee.recipient == fee_recipient, "WRONG_MAKER_FEE_RECIPIENT: expected {}, got {}", fee_recipient, maker_order.fee.trade_fee.recipient);
             
                         if failed {
                             self.punish_router_simple(taker_fees.gas_fee, taker_fees.router_fee.recipient, 
@@ -302,7 +302,7 @@ mod unsafe_trade_component {
             // pay for gas
             // Reward router
             // Transfer unspent amounts to the user back
-            let (router_fee, exhcange_fee) = (taker_order.fee.router_fee,taker_order.fee.trade_fee);
+            let (router_fee, exchange_fee) = (taker_order.fee.router_fee,taker_order.fee.trade_fee);
             let (mut balancer, mut router,contract) = (self.get_balancer_mut(),self.get_router_mut(), self.get_contract());
 
             // do the gas tfer
@@ -323,9 +323,9 @@ mod unsafe_trade_component {
                 });
             }
 
-            let exchange_fee_amount = get_feeable_qty(exhcange_fee, received_amount, false);
+            let exchange_fee_amount = get_feeable_qty(exchange_fee, received_amount, false);
             if exchange_fee_amount > 0 {
-                balancer.internal_transfer(taker_order.maker, exhcange_fee.recipient, exchange_fee_amount, fee_token);
+                balancer.internal_transfer(taker_order.maker, exchange_fee.recipient, exchange_fee_amount, fee_token);
             }
 
             let received_amount  = received_amount - router_fee_amount - exchange_fee_amount;

@@ -37,7 +37,7 @@ mod deposit_component {
 
         fn deposit(ref self: ComponentState<TContractState>, receiver:ContractAddress, token:ContractAddress, amount:u256) {
             // User invokes this method and exchange will tfer amount of token to receiver
-            // Note user must grant allowance to exhchange to invoke transferFrom method
+            // Note user must grant allowance to exchange to invoke transferFrom method
             let (caller, contract, mut b_contract) = (get_caller_address(), get_contract_address(), self.get_balancer_mut());
             let erc20 = IERC20Dispatcher { contract_address: token };
 

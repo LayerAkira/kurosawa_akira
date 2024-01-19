@@ -24,7 +24,7 @@ trait IRouter<TContractState> {
 
     // if router wish to bind new signers
     // reverse semantic compared to SignerComponent
-    // here router can have multiple signers associted to avoid risks  of exposing his router' private key
+    // here router can have multiple signers associated to avoid risks  of exposing his router' private key
     // so when it comes to signing unsafe taker orders router will sign order  by one of his associated signers keys
     fn add_router_binding(ref self: TContractState, signer: ContractAddress);
 
@@ -41,7 +41,7 @@ trait IRouter<TContractState> {
     fn validate_router(self: @TContractState, message: felt252, signature: (felt252, felt252), signer: ContractAddress, router:ContractAddress) -> bool;
 
     // in case of failed action due to wrong taker details we punish router and distribute this fine to exchange,
-    // because we wasted gas for nothing and to maker because he have lost opportuinity
+    // because we wasted gas for nothing and to maker because he have lost opportunity
     fn get_punishment_factor_bips(self: @TContractState) -> u16;
 
     // is router registered as router so he can route unsafe orders to our exchange 
@@ -54,7 +54,7 @@ trait IRouter<TContractState> {
 
     fn balance_of_router(self:@TContractState, router:ContractAddress, coin:ContractAddress)->u256;
 
-    // get router address assosiated with given signer
+    // get router address associated with given signer
     fn get_router(self:@TContractState, signer:ContractAddress) -> ContractAddress;
 
     // how much one must hold have in balance to be registered as router
@@ -141,7 +141,7 @@ mod router_component {
         registered:LegacyMap::<ContractAddress,bool>,
         native_base_token:ContractAddress,
         signer_to_router:LegacyMap<ContractAddress,ContractAddress>,
-        pinishment_bips:u16   
+        punishment_bips:u16
     }
 
     #[embeddable_as(Routable)]
@@ -226,7 +226,7 @@ mod router_component {
 
         fn validate_router(self: @ComponentState<TContractState>, message: felt252, signature: (felt252, felt252), signer: ContractAddress, router:ContractAddress) -> bool {
             // message should be correctly signed by signer and 
-            // signer should be assoaicted with expected router
+            // signer should be associated with expected router
             // and this router should actually be registered as router  
             let actual_router = self.signer_to_router.read(signer);
             if actual_router != router {return false;}
@@ -235,7 +235,7 @@ mod router_component {
             return check_ecdsa_signature(message, signer.into(), sig_r, sig_s);
         }
 
-        fn get_punishment_factor_bips(self: @ComponentState<TContractState>) -> u16 { return self.pinishment_bips.read();}
+        fn get_punishment_factor_bips(self: @ComponentState<TContractState>) -> u16 { return self.punishment_bips.read();}
         
         fn is_registered(self: @ComponentState<TContractState>, router: ContractAddress) -> bool { return self.registered.read(router);}
 
@@ -250,10 +250,10 @@ mod router_component {
 
     #[generate_trait]
     impl InternalRoutableImpl<TContractState, +HasComponent<TContractState>> of InternalRoutable<TContractState> {
-        fn initializer(ref self: ComponentState<TContractState>, delay:SlowModeDelay, wrapped_native_token:ContractAddress, min_to_route:u256, pinishment_bips:u16 ) {
+        fn initializer(ref self: ComponentState<TContractState>, delay:SlowModeDelay, wrapped_native_token:ContractAddress, min_to_route:u256, punishment_bips:u16 ) {
             self.min_to_route.write(min_to_route); 
             self.native_base_token.write(wrapped_native_token);
-            self.pinishment_bips.write(pinishment_bips);
+            self.punishment_bips.write(punishment_bips);
             self.delay.write(delay);            
         }
         fn mint(ref self: ComponentState<TContractState>,router:ContractAddress,token:ContractAddress, amount:u256) {

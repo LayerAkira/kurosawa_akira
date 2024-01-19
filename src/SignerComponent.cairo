@@ -4,7 +4,7 @@ use starknet::ContractAddress;
 #[starknet::interface]
 trait ISignerLogic<TContractState> {
     // Binds caller contract address (trading account) to signer.
-    // Signer is responbile for generating signature on behalf of caller address 
+    // Signer is responsible for generating signature on behalf of caller address
     fn bind_to_signer(ref self: TContractState, signer: ContractAddress);
 
     // Validates that trader's  signer is correct signer of the message

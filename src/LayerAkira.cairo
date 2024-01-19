@@ -143,18 +143,18 @@ mod LayerAkira {
         self.router_s.native_base_token.write(new_base_token);
         self.router_s.delay.write(new_delay);
         self.router_s.min_to_route.write(min_amount_to_route);
-        self.router_s.pinishment_bips.write(new_punishment_bips);
+        self.router_s.punishment_bips.write(new_punishment_bips);
     }
     
     // apply methods performed by exchange invokers
 
-    fn asset_whitelisted_invokers(self: @ContractState) {
+    fn assert_whitelisted_invokers(self: @ContractState) {
         assert!(self.exchange_invokers.read(get_caller_address()), "Access denied: Only whitelisted invokers");
     }
 
     #[external(v0)]
     fn apply_increase_nonce(ref self: ContractState, signed_nonce: SignedIncreaseNonce, gas_price:u256) {
-        asset_whitelisted_invokers(@self);
+        assert_whitelisted_invokers(@self);
         self.nonce_s.apply_increase_nonce(signed_nonce,gas_price);
         self.balancer_s.latest_gas.write(gas_price);
     }
@@ -162,7 +162,7 @@ mod LayerAkira {
 
     #[external(v0)]
     fn apply_increase_nonces(ref self: ContractState, mut signed_nonces: Array<SignedIncreaseNonce>, gas_price:u256) {
-        asset_whitelisted_invokers(@self);
+        assert_whitelisted_invokers(@self);
         loop {
             match signed_nonces.pop_front(){
                 Option::Some(signed_nonce) => { self.nonce_s.apply_increase_nonce(signed_nonce,gas_price);},
@@ -174,14 +174,14 @@ mod LayerAkira {
 
     #[external(v0)]
     fn apply_withdraw(ref self: ContractState, signed_withdraw: SignedWithdraw, gas_price:u256) {
-        asset_whitelisted_invokers(@self);
+        assert_whitelisted_invokers(@self);
         self.withdraw_s.apply_withdraw(signed_withdraw, gas_price);
         self.balancer_s.latest_gas.write(gas_price);
     }
 
     #[external(v0)]
     fn apply_withdraws(ref self: ContractState, mut signed_withdraws: Array<SignedWithdraw>, gas_price:u256) {
-        asset_whitelisted_invokers(@self);
+        assert_whitelisted_invokers(@self);
         loop {
             match signed_withdraws.pop_front(){
                 Option::Some(signed_withdraw) => {self.withdraw_s.apply_withdraw(signed_withdraw, gas_price)},
@@ -193,14 +193,14 @@ mod LayerAkira {
 
     #[external(v0)]
     fn apply_safe_trade(ref self: ContractState, taker_orders:Array<SignedOrder>, maker_orders: Array<SignedOrder>, iters:Array<(u8, bool)>, gas_price:u256) {
-        asset_whitelisted_invokers(@self);
+        assert_whitelisted_invokers(@self);
         self.safe_trade_s.apply_trades(taker_orders, maker_orders, iters, gas_price);
         self.balancer_s.latest_gas.write(gas_price);
     }
 
     #[external(v0)]
     fn apply_unsafe_trade(ref self: ContractState, taker_order:SignedOrder, maker_orders: Array<SignedOrder>, total_amount_matched:u256,  gas_price:u256) -> bool {
-        asset_whitelisted_invokers(@self);
+        assert_whitelisted_invokers(@self);
         let res = self.unsafe_trade_s.apply_trades_simple(taker_order, maker_orders, total_amount_matched, gas_price);
         self.balancer_s.latest_gas.write(gas_price);
         return res;
@@ -208,7 +208,7 @@ mod LayerAkira {
 
     #[external(v0)]
     fn apply_unsafe_trades(ref self: ContractState,  mut bulk:Array<(SignedOrder, Array<SignedOrder>, u256)>,  gas_price:u256) -> Array<bool> { 
-        asset_whitelisted_invokers(@self);
+        assert_whitelisted_invokers(@self);
         let mut res: Array<bool> = ArrayTrait::new();
             
         loop {
