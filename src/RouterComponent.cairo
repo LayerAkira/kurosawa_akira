@@ -217,7 +217,7 @@ mod router_component {
             assert!(ongoing.block != 0, "NOT_REQUESTED: router {} has not requested deregistration", router);
             let delay:SlowModeDelay = self.delay.read();
             let (block_delta, ts_delta) = (get_block_number() - ongoing.block, get_block_timestamp() - ongoing.ts);
-            assert!(block_delta >= delay.block && ts_delta >= delay.ts, "FEW_TIME_PASSED: wait at least {} blocks and {} ts (for now its {} and {})", delay.block, delay.ts, block_delta, ts_delta);
+            assert!(block_delta >= delay.block && ts_delta >= delay.ts, "FEW_TIME_PASSED: wait at least {} block and {} ts (for now its {} and {})", delay.block, delay.ts, block_delta, ts_delta);
             
             self.registered.write(router, false);
             self.pending_unregister.write(router.into(), SlowModeDelay{block:0,ts:0});

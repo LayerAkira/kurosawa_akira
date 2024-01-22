@@ -153,7 +153,7 @@ mod withdraw_component {
             
             let limit:SlowModeDelay = self.delay.read();
             let (block_delta, ts_delta) = (get_block_number() - delay.block, get_block_timestamp() - delay.ts);
-            assert!(block_delta >= limit.block && ts_delta >= limit.ts, "FEW_TIME_PASSED: wait at least {} blocks and {} ts (for now its {} and {})", delay.block, delay.ts, block_delta, ts_delta);
+            assert!(block_delta >= limit.block && ts_delta >= limit.ts, "FEW_TIME_PASSED: wait at least {} block and {} ts (for now its {} and {})", delay.block, delay.ts, block_delta, ts_delta);
             
             let mut balancer = self.get_balancer_mut();
             balancer.burn(w_req.maker, w_req.amount, w_req.token);
