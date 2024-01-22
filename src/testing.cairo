@@ -67,10 +67,6 @@ mod tests_deposit_and_withdrawal_and_nonce {
         assert(akira_user - akira.balanceOf(trader, token) == w.amount, 'WRONG_BURN_TOKEN');
     }
 
-    fn a() -> ByteArray{
-        "FEW_TIME_PASSED"
-    }
-
     #[test]
     #[fork("block_based")]
     #[should_panic(expected: ("FEW_TIME_PASSED: wait at least 915484 block and 1702114566 ts (for now its 0 and 0)",))]
