@@ -180,7 +180,7 @@ mod withdraw_component {
         fn apply_withdraw(ref self: ComponentState<TContractState>, signed_withdraw: SignedWithdraw, gas_price:u256) {
             let hash = signed_withdraw.withdraw.get_poseidon_hash();
             let (delay, w_req):(SlowModeDelay, Withdraw) = self.pending_reqs.read((signed_withdraw.withdraw.token, signed_withdraw.withdraw.maker));
-            assert!(!self.completed_reqs.read(hash), "ALREADY_COMPLETED: withdraw ({})", hash);
+            assert!(!self.completed_reqs.read(hash), "ALREADY_COMPLETED: withdraw (hash = {})", hash);
             
             if w_req != signed_withdraw.withdraw { // need to check sign cause offchain withdrawal
                 let (r, s) = signed_withdraw.sign;

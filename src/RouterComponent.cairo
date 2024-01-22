@@ -230,7 +230,7 @@ mod router_component {
             // and this router should actually be registered as router  
             let actual_router = self.signer_to_router.read(signer);
             if actual_router != router {return false;}
-            assert!(self.registered.read(router), "NOT_REGISTERED {}", router); // this one should be controlled by exchange, if fails, exchage screwed
+            assert!(self.registered.read(router), "NOT_REGISTERED: not registered router {}", router); // this one should be controlled by exchange, if fails, exchage screwed
             let (sig_r, sig_s) = signature;
             return check_ecdsa_signature(message, signer.into(), sig_r, sig_s);
         }
