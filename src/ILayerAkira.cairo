@@ -23,6 +23,7 @@ trait ILayerAkira<TContractState> {
 
     fn get_nonce(self: @TContractState, maker: ContractAddress) -> u32;
     fn get_nonces(self: @TContractState, makers: Span<ContractAddress>)-> Array<u32>;
+    fn apply_increase_nonces(ref self: TContractState, signed_nonces: Array<SignedIncreaseNonce>, gas_price:u256);
 
 
 
@@ -60,6 +61,13 @@ trait ILayerAkira<TContractState> {
 
     fn balance_of_router(self:@TContractState, router:ContractAddress, coin:ContractAddress)->u256;
 
+    // internal exchange functions for updating routers
+
+    fn update_router_component_params(ref self: TContractState, new_fee_recipient: ContractAddress, new_base_token:ContractAddress, 
+                        new_delay:SlowModeDelay, min_amount_to_route:u256, new_punishment_bips:u16);
+
+    fn update_balance_component_params(ref self: TContractState, new_fee_recipient: ContractAddress, new_base_token:ContractAddress);
+
 
 
 
@@ -78,6 +86,8 @@ trait ILayerAkira<TContractState> {
     
     // can only be performed by the owner
     fn apply_onchain_withdraw(ref self: TContractState, token:ContractAddress, key:felt252);
+
+    fn update_withdraw_component_params(ref self: TContractState, new_withdraw_steps: u16, new_delay:SlowModeDelay);
     
 
 
@@ -110,7 +120,15 @@ trait ILayerAkira<TContractState> {
 
     fn apply_withdraw(ref self: TContractState, signed_withdraw: SignedWithdraw, gas_price:u256);
 
-    fn apply_safe_trade(ref self: TContractState, taker_orders:Array<SignedOrder>, maker_orders: Array<SignedOrder>, iters:Array<(u8,bool)>, gas_price:u256);
+    fn apply_withdraws(ref self: TContractState, signed_withdraws: Array<SignedWithdraw>, gas_price:u256);
+
+    fn apply_safe_trades(ref self: TContractState, taker_orders:Array<SignedOrder>, maker_orders: Array<SignedOrder>, iters:Array<(u8,bool)>, gas_price:u256);
     
-    fn apply_unsafe_trade(ref self: TContractState, taker_order:SignedOrder, maker_orders: Array<SignedOrder>, total_amount_matched:u256,  gas_price:u256) -> bool; 
+    fn apply_unsafe_trade(ref self: TContractState, taker_order:SignedOrder, maker_orders: Array<SignedOrder>, total_amount_matched:u256,  gas_price:u256) -> bool;
+    
+    fn apply_unsafe_trades(ref self: TContractState, bulk:Array<(SignedOrder, Array<SignedOrder>, u256)>,  gas_price:u256) -> Array<bool>;
+
+    // super
+
+    fn update_exchange_invokers(ref self: TContractState, invoker:ContractAddress, enabled:bool);
 }

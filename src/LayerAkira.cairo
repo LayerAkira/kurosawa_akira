@@ -192,7 +192,7 @@ mod LayerAkira {
     }
 
     #[external(v0)]
-    fn apply_safe_trade(ref self: ContractState, taker_orders:Array<SignedOrder>, maker_orders: Array<SignedOrder>, iters:Array<(u8, bool)>, gas_price:u256) {
+    fn apply_safe_trades(ref self: ContractState, taker_orders:Array<SignedOrder>, maker_orders: Array<SignedOrder>, iters:Array<(u8, bool)>, gas_price:u256) {
         assert_whitelisted_invokers(@self);
         self.safe_trade_s.apply_trades(taker_orders, maker_orders, iters, gas_price);
         self.balancer_s.latest_gas.write(gas_price);

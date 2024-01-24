@@ -361,7 +361,7 @@ mod tests_safe_trade {
         taker_orders.append(buy_order);
         maker_orders.append(sell_order);
 
-        akira.apply_safe_trade(taker_orders, maker_orders, iters, 100);
+        akira.apply_safe_trades(taker_orders, maker_orders, iters, 100);
 
         let maker_fee = get_feeable_qty(sell_order.order.fee.trade_fee, usdc_amount, true);
         assert(akira.balanceOf(sell_order.order.maker, usdc) == usdc_amount - maker_fee,'WRONG_MATCH_RECIEVE_USDC');
@@ -408,7 +408,7 @@ mod tests_safe_trade {
         let i = iters.clone();
 
 
-        akira.apply_safe_trade(taker_orders, maker_orders, iters, 100);
+        akira.apply_safe_trades(taker_orders, maker_orders, iters, 100);
 
         //0 cause remaining eth was spent on gas
         assert(akira.balanceOf(sell_order.order.maker, eth) == 0,'WRONG_MATCH_ETH_SELL');
