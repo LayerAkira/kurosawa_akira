@@ -5,6 +5,8 @@ use kurosawa_akira::WithdrawComponent::{Withdraw,SignedWithdraw};
 use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
 use kurosawa_akira::NonceComponent::SignedIncreaseNonce;
 
+
+//  for testing purposes only
 #[starknet::interface]
 trait ILayerAkira<TContractState> {
     fn total_supply(self: @TContractState, token: ContractAddress) -> u256;
@@ -78,8 +80,6 @@ trait ILayerAkira<TContractState> {
     fn get_unsafe_trade_info(self: @TContractState, order_hash: felt252) -> OrderTradeInfo;
 
 
-
-
     fn request_onchain_withdraw(ref self: TContractState, withdraw: Withdraw);
 
     fn get_pending_withdraw(self:@TContractState, maker:ContractAddress,token:ContractAddress)->(SlowModeDelay,Withdraw);
@@ -122,11 +122,11 @@ trait ILayerAkira<TContractState> {
 
     fn apply_withdraws(ref self: TContractState, signed_withdraws: Array<SignedWithdraw>, gas_price:u256);
 
-    fn apply_safe_trades(ref self: TContractState, taker_orders:Array<SignedOrder>, maker_orders: Array<SignedOrder>, iters:Array<(u8,bool)>, gas_price:u256);
+    fn apply_safe_trades(ref self: TContractState, taker_orders:Array<(SignedOrder,bool)>, maker_orders: Array<SignedOrder>, iters:Array<(u8,bool)>, oracle_settled_qty:Array<u256>, gas_price:u256);
     
-    fn apply_unsafe_trade(ref self: TContractState, taker_order:SignedOrder, maker_orders: Array<SignedOrder>, total_amount_matched:u256,  gas_price:u256) -> bool;
+    fn apply_unsafe_trade(ref self: TContractState, taker_order:SignedOrder, maker_orders: Array<(SignedOrder,u256)>, total_amount_matched:u256,  gas_price:u256, as_taker_completed:bool) -> bool;
     
-    fn apply_unsafe_trades(ref self: TContractState, bulk:Array<(SignedOrder, Array<SignedOrder>, u256)>,  gas_price:u256) -> Array<bool>;
+    fn apply_unsafe_trades(ref self: TContractState, bulk:Array<(SignedOrder, Array<(SignedOrder,u256)>, u256,bool)>,  gas_price:u256) -> Array<bool>;
 
     // super
 

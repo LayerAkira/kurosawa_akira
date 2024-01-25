@@ -272,7 +272,9 @@ mod test_common_trade {
             },
             flags,
             created_at:0,
-            stp:TakerSelfTradePreventionMode::NONE
+            stp:TakerSelfTradePreventionMode::NONE,
+            version:0,
+            expire_at: 3_294_967_295
         };
         let hash = order.get_poseidon_hash();
         let (pub, pk) = if maker == get_trader_address_1() {
@@ -341,28 +343,16 @@ mod tests_safe_trade {
     fn test_succ_match_single_buy_taker_trade_full() {
         // Taker buy, full match happens with maker of same px
         let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
-        let mut taker_orders: Array<SignedOrder>  = ArrayTrait::new();
-        let mut maker_orders: Array<SignedOrder>  = ArrayTrait::new();
-        let mut iters: Array<(u8,bool)> = ArrayTrait::new();
-
-        deposit(tr1, eth_amount, eth, akira);
-        deposit(tr2, usdc_amount, usdc, akira);
+        deposit(tr1, eth_amount, eth, akira); deposit(tr2, usdc_amount, usdc, akira);
 
 
         let sell_limit_flags = get_order_flags(false,false,true,true,false);
         let sell_order = spawn_order(akira, tr1, usdc_amount, eth_amount, sell_limit_flags, 0, zero_router());
-
         let buy_limit_flags = get_order_flags(false, false, false, false, true);
-
-        iters.append((1, false));
         let buy_order = spawn_order(akira, tr2, usdc_amount, eth_amount, buy_limit_flags, 2, zero_router());
+
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-
-        taker_orders.append(buy_order);
-        maker_orders.append(sell_order);
-
-        akira.apply_safe_trades(taker_orders, maker_orders, iters, 100);
-
+        akira.apply_safe_trades(array![(buy_order,false)], array![sell_order], array![(1,false)], array![0], 100);
         let maker_fee = get_feeable_qty(sell_order.order.fee.trade_fee, usdc_amount, true);
         assert(akira.balanceOf(sell_order.order.maker, usdc) == usdc_amount - maker_fee,'WRONG_MATCH_RECIEVE_USDC');
         assert(akira.balanceOf(buy_order.order.maker, usdc) == 0,'WRONG_MATCH_SEND_USDC');
@@ -383,35 +373,23 @@ mod tests_safe_trade {
     fn test_succ_match_single_sell_taker_trade_full() {
         // Taker buy, full match happens with maker of same px
         let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
-        let mut taker_orders: Array<SignedOrder>  = ArrayTrait::new();
-        let mut maker_orders: Array<SignedOrder>  = ArrayTrait::new();
-        let mut iters: Array<(u8,bool)> = ArrayTrait::new();
-
+        
         let gas_required:u256 = 100 * get_swap_gas_cost().into(); 
-
         deposit(tr1, eth_amount, eth, akira); deposit(tr2, usdc_amount, usdc, akira);
+
 
         let sell_market_flags = get_order_flags(false, false, false, true, true);
         let sell_order = spawn_order(akira, tr1, usdc_amount, eth_amount - gas_required, sell_market_flags, 2, zero_router());
 
         let buy_limit_flags = get_order_flags(false, false, true, false, false);
 
-        iters.append((1, false));
         let buy_order = spawn_order(akira, tr2, usdc_amount, eth_amount, buy_limit_flags, 0,  zero_router());
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
 
-        taker_orders.append(sell_order);
-        maker_orders.append(buy_order);
-
-        let t1 = taker_orders.clone();
-        let t2 = maker_orders.clone();
-        let i = iters.clone();
-
-
-        akira.apply_safe_trades(taker_orders, maker_orders, iters, 100);
+        akira.apply_safe_trades(array![(sell_order, false)], array![buy_order], array![(1,false)], array![0], 100);
 
         //0 cause remaining eth was spent on gas
-        assert(akira.balanceOf(sell_order.order.maker, eth) == 0,'WRONG_MATCH_ETH_SELL');
+        assert!(akira.balanceOf(sell_order.order.maker, eth) == 0, "WRONG_MATCH_ETH_SELL");
         stop_prank(CheatTarget::One(akira.contract_address));
     }  
 
@@ -460,17 +438,14 @@ mod tests_unsafe_trade {
     fn test_cant_execute_with_not_registered_router() {
         // Taker buy, full match happens with maker of same px
         let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
-        let mut maker_orders: Array<SignedOrder>  = ArrayTrait::new();
-
+        
         let sell_order = spawn_order(akira, tr1, usdc_amount, eth_amount, 
                 get_order_flags(false, false, true, true, false), 0, zero_router());
         let buy_order = spawn_order(akira, tr2, usdc_amount, eth_amount, 
                 get_order_flags(false, false, false, false, true), 2, zero_router());
         
-        maker_orders.append(sell_order);
-
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        akira.apply_unsafe_trade(buy_order, maker_orders, usdc_amount*eth_amount / buy_order.order.base_asset, 100);
+        akira.apply_unsafe_trade(buy_order, array![(sell_order,0)], usdc_amount*eth_amount / buy_order.order.base_asset, 100, false);
         stop_prank(CheatTarget::One(akira.contract_address));
     }  
 
@@ -481,7 +456,6 @@ mod tests_unsafe_trade {
     fn test_execute_with_buy_taker_succ() {
         // Taker buy, full match happens with maker of same px
         let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
-        let mut maker_orders: Array<SignedOrder>  = ArrayTrait::new();
         let router:ContractAddress = 1.try_into().unwrap();
         let (signer, signer_pk) = get_trader_signer_and_pk_2();
         let signer:ContractAddress = signer.try_into().unwrap();
@@ -505,8 +479,6 @@ mod tests_unsafe_trade {
         let sell_order = spawn_order(akira, tr1, usdc_amount, eth_amount, 
                 get_order_flags(false, false, true, true, false), 0, zero_router());
         
-        maker_orders.append(sell_order);
-
 
         let eth_erc = IERC20Dispatcher{contract_address:eth};
         let usdc_erc = IERC20Dispatcher{contract_address:usdc};
@@ -517,7 +489,7 @@ mod tests_unsafe_trade {
 
 
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        assert(akira.apply_unsafe_trade(buy_order, maker_orders,  (1+usdc_amount) * eth_amount / buy_order.order.base_asset, 100), 'FAILED_MATCH');
+        assert(akira.apply_unsafe_trade(buy_order, array![(sell_order, 0)],  (1+usdc_amount) * eth_amount / buy_order.order.base_asset, 100, false), 'FAILED_MATCH');
         stop_prank(CheatTarget::One(akira.contract_address));
 
 
@@ -548,7 +520,6 @@ mod tests_unsafe_trade {
     fn test_execute_with_sell_taker_succ() {
         // Taker buy, full match happens with maker of same px
         let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
-        let mut maker_orders: Array<SignedOrder>  = ArrayTrait::new();
         let router: ContractAddress = 1.try_into().unwrap();
         let (signer, signer_pk) = get_trader_signer_and_pk_2();
         let signer: ContractAddress = signer.try_into().unwrap();
@@ -566,7 +537,6 @@ mod tests_unsafe_trade {
 
         let buy_order = spawn_order(akira, tr1, usdc_amount, eth_amount, 
                 get_order_flags(false, false, true, false, false), 0, zero_router());
-        maker_orders.append(buy_order);
 
 
         let eth_erc = IERC20Dispatcher{contract_address:eth};
@@ -575,7 +545,7 @@ mod tests_unsafe_trade {
         let (eth_b, usdc_b, router_b) = (eth_erc.balanceOf(taker), usdc_erc.balanceOf(taker), akira.balance_of_router(router, usdc));
 
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        assert(akira.apply_unsafe_trade(sell_order, maker_orders,  eth_amount, 100), 'FAILED_MATCH');
+        assert(akira.apply_unsafe_trade(sell_order, array![(buy_order,0)],  eth_amount, 100, false), 'FAILED_MATCH');
         stop_prank(CheatTarget::One(akira.contract_address));
          
         assert(akira.balanceOf(sell_order.order.maker, eth) == 0, 'WRONG_UNSAFE_BALANCE_ETH');
@@ -610,7 +580,6 @@ mod tests_unsafe_trade {
     fn test_punish_router() {
         // Taker buy, full match happens with maker of same px
         let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
-        let mut maker_orders: Array<SignedOrder>  = ArrayTrait::new();
         let router:ContractAddress = 1.try_into().unwrap();
         let (signer, signer_pk) = get_trader_signer_and_pk_2();
         let signer:ContractAddress = signer.try_into().unwrap();
@@ -629,30 +598,14 @@ mod tests_unsafe_trade {
         let sell_order = spawn_order(akira, tr1, usdc_amount, eth_amount, 
                 get_order_flags(false, false, true, true, false), 0, zero_router());
         
-        maker_orders.append(sell_order);
 
         let router_b = akira.balance_of_router(router, eth);
 
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        assert(!akira.apply_unsafe_trade(buy_order, maker_orders,  usdc_amount * eth_amount / buy_order.order.base_asset, 100), 'EXPECTS_FAIL');
+        assert(!akira.apply_unsafe_trade(buy_order, array![(sell_order, 0)],  usdc_amount * eth_amount / buy_order.order.base_asset, 100, false), 'EXPECTS_FAIL');
         stop_prank(CheatTarget::One(akira.contract_address));
         let charge = 2 * gas_fee * akira.get_punishment_factor_bips().into() / 10000;
         assert(router_b - akira.balance_of_router(router, eth) == charge, 'WRONG_RECEIVED');
     }  
 
 }
-
-//     set_up = f"--rpc {node_url} --account {account} --keystore {keystore} --keystore-password {keystore_password}"
-
-
-// starkli declare target/dev/kurosawa_akira_LayerAkira.compiled_contract_class.json --network=goerli-1 --compiler-version=2.1.0 
-
-
-
-// starkli declare target/dev/kurosawa_akira_LayerAkira.compiled_contract_class.json --network=goerli-1 --compiler-version=2.1.0 --rpc https://starknet-testnet.public.blastapi.io --network=goerli-1 --account 0x06599a0c34699a5c48ae6ff359decc0618ce982be00654f2b12945cae5bb6788
-
-
-// Enter private key: 
-// Enter password: 
-// Created new encrypted keystore file: /Users/mac/.starkli-wallets/deployer/keystore.json
-// Public key: 0x06599a0c34699a5c48ae6ff359decc0618ce982be00654f2b12945cae5bb6788

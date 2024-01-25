@@ -4,6 +4,7 @@ use serde::Serde;
 use poseidon::poseidon_hash_span;
 use array::ArrayTrait;
 use array::SpanTrait;
+use starknet::{get_block_timestamp};
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct GasFee {
@@ -67,8 +68,9 @@ struct Order {
     router_signer: ContractAddress, // if taker order is unsafe aka trader outside of our ecosystem then this is router that router this trader to us, for makers and safe order always 0
     base_asset: u256, // raw amount of base asset representing 1, eg 1 eth is 10**18
     created_at: u32, // epoch time in seconds, time when order was created by user
-    stp: TakerSelfTradePreventionMode
-
+    stp: TakerSelfTradePreventionMode,
+    expire_at: u32, // epoch tine in seconds, time when order becomes invalid
+    version: u16 // exchange version 
 }   
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
@@ -82,10 +84,12 @@ struct SignedOrder {
 struct OrderTradeInfo {
     filled_amount: u256,
     last_traded_px: u256,
-    num_trades_happened: u8
+    num_trades_happened: u8,
+    as_taker_completed: bool
 }
 
-fn get_feeable_qty(fixed_fee: FixedFee, feeable_qty: u256,is_maker:bool) -> u256 {
+
+fn get_feeable_qty(fixed_fee: FixedFee, feeable_qty: u256, is_maker:bool) -> u256 {
     let pbips = if is_maker {fixed_fee.maker_pbips} else {fixed_fee.taker_pbips};
     if pbips == 0 { return 0;}
     return (feeable_qty * pbips.into() - 1) / 1_000_000 + 1;
@@ -113,17 +117,19 @@ fn do_taker_price_checks(taker_order:Order, settle_px:u256, taker_fill_info:Orde
     return rem;
 }
 
-fn do_maker_checks(maker_order:Order, maker_fill_info:OrderTradeInfo,nonce:u32)-> (u256, u256) {
+fn do_maker_checks(maker_order:Order, maker_fill_info:OrderTradeInfo, nonce:u32)-> (u256, u256) {
     assert!(!maker_order.flags.is_market_order, "WRONG_MARKET_TYPE");
     let remaining = maker_order.quantity - maker_fill_info.filled_amount;
     assert!(remaining > 0, "MAKER_ALREADY_FILLED: remaining = ({})", remaining);
     assert!(maker_order.nonce >= nonce, "OLD_MAKER_NONCE: failed maker_order.nonce ({}) >= nonce ({})", maker_order.nonce, nonce);
     assert!(!maker_order.flags.full_fill_only, "WRONG_MAKER_FLAG: maker_order can't be full_fill_only");
-
+    assert!(get_block_timestamp() < maker_order.expire_at.into(), "Maker order expire {}", maker_order.expire_at);
     if maker_order.flags.post_only {
         assert!(!maker_order.flags.best_level_only && !maker_order.flags.full_fill_only, "WRONG_MAKER_FLAGS");
     }
     let settle_px = if maker_fill_info.filled_amount > 0 {maker_fill_info.last_traded_px} else {maker_order.price};
+
+
     return (settle_px, remaining); 
 }
 

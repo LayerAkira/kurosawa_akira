@@ -3,7 +3,8 @@
 
 #[starknet::contract]
 mod LayerAkira {
-    use kurosawa_akira::NonceComponent::nonce_component::InternalNonceable;
+    use core::starknet::event::EventEmitter;
+use kurosawa_akira::NonceComponent::nonce_component::InternalNonceable;
     use kurosawa_akira::FundsTraits::PoseidonHash;
     use starknet::{ContractAddress, get_caller_address};
 
@@ -83,9 +84,11 @@ mod LayerAkira {
 
         max_slow_mode_delay:SlowModeDelay, // upper bound for all delayed actions
         max_withdraw_action_cost:u16, // upper bound for onchain withdraw gas steps estimation
-        exchange_invokers: LegacyMap::<ContractAddress,bool>,
-        owner: ContractAddress // owner of contact that have permissions to grant and revoke role for invokers and update slow mode and max_withdraw_action_cost
+        exchange_invokers: LegacyMap::<ContractAddress, bool>,
+        owner: ContractAddress, // owner of contact that have permissions to grant and revoke role for invokers and update slow mode and max_withdraw_action_cost
+        exchange_version:u16 // exchange version
     }
+
 
     #[constructor]
     fn constructor(ref self: ContractState,
@@ -109,9 +112,21 @@ mod LayerAkira {
     fn update_exchange_invokers(ref self: ContractState, invoker:ContractAddress, enabled:bool) {
         assert!(self.owner.read() == get_caller_address(), "Access denied: update_exchange_invokers is only for the owner's use");
         self.exchange_invokers.write(invoker, enabled);
+        self.emit(UpdateExchangeInvoker{invoker, enabled});
     }
 
-    // methods to update some components properties
+    #[external(v0)]
+    fn version(self: @ContractState) -> u16 { return self.exchange_version.read();}
+
+
+    #[external(v0)]
+    fn update_exchange_version(ref self: ContractState, new_version:u16) {
+        assert!(self.owner.read() == get_caller_address(), "Access denied: update_exchange_invokers is only for the owner's use");
+        assert!(new_version > self.exchange_version.read(), "Exchange version can only increase");
+        self.exchange_version.write(new_version);
+        self.emit(VersionUpdate{new_version});
+    }
+
     #[external(v0)]
     fn update_withdraw_component_params(ref self: ContractState, new_withdraw_steps: u16, new_delay:SlowModeDelay) {
         assert!(self.owner.read() == get_caller_address(), "Access denied: update_withdraw_component_params is only for the owner's use");
@@ -120,30 +135,33 @@ mod LayerAkira {
         assert!(new_withdraw_steps <= self.max_withdraw_action_cost.read() , "Failed withdraw params update: new_withdraw_steps ({}) <= max_withdraw_action_cost ({})", new_withdraw_steps, self.max_withdraw_action_cost.read());
         self.withdraw_s.delay.write(new_delay);
         self.withdraw_s.gas_steps.write(new_withdraw_steps);
+        self.emit(WithdrawComponentUpdate{new_withdraw_steps, new_delay});
     }
 
-
-
     #[external(v0)]
-    fn update_balance_component_params(ref self: ContractState, new_fee_recipient: ContractAddress, new_base_token:ContractAddress) {
-        assert!(self.owner.read() == get_caller_address(), "Access denied: update_balance_component_params is only for the owner's use");
+    fn update_fee_recipient(ref self: ContractState, new_fee_recipient: ContractAddress) {
+        assert!(self.owner.read() == get_caller_address(), "Access denied: update_fee_recipient is only for the owner's use");
         self.balancer_s.fee_recipient.write(new_fee_recipient);
-        self.balancer_s.wrapped_native_token.write(new_base_token);
-        self.router_s.native_base_token.write(new_base_token); // same so we need update it here as well
+        self.emit(FeeRecipientUpdate{new_fee_recipient});
     }
 
     #[external(v0)]
-    fn update_router_component_params(ref self: ContractState, new_fee_recipient: ContractAddress, new_base_token:ContractAddress, 
-                    new_delay:SlowModeDelay, min_amount_to_route:u256, new_punishment_bips:u16) {
+    fn update_base_token(ref self: ContractState, new_base_token:ContractAddress) {
+        assert!(self.owner.read() == get_caller_address(), "Access denied: update_base_token is only for the owner's use");
+        self.balancer_s.wrapped_native_token.write(new_base_token);
+        self.router_s.native_base_token.write(new_base_token);
+        self.emit(BaseTokenUpdate{new_base_token});
+    }
+
+    #[external(v0)]
+    fn update_router_component_params(ref self: ContractState, new_delay:SlowModeDelay, min_amount_to_route:u256, new_punishment_bips:u16) {
         assert!(self.owner.read() == get_caller_address(), "Access denied: update_router_component_params is only for the owner's use");
         let max = self.max_slow_mode_delay.read();
         assert!(new_delay.block <= max.block && new_delay.ts <= max.ts, "Failed router params update: new_delay <= max_slow_mode_delay");
-        
-        self.balancer_s.wrapped_native_token.write(new_base_token); // same so we need update it here as well
-        self.router_s.native_base_token.write(new_base_token);
         self.router_s.delay.write(new_delay);
         self.router_s.min_to_route.write(min_amount_to_route);
         self.router_s.punishment_bips.write(new_punishment_bips);
+        self.emit(RouterComponentUpdate{new_delay,min_amount_to_route,new_punishment_bips});
     }
     
     // apply methods performed by exchange invokers
@@ -192,29 +210,29 @@ mod LayerAkira {
     }
 
     #[external(v0)]
-    fn apply_safe_trades(ref self: ContractState, taker_orders:Array<SignedOrder>, maker_orders: Array<SignedOrder>, iters:Array<(u8, bool)>, gas_price:u256) {
+    fn apply_safe_trades(ref self: ContractState, taker_orders:Array<(SignedOrder,bool)>, maker_orders: Array<SignedOrder>, iters:Array<(u8, bool)>, oracle_settled_qty:Array<u256>, gas_price:u256) {
         assert_whitelisted_invokers(@self);
-        self.safe_trade_s.apply_trades(taker_orders, maker_orders, iters, gas_price);
+        self.safe_trade_s.apply_trades(taker_orders, maker_orders, iters, oracle_settled_qty, gas_price, self.exchange_version.read());
         self.balancer_s.latest_gas.write(gas_price);
     }
 
     #[external(v0)]
-    fn apply_unsafe_trade(ref self: ContractState, taker_order:SignedOrder, maker_orders: Array<SignedOrder>, total_amount_matched:u256,  gas_price:u256) -> bool {
+    fn apply_unsafe_trade(ref self: ContractState, taker_order:SignedOrder, maker_orders: Array<(SignedOrder,u256)>, total_amount_matched:u256,  gas_price:u256, as_taker_completed:bool) -> bool {
         assert_whitelisted_invokers(@self);
-        let res = self.unsafe_trade_s.apply_trades_simple(taker_order, maker_orders, total_amount_matched, gas_price);
+        let res = self.unsafe_trade_s.apply_trades_simple(taker_order, maker_orders, total_amount_matched, gas_price, as_taker_completed, self.exchange_version.read());
         self.balancer_s.latest_gas.write(gas_price);
         return res;
     }
 
     #[external(v0)]
-    fn apply_unsafe_trades(ref self: ContractState,  mut bulk:Array<(SignedOrder, Array<SignedOrder>, u256)>,  gas_price:u256) -> Array<bool> { 
+    fn apply_unsafe_trades(ref self: ContractState,  mut bulk:Array<(SignedOrder, Array<(SignedOrder,u256)>, u256, bool)>,  gas_price:u256) -> Array<bool> { 
         assert_whitelisted_invokers(@self);
         let mut res: Array<bool> = ArrayTrait::new();
             
         loop {
             match bulk.pop_front(){
-                Option::Some((taker_order, maker_orders, total_amount_matched)) => {
-                    res.append(self.unsafe_trade_s.apply_trades_simple(taker_order, maker_orders, total_amount_matched, gas_price));
+                Option::Some((taker_order, maker_orders, total_amount_matched, as_taker_completed)) => {
+                    res.append(self.unsafe_trade_s.apply_trades_simple(taker_order, maker_orders, total_amount_matched, gas_price, as_taker_completed, self.exchange_version.read()));
                 },
                 Option::None(_) => {break;}
             };
@@ -235,6 +253,26 @@ mod LayerAkira {
         RouterEvent: router_component::Event,
         SafeTradeEvent: safe_trade_component::Event,
         UnSafeTradeEvent: unsafe_trade_component::Event,
+        UpdateExchangeInvoker: UpdateExchangeInvoker,
+        BaseTokenUpdate: BaseTokenUpdate,
+        FeeRecipientUpdate: FeeRecipientUpdate,
+        RouterComponentUpdate: RouterComponentUpdate,
+        WithdrawComponentUpdate: WithdrawComponentUpdate,
+        VersionUpdate: VersionUpdate
     }
+
+    #[derive(Drop, starknet::Event)]
+    struct UpdateExchangeInvoker {#[key] invoker: ContractAddress, enabled: bool}
+    #[derive(Drop, starknet::Event)]
+    struct BaseTokenUpdate {new_base_token: ContractAddress}
+    #[derive(Drop, starknet::Event)]
+    struct FeeRecipientUpdate {new_fee_recipient: ContractAddress}
+    #[derive(Drop, starknet::Event)]
+    struct RouterComponentUpdate {new_delay:SlowModeDelay, min_amount_to_route:u256, new_punishment_bips:u16}
+    #[derive(Drop, starknet::Event)]
+    struct WithdrawComponentUpdate {new_withdraw_steps: u16, new_delay:SlowModeDelay}
+    #[derive(Drop, starknet::Event)]
+    struct VersionUpdate {new_version:u16}
+    
 
 }
