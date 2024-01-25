@@ -103,7 +103,7 @@
         let latest_gas_price = akira.get_latest_gas_price();
         let gas_deduct = latest_gas_price * 2 * gas_action.into();
         GasFee{ gas_per_action:get_withdraw_action_cost(), fee_token:get_eth_addr(), 
-                max_gas_price: latest_gas_price * 2, conversion_rate: (1,1),
+                max_gas_price: gas_deduct, conversion_rate: (1,1),
         }
     }
 

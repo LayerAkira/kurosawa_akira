@@ -141,7 +141,7 @@ mod tests_deposit_and_withdrawal_and_nonce {
 
     #[test]
     #[fork("block_based")]
-    #[should_panic(expected: ("ALREADY_COMPLETED: withdraw (hash = 145530779622766435564951937819183289966524278531640966956212381983041765687)",))]
+    #[should_panic(expected: ("ALREADY_COMPLETED: withdraw (hash = 3264006212390713571005350791477427546026143341786610974461275213037650812163)",))]
     fn test_withdraw_eth_indirect_twice() {
         let akira = ILayerAkiraDispatcher{contract_address:spawn_exchange()};
         let (trader, eth_addr, amount_deposit) = (get_trader_address_1(), get_eth_addr(),1_000_000);
