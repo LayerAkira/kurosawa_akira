@@ -33,7 +33,7 @@ mod tests_deposit_and_withdrawal_and_nonce {
     fn get_withdraw(trader:ContractAddress, amount:u256, token:ContractAddress, akira:ILayerAkiraDispatcher, salt:felt252)-> Withdraw {
         let gas_fee = prepare_double_gas_fee_native(akira,100);
         let amount = if token == akira.get_wrapped_native_token() { amount} else {amount};
-        return Withdraw {maker:trader, token, amount, salt, gas_fee, reciever:trader};
+        return Withdraw {maker:trader, token, amount, salt, gas_fee, receiver:trader};
         
     }
 
@@ -191,7 +191,7 @@ mod tests_deposit_and_withdrawal_and_nonce {
                          },
                          
             salt:0,
-            reciever:0x024e8044680FEcDe3f23d4E270c7b0fA23c487Ae7B31b812ff72aFa7Bc7f6116.try_into().unwrap()
+            receiver:0x024e8044680FEcDe3f23d4E270c7b0fA23c487Ae7B31b812ff72aFa7Bc7f6116.try_into().unwrap()
         };
 
         let mut serialized: Array<felt252> = ArrayTrait::new();

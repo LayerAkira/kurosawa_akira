@@ -11,7 +11,7 @@ struct Withdraw {
     amount: u256, // amount of token, at the end user will receive amount of token diff from gas fee or amount - gas_fee, so user can always withdraw all his balances 
     salt: felt252, // random salt
     gas_fee: GasFee, // for some paths, this activity to be executed requires gasfee
-    reciever: ContractAddress // receiver of withdrawal tokens
+    receiver: ContractAddress // receiver of withdrawal tokens
 }
 
 #[derive(Copy, Drop, Serde, PartialEq)]
@@ -75,7 +75,7 @@ mod withdraw_component {
         #[key]
         maker: ContractAddress,
         token: ContractAddress,
-        reciever: ContractAddress,
+        receiver: ContractAddress,
         salt: felt252,
         amount: u256,
         gas_price: u256,
@@ -157,8 +157,8 @@ mod withdraw_component {
             
             let mut balancer = self.get_balancer_mut();
             balancer.burn(w_req.maker, w_req.amount, w_req.token);
-            IERC20Dispatcher{ contract_address: w_req.token}.transfer(w_req.reciever, w_req.amount);
-            self.emit(Withdrawal{maker:w_req.maker, token:w_req.token, amount:w_req.amount, salt:w_req.salt, reciever:w_req.reciever, gas_price:0,
+            IERC20Dispatcher{ contract_address: w_req.token}.transfer(w_req.receiver, w_req.amount);
+            self.emit(Withdrawal{maker:w_req.maker, token:w_req.token, amount:w_req.amount, salt:w_req.salt, receiver:w_req.receiver, gas_price:0,
                         gas_fee:w_req.gas_fee,direct:true});
             
             self.completed_reqs.write(key, true);
@@ -196,7 +196,7 @@ mod withdraw_component {
 
             contract.burn(w_req.maker, tfer_amount, w_req.token);
             IERC20Dispatcher { contract_address: w_req.token }.transfer(w_req.maker, tfer_amount);
-            self.emit(Withdrawal{maker:w_req.maker, token:w_req.token, amount: w_req.amount, salt:w_req.salt, reciever:w_req.reciever,gas_price,
+            self.emit(Withdrawal{maker:w_req.maker, token:w_req.token, amount: w_req.amount, salt:w_req.salt, receiver:w_req.receiver,gas_price,
                         gas_fee:w_req.gas_fee, direct:w_req == signed_withdraw.withdraw});
 
            self.completed_reqs.write(hash, true);

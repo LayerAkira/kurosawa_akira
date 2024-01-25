@@ -18,18 +18,18 @@
 
     fn get_usdc_addr() ->ContractAddress {0x05a643907b9a4bc6a55e9069c4fd5fd1f5c79a22470690f75556c4736e34426.try_into().unwrap()}
         
-    fn tfer_eth_funds_to(reciever: ContractAddress, amount: u256) {
+    fn tfer_eth_funds_to(receiver: ContractAddress, amount: u256) {
         let caller_who_have_funds: ContractAddress = 0x00121108c052bbd5b273223043ad58a7e51c55ef454f3e02b0a0b4c559a925d4.try_into().unwrap();
         let ETH = IERC20Dispatcher { contract_address: get_eth_addr() };
         start_prank(CheatTarget::One(ETH.contract_address), caller_who_have_funds);
-        ETH.transfer(reciever, amount);
+        ETH.transfer(receiver, amount);
         stop_prank(CheatTarget::One(ETH.contract_address));
     }
-    fn tfer_usdc_funds_to(reciever: ContractAddress, amount: u256) {
+    fn tfer_usdc_funds_to(receiver: ContractAddress, amount: u256) {
         let caller_who_have_funds: ContractAddress = 0x0711c27004518b375e5c3521223a87704d4b72367d353d797665aa0d1edc5f52.try_into().unwrap();
         let USDC = IERC20Dispatcher { contract_address: get_usdc_addr() };
         start_prank(CheatTarget::One(USDC.contract_address), caller_who_have_funds);
-        USDC.transfer(reciever, amount);
+        USDC.transfer(receiver, amount);
         stop_prank(CheatTarget::One(USDC.contract_address));
     }
 
