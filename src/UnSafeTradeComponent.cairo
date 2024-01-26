@@ -18,13 +18,14 @@ mod unsafe_trade_component {
     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as balance_component;
     
     use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
-    use starknet::{get_contract_address, ContractAddress};
+    use starknet::{get_contract_address, ContractAddress, get_block_timestamp};
     use super::{do_taker_price_checks,do_maker_checks,get_feeable_qty,get_limit_px,SignedOrder,Order,OrderTradeInfo,OrderFee,FixedFee,get_gas_fee_and_coin,GasFee};
     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait, IERC20Dispatcher};
 
     use kurosawa_akira::RouterComponent::router_component as router_component;
     use router_component::{RoutableImpl};
     use kurosawa_akira::{NonceComponent::INonceLogic,SignerComponent::ISignerLogic,RouterComponent::IRouter};
+    use kurosawa_akira::utils::common::DisplayContractAddress;
     
     
     #[storage]
@@ -98,7 +99,8 @@ mod unsafe_trade_component {
      #[generate_trait]
     impl InternalUnSafeTradableImpl<TContractState, +HasComponent<TContractState>,+INonceLogic<TContractState>, +balance_component::HasComponent<TContractState>, +router_component::HasComponent<TContractState>, +Drop<TContractState>, +ISignerLogic<TContractState>> of InternalUnSafeTradable<TContractState> {
         // exposed only in contract user
-        fn apply_trades_simple(ref self: ComponentState<TContractState>, signed_taker_order:SignedOrder, mut signed_maker_orders:Array<SignedOrder>, mut total_amount_matched:u256, gas_price:u256)  -> bool{
+        fn apply_trades_simple(ref self: ComponentState<TContractState>, signed_taker_order:SignedOrder, mut signed_maker_orders:Array<(SignedOrder,u256)>, 
+        mut total_amount_matched:u256, gas_price:u256, as_taker_completed:bool, version:u16)  -> bool{
             // Once offchain trading engine yield unsafe trade exchange will push the happened trades ASAP because flow for this trades not safe:
             //  User can revoke allowances
             //  User can not have enough funds at time of settlement
@@ -122,35 +124,34 @@ mod unsafe_trade_component {
             // prevent exchange trigger reimbure on purpose
             //  else we can send 0 as total_amount_matched and it will trigger failure on checks and trigger router punishment
             //  we need this oracle because we dont know beforehand how much taker will spent because px is protection price
-            assert(total_amount_matched <= upper_bound_taker_give, 'WRONG_AMOUNT_MATCHED_ORACLE');
+            assert!(total_amount_matched <= upper_bound_taker_give, "WRONG_AMOUNT_MATCHED_ORACLE");
                         
             // TODO bit dumb that it fires exception, how reimburse in that case? cause custom contract can force fails on signature validation
-            let (mut amount_out, gas_spent) = if check_sign(taker_order.maker, taker_hash, signed_taker_order.router_sign) {
+            let (mut amount_out, _) = if check_sign(taker_order.maker, taker_hash, signed_taker_order.router_sign) {
                             self._prepare_taker(taker_order, total_amount_matched, exchange, trades, gas_price)  } 
                     else {
                         (0,0)
             };
             let (mut balancer, taker_fees) = (self.get_balancer_mut(), taker_order.fee);
 
-            let fee_recipinet = balancer.fee_recipient.read();
-            assert(taker_order.fee.trade_fee.recipient == fee_recipinet, 'WRONG_TAKER_FEE_RECIPIENT');
-            
+            let fee_recipient = balancer.fee_recipient.read();
+            assert!(taker_order.fee.trade_fee.recipient == fee_recipient, "WRONG_TAKER_FEE_RECIPIENT: expected {}, got {}", fee_recipient, taker_order.fee.trade_fee.recipient);
+            assert!(taker_order.version == version, "WRONG_TAKER_VERSION");
 
             let failed = amount_out == 0;
             let mut taker_received = 0;
             loop {
                 match signed_maker_orders.pop_front(){
-                    Option::Some(signed_maker_order) => {
+                    Option::Some((signed_maker_order, oracle_settle_qty)) => {
                         let maker_order = signed_maker_order.order;
                         let (settle_px, amount_quote, amount_base, mut maker_fill_info, maker_hash) = 
-                                    self._do_maker_checks_and_common(signed_maker_order, taker_order, taker_fill_info);
-                        assert(maker_order.fee.trade_fee.recipient == fee_recipinet, 'WRONG_MAKER_FEE_RECIPEINT');
-            
+                                    self._do_maker_checks_and_common(signed_maker_order, taker_order, taker_fill_info, oracle_settle_qty);
+                        assert!(maker_order.fee.trade_fee.recipient == fee_recipient, "WRONG_MAKER_FEE_RECIPIENT: expected {}, got {}", fee_recipient, maker_order.fee.trade_fee.recipient);
+                        assert!(maker_order.version == version, "WRONG_TAKER_VERSION");
                         if failed {
                             self.punish_router_simple(taker_fees.gas_fee, taker_fees.router_fee.recipient, 
                                         signed_maker_order.order.maker, taker_order.maker, gas_price, taker_hash, maker_hash);
                         } else {
-                            let (b, q) = taker_order.ticker; 
                             balancer.rebalance_after_trade(maker_order.maker, 
                                     taker_order.maker, taker_order.ticker, amount_base, amount_quote, maker_order.flags.is_sell_side);
                             balancer.apply_maker_fee(maker_order.maker, maker_order.fee.trade_fee, maker_order.flags.is_sell_side,
@@ -167,7 +168,7 @@ mod unsafe_trade_component {
                         
                         self.orders_trade_info.write(maker_hash, maker_fill_info);
                         self.emit(UnsafeTrade{
-                            maker:signed_maker_order.order.maker,taker:taker_order.maker, ticker:taker_order.ticker,
+                            maker:signed_maker_order.order.maker, taker:taker_order.maker, ticker:taker_order.ticker,
                             router:taker_order.fee.router_fee.recipient,
                             amount_base, amount_quote, is_sell_side: !taker_order.flags.is_sell_side, is_failed:failed
                         });
@@ -186,6 +187,8 @@ mod unsafe_trade_component {
                 }
             };
 
+            taker_fill_info.as_taker_completed = as_taker_completed;
+            self.orders_trade_info.write(taker_hash, taker_fill_info);
             if failed { return false;}
 
             // do the reward and pay for the gas, we accumulate all and consume at once, avoiding repetitive actions
@@ -197,49 +200,55 @@ mod unsafe_trade_component {
 
         fn _do_part_taker_validate(self:@ComponentState<TContractState>, signed_taker_order:SignedOrder, taker_hash:felt252, taker_fill_info:OrderTradeInfo, trades:u8) -> u256 {
             //Returns max user can actually spend
-            let contract = self.get_contract();
-            let taker_order = signed_taker_order.order;
             let router = self.get_router();
+            let taker_order = signed_taker_order.order;
 
             //Validate router, job of exchange because of this assert
-            assert(router.validate_router(taker_hash, signed_taker_order.router_sign, 
-                    taker_order.router_signer, taker_order.fee.router_fee.recipient), 'WRONG_ROUTER_SIGN');
+            assert!(router.validate_router(taker_hash, signed_taker_order.router_sign, 
+                    taker_order.router_signer, taker_order.fee.router_fee.recipient), "WRONG_ROUTER_SIGN");
             
             let remaining_taker_amount = taker_order.quantity - taker_fill_info.filled_amount;
-            assert(remaining_taker_amount > 0, 'WRONG_TAKER_AMOUNT');
+            assert!(remaining_taker_amount > 0, "WRONG_TAKER_AMOUNT");
         
-            assert(!taker_order.flags.post_only, 'WRONG_TAKER_FLAG');
-            assert(taker_order.number_of_swaps_allowed >= taker_fill_info.num_trades_happened + trades, 'HIT_SWAPS_ALLOWED');    
+            assert!(!taker_order.flags.post_only, "WRONG_TAKER_FLAG: post_only must be False");
+            assert!(taker_order.number_of_swaps_allowed >= taker_fill_info.num_trades_happened + trades, "HIT_SWAPS_ALLOWED: allowed {}, got {}", taker_order.number_of_swaps_allowed, taker_fill_info.num_trades_happened + trades);    
+            assert!(!taker_fill_info.as_taker_completed, "Taker order {} marked completed", taker_hash);
+            assert!(get_block_timestamp() < taker_order.expire_at.into(), "Taker order expire {}", taker_order.expire_at);
 
             if signed_taker_order.order.flags.is_sell_side {remaining_taker_amount} else {remaining_taker_amount * signed_taker_order.order.price}
         }
 
 
-        fn _do_maker_checks_and_common(ref self:ComponentState<TContractState>,signed_maker_order:SignedOrder,taker_order:Order,taker_fill_info:OrderTradeInfo)->(u256,u256,u256,OrderTradeInfo,felt252) {
+        fn _do_maker_checks_and_common(ref self:ComponentState<TContractState>,signed_maker_order:SignedOrder,taker_order:Order,taker_fill_info:OrderTradeInfo,oracle_settle_qty:u256)->(u256,u256,u256,OrderTradeInfo,felt252) {
             let contract  = self.get_contract();
             let (maker_order, (r,s)) = (signed_maker_order.order, signed_maker_order.sign);
             let maker_hash = maker_order.get_poseidon_hash();
             let mut maker_fill_info = self.orders_trade_info.read(maker_hash);
             // check sign                         
-            assert(contract.check_sign(maker_order.maker, maker_hash, r, s), 'WRONG_SIGN_MAKER');
+            assert!(contract.check_sign(maker_order.maker, maker_hash, r, s), "WRONG_SIGN_MAKER: (maker_hash, r, s): ({}, {}, {})", maker_hash, r, s);
             do_maker_checks(maker_order, maker_fill_info, contract.get_nonce(maker_order.maker));                                
             // additional check
-            assert(maker_order.flags.post_only, 'MAKER_ONLY_POST_ONLY');
+            assert!(maker_order.flags.post_only, "MAKER_ONLY_POST_ONLY");
                         
             let (settle_px, maker_qty) = get_limit_px(maker_order, maker_fill_info);
                         
             let taker_qty = do_taker_price_checks(taker_order, settle_px, taker_fill_info);
                         
-            let settle_base_amount = if maker_qty > taker_qty {taker_qty} else {maker_qty};
+            let mut settle_base_amount = if maker_qty > taker_qty {taker_qty} else {maker_qty};
+            if oracle_settle_qty > 0 {
+                assert!(oracle_settle_qty <= settle_base_amount, "WRONG_ORACLE_SETTLE_QTY {} for {}", oracle_settle_qty, maker_hash);
+                settle_base_amount = oracle_settle_qty; 
+            }
+
 
                     
-            assert(taker_order.flags.is_sell_side != maker_order.flags.is_sell_side, 'WRONG_SIDE');
-            assert(taker_order.ticker == maker_order.ticker ,'MISMATCH_TICKER');
-            assert(taker_order.flags.to_safe_book == maker_order.flags.to_safe_book && !taker_order.flags.to_safe_book, 'WRONG_BOOK_DESTINATION');
-            assert(taker_order.base_asset == maker_order.base_asset, 'WRONG_ASSET_AMOUNT');
+            assert!(taker_order.flags.is_sell_side != maker_order.flags.is_sell_side, "WRONG_SIDE");
+            assert!(taker_order.ticker == maker_order.ticker ,"MISMATCH_TICKER");
+            assert!(taker_order.flags.to_safe_book == maker_order.flags.to_safe_book && !taker_order.flags.to_safe_book, "WRONG_BOOK_DESTINATION");
+            assert!(taker_order.base_asset == maker_order.base_asset, "WRONG_ASSET_AMOUNT");
                             
             let settle_quote_amount = settle_px * settle_base_amount / maker_order.base_asset;
-            assert(settle_quote_amount > 0, '0_MATCHING_COST');
+            assert!(settle_quote_amount > 0, "0_MATCHING_COST");
             return (settle_px, settle_quote_amount, settle_base_amount, maker_fill_info, maker_hash);
 
         }
@@ -281,13 +290,13 @@ mod unsafe_trade_component {
             let exchange_balance = erc.balanceOf(exchange);
             erc.transferFrom(taker_order.maker, exchange, out_amount);
             
-            assert(erc.balanceOf(exchange) - exchange_balance == out_amount, 'FEW_TRANSFERRED');
+            assert!(erc.balanceOf(exchange) - exchange_balance == out_amount, "FEW_TRANSFERRED: expected {}, got {}", out_amount, erc.balanceOf(exchange) - exchange_balance);
 
             if gas_coin != out_token {
                 let gas_erc = IERC20Dispatcher{contract_address:gas_coin};
                 let exchange_balance = gas_erc.balanceOf(exchange);
                 gas_erc.transferFrom(taker_order.maker, exchange, spent_gas);
-                assert(gas_erc.balanceOf(exchange) - exchange_balance ==  spent_gas, 'FEW_GAS_TRANSFERRED');
+                assert!(gas_erc.balanceOf(exchange) - exchange_balance ==  spent_gas, "FEW_GAS_TRANSFERRED: expected {}, got {}", spent_gas, gas_erc.balanceOf(exchange) - exchange_balance);
 
                 balancer.mint(taker_order.maker, spent_gas, gas_coin);
             }
@@ -301,8 +310,8 @@ mod unsafe_trade_component {
             // pay for gas
             // Reward router
             // Transfer unspent amounts to the user back
-            let (router_fee, exhcange_fee) = (taker_order.fee.router_fee,taker_order.fee.trade_fee);
-            let (mut balancer, mut router,contract) = (self.get_balancer_mut(),self.get_router_mut(), self.get_contract());
+            let (router_fee, exchange_fee) = (taker_order.fee.router_fee,taker_order.fee.trade_fee);
+            let (mut balancer, mut router) = (self.get_balancer_mut(),self.get_router_mut());
 
             // do the gas tfer
             let (spent, gas_coin) = super::get_gas_fee_and_coin(taker_order.fee.gas_fee, gas_price, balancer.wrapped_native_token.read());
@@ -322,9 +331,9 @@ mod unsafe_trade_component {
                 });
             }
 
-            let exchange_fee_amount = get_feeable_qty(exhcange_fee, received_amount, false);
+            let exchange_fee_amount = get_feeable_qty(exchange_fee, received_amount, false);
             if exchange_fee_amount > 0 {
-                balancer.internal_transfer(taker_order.maker, exhcange_fee.recipient, exchange_fee_amount, fee_token);
+                balancer.internal_transfer(taker_order.maker, exchange_fee.recipient, exchange_fee_amount, fee_token);
             }
 
             let received_amount  = received_amount - router_fee_amount - exchange_fee_amount;
@@ -333,7 +342,7 @@ mod unsafe_trade_component {
                 let balance = erc.balanceOf(exchange);
                 erc.transfer(taker_order.maker, received_amount);
                 balancer.burn(taker_order.maker, received_amount, fee_token);
-                assert(balance - erc.balanceOf(exchange) >= received_amount, 'OUT_TFER_ERROR');
+                assert!(balance - erc.balanceOf(exchange) >= received_amount, "OUT_TFER_ERROR");
             }
             if unspent_amount > 0 {
                 let token = if !taker_order.flags.is_sell_side {let (b,q) = taker_order.ticker; q} else {let (b,q) = taker_order.ticker;b};
@@ -341,7 +350,7 @@ mod unsafe_trade_component {
                 let balance = erc.balanceOf(exchange);
                 erc.transfer(taker_order.maker, unspent_amount);
                 balancer.burn(taker_order.maker, unspent_amount, token);
-                assert(balance - erc.balanceOf(exchange) >= unspent_amount, 'IN_TFER_ERROR');
+                assert!(balance - erc.balanceOf(exchange) >= unspent_amount, "IN_TFER_ERROR");
             }
         }
       

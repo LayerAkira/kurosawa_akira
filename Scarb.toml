@@ -9,10 +9,10 @@ casm-add-pythonic-hints = true
 allowed-libfuncs-list.name = "all"
 
 [dependencies]
-starknet = ">=2.3.1"
-snforge_std = { git = "https://github.com/foundry-rs/starknet-foundry.git", tag = "v0.10.1" }
+starknet = ">=2.4.4"
+snforge_std = { git = "https://github.com/foundry-rs/starknet-foundry.git", tag = "v0.14.0" }
 
 [[tool.snforge.fork]]
 name = "block_based"
-url = "https://starknet-testnet.public.blastapi.io"
+url = "https://starknet-testnet.public.blastapi.io/rpc/v0_6"
 block_id.number = "915484"

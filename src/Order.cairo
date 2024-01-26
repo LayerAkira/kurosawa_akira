@@ -4,6 +4,7 @@ use serde::Serde;
 use poseidon::poseidon_hash_span;
 use array::ArrayTrait;
 use array::SpanTrait;
+use starknet::{get_block_timestamp};
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct GasFee {
@@ -67,8 +68,9 @@ struct Order {
     router_signer: ContractAddress, // if taker order is unsafe aka trader outside of our ecosystem then this is router that router this trader to us, for makers and safe order always 0
     base_asset: u256, // raw amount of base asset representing 1, eg 1 eth is 10**18
     created_at: u32, // epoch time in seconds, time when order was created by user
-    stp: TakerSelfTradePreventionMode
-
+    stp: TakerSelfTradePreventionMode,
+    expire_at: u32, // epoch tine in seconds, time when order becomes invalid
+    version: u16 // exchange version 
 }   
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
@@ -82,10 +84,12 @@ struct SignedOrder {
 struct OrderTradeInfo {
     filled_amount: u256,
     last_traded_px: u256,
-    num_trades_happened: u8
+    num_trades_happened: u8,
+    as_taker_completed: bool
 }
 
-fn get_feeable_qty(fixed_fee: FixedFee, feeable_qty: u256,is_maker:bool) -> u256 {
+
+fn get_feeable_qty(fixed_fee: FixedFee, feeable_qty: u256, is_maker:bool) -> u256 {
     let pbips = if is_maker {fixed_fee.maker_pbips} else {fixed_fee.taker_pbips};
     if pbips == 0 { return 0;}
     return (feeable_qty * pbips.into() - 1) / 1_000_000 + 1;
@@ -97,36 +101,35 @@ fn get_limit_px(maker_order:Order, maker_fill_info:OrderTradeInfo) -> (u256, u25
 }
 
 fn do_taker_price_checks(taker_order:Order, settle_px:u256, taker_fill_info:OrderTradeInfo)->u256 {
-    if !taker_order.flags.is_sell_side { 
-        assert(settle_px <= taker_order.price, 'BUY_PROTECTION_PRICE_FAILED');
-    }
-    else { 
-        assert(settle_px >= taker_order.price, 'SELL_PROTECTION_PRICE_FAILED'); 
-    }
+    assert!(taker_order.flags.is_sell_side || settle_px <= taker_order.price, "BUY_PROTECTION_PRICE_FAILED: settle_px ({}) <= taker_order.price ({})", settle_px, taker_order.price);
+    assert!(!taker_order.flags.is_sell_side || settle_px >= taker_order.price, "SELL_PROTECTION_PRICE_FAILED: settle_px ({}) >= taker_order.price ({})", settle_px, taker_order.price); 
 
     if taker_fill_info.filled_amount > 0 {
-        if taker_order.flags.best_level_only { assert(taker_fill_info.last_traded_px == settle_px , 'BEST_LVL_ONLY',);}
+        let last_traded_px = taker_fill_info.last_traded_px;
+        if taker_order.flags.best_level_only { assert!(last_traded_px == settle_px , "BEST_LVL_ONLY: failed last_traded_px ({}) == settle_px ({})", last_traded_px, settle_px);}
         else {
-            if !taker_order.flags.is_sell_side { assert(taker_fill_info.last_traded_px <= settle_px, 'BUY_PARTIAL_FILL_ERR');} 
-            else { assert(taker_fill_info.last_traded_px >= settle_px, 'SELL_PARTIAL_FILL_ERR');}
+            if !taker_order.flags.is_sell_side { assert!(last_traded_px <= settle_px, "BUY_PARTIAL_FILL_ERR: failed last_traded_px ({}) <= settle_px ({})", last_traded_px, settle_px);} 
+            else { assert!(last_traded_px >= settle_px, "SELL_PARTIAL_FILL_ERR: failed last_traded_px ({}) >= settle_px ({})", last_traded_px, settle_px);}
         }
     }
     let rem = taker_order.quantity - taker_fill_info.filled_amount;
-    assert(rem > 0, 'FILLED_TAKER_ORDER');
+    assert!(rem > 0, "FILLED_TAKER_ORDER");
     return rem;
 }
 
-fn do_maker_checks(maker_order:Order, maker_fill_info:OrderTradeInfo,nonce:u32)-> (u256, u256) {
-    assert(!maker_order.flags.is_market_order, 'WRONG_MARKET_TYPE');
+fn do_maker_checks(maker_order:Order, maker_fill_info:OrderTradeInfo, nonce:u32)-> (u256, u256) {
+    assert!(!maker_order.flags.is_market_order, "WRONG_MARKET_TYPE");
     let remaining = maker_order.quantity - maker_fill_info.filled_amount;
-    assert(remaining > 0, 'MAKER_ALREADY_FILLED');
-    assert(maker_order.nonce >= nonce,'OLD_MAKER_NONCE');
-    assert(!maker_order.flags.full_fill_only, 'WRONG_MAKER_FLAG');
-
+    assert!(remaining > 0, "MAKER_ALREADY_FILLED: remaining = ({})", remaining);
+    assert!(maker_order.nonce >= nonce, "OLD_MAKER_NONCE: failed maker_order.nonce ({}) >= nonce ({})", maker_order.nonce, nonce);
+    assert!(!maker_order.flags.full_fill_only, "WRONG_MAKER_FLAG: maker_order can't be full_fill_only");
+    assert!(get_block_timestamp() < maker_order.expire_at.into(), "Maker order expire {}", maker_order.expire_at);
     if maker_order.flags.post_only {
-        assert(!maker_order.flags.best_level_only && !maker_order.flags.full_fill_only, 'WRONG_MAKER_FLAGS');
+        assert!(!maker_order.flags.best_level_only && !maker_order.flags.full_fill_only, "WRONG_MAKER_FLAGS");
     }
     let settle_px = if maker_fill_info.filled_amount > 0 {maker_fill_info.last_traded_px} else {maker_order.price};
+
+
     return (settle_px, remaining); 
 }
 
@@ -134,7 +137,7 @@ fn do_maker_checks(maker_order:Order, maker_fill_info:OrderTradeInfo,nonce:u32)-
 fn get_gas_fee_and_coin(gas_fee: GasFee, cur_gas_price: u256, native_token:ContractAddress) -> (u256, ContractAddress) {
     if cur_gas_price == 0 { return (0, native_token);}
     if gas_fee.gas_per_action == 0 { return (0, native_token);}
-    assert(gas_fee.max_gas_price >= cur_gas_price, 'gas_prc <-= user stated prc');
+    assert!(gas_fee.max_gas_price >= cur_gas_price, "Failed: max_gas_price ({}) >= cur_gas_price ({})", gas_fee.max_gas_price, cur_gas_price);
     let spend_native = gas_fee.gas_per_action.into() * cur_gas_price;
     
     if gas_fee.fee_token == native_token {

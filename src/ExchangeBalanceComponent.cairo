@@ -123,13 +123,13 @@ mod exchange_balance_logic_component {
 
         fn burn(ref self: ComponentState<TContractState>, from: ContractAddress, amount: u256, token: ContractAddress) {
             let balance = self._balances.read((token, from));
-            assert(balance >= amount,'FEW_TO_BURN');
+            assert!(balance >= amount,"FEW_TO_BURN");
             self._balances.write((token, from), balance - amount);
             self._total_supply.write(token, self._total_supply.read(token) - amount);
             self.emit(Burn{from_:from,token,amount});
         }
         fn internal_transfer(ref self: ComponentState<TContractState>, from: ContractAddress, to: ContractAddress, amount: u256, token: ContractAddress) {
-            assert(self._balances.read((token, from)) >= amount, 'Few balance');
+            assert!(self._balances.read((token, from)) >= amount, "FEW_BALANCE");
             self._balances.write((token, from), self._balances.read((token, from)) - amount);
             self._balances.write((token, to), self._balances.read((token, to)) + amount);
             self.emit(Transfer{from_:from, to, token, amount});
@@ -148,16 +148,16 @@ mod exchange_balance_logic_component {
             amount_base:u256, amount_quote:u256, is_maker_seller:bool) {
             let (base, quote) = ticker;
             if is_maker_seller{ // BASE/QUOTE -> maker sell BASE for QUOTE
-                assert(self.balanceOf(maker, base) >= amount_base, 'FEW_BALANCE_MAKER');
+                assert!(self.balanceOf(maker, base) >= amount_base, "Failed: maker base balance ({}) >= trade base amount ({}) -- few balance maker", self.balanceOf(maker, base), amount_base);
                 self.internal_transfer(maker, taker, amount_base, base);
                 
-                assert(self.balanceOf(taker, quote) >= amount_quote, 'FEW_BALANCE_TAKER');
+                assert!(self.balanceOf(taker, quote) >= amount_quote, "Failed: taker quote balance ({}) >= trade quote amount ({}) -- few balance taker", self.balanceOf(taker, quote), amount_quote);
                 self.internal_transfer(taker, maker, amount_quote, quote);
             }
             else { // BASE/QUOTE -> maker buy BASE for QUOTE
-                assert(self.balanceOf(maker, quote) >= amount_quote, 'FEW_BALANCE_MAKER');
+                assert!(self.balanceOf(maker, quote) >= amount_quote, "Failed: maker quote balance ({}) >= trade quote amount ({}) -- few balance maker", self.balanceOf(maker, quote), amount_quote);
                 self.internal_transfer(maker, taker, amount_quote, quote);
-                assert(self.balanceOf(taker, base) >= amount_base, 'FEW_BALANCE_TAKER');
+                assert!(self.balanceOf(taker, base) >= amount_base, "Failed: taker base balance ({}) >= trade base amount ({}) -- few balance taker", self.balanceOf(taker, base), amount_base);
                 self.internal_transfer(taker, maker, amount_base, base);
             }
         }

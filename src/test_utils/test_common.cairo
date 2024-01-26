@@ -3,7 +3,7 @@
     use core::{traits::Into,array::ArrayTrait,option::OptionTrait,traits::TryInto,result::ResultTrait};
     use starknet::{ContractAddress,info::get_block_number,get_caller_address};
     use debug::PrintTrait;
-    use snforge_std::{start_prank,start_warp,stop_warp,stop_prank,declare,ContractClassTrait, start_roll, stop_roll};
+    use snforge_std::{start_prank,CheatTarget, start_warp,stop_warp,stop_prank,declare,ContractClassTrait, start_roll, stop_roll};
     use core::dict::{Felt252Dict, Felt252DictTrait, SquashedFelt252Dict};
     use kurosawa_akira::LayerAkira::LayerAkira;
     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait,IERC20Dispatcher};
@@ -12,24 +12,25 @@
     use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
     use serde::Serde;
     use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
-    use snforge_std::signature::{ StarkCurveKeyPair, StarkCurveKeyPairTrait, Signer, Verifier };
+    use snforge_std::signature::KeyPairTrait;
+    use snforge_std::signature::stark_curve::{ StarkCurveKeyPairImpl, StarkCurveSignerImpl, StarkCurveVerifierImpl};
     fn get_eth_addr() -> ContractAddress {0x049D36570D4e46f48e99674bd3fcc84644DdD6b96F7C741B1562B82f9e004dC7.try_into().unwrap()}
 
     fn get_usdc_addr() ->ContractAddress {0x05a643907b9a4bc6a55e9069c4fd5fd1f5c79a22470690f75556c4736e34426.try_into().unwrap()}
         
-    fn tfer_eth_funds_to(reciever: ContractAddress, amount: u256) {
+    fn tfer_eth_funds_to(receiver: ContractAddress, amount: u256) {
         let caller_who_have_funds: ContractAddress = 0x00121108c052bbd5b273223043ad58a7e51c55ef454f3e02b0a0b4c559a925d4.try_into().unwrap();
         let ETH = IERC20Dispatcher { contract_address: get_eth_addr() };
-        start_prank(ETH.contract_address, caller_who_have_funds);
-        ETH.transfer(reciever, amount);
-        stop_prank(ETH.contract_address);
+        start_prank(CheatTarget::One(ETH.contract_address), caller_who_have_funds);
+        ETH.transfer(receiver, amount);
+        stop_prank(CheatTarget::One(ETH.contract_address));
     }
-    fn tfer_usdc_funds_to(reciever: ContractAddress, amount: u256) {
+    fn tfer_usdc_funds_to(receiver: ContractAddress, amount: u256) {
         let caller_who_have_funds: ContractAddress = 0x0711c27004518b375e5c3521223a87704d4b72367d353d797665aa0d1edc5f52.try_into().unwrap();
         let USDC = IERC20Dispatcher { contract_address: get_usdc_addr() };
-        start_prank(USDC.contract_address, caller_who_have_funds);
-        USDC.transfer(reciever, amount);
-        stop_prank(USDC.contract_address);
+        start_prank(CheatTarget::One(USDC.contract_address), caller_who_have_funds);
+        USDC.transfer(receiver, amount);
+        stop_prank(CheatTarget::One(USDC.contract_address));
     }
 
 
@@ -92,8 +93,8 @@
         
         let erc = IERC20Dispatcher{contract_address: token};
         let (prev_total_supply,prev_user_balance) = (akira.total_supply(token), akira.balanceOf(trader, token));
-        start_prank(token, trader);erc.approve(akira.contract_address, amount);stop_prank(token);
-        start_prank(akira.contract_address, trader); akira.deposit(trader, token, amount); stop_prank(akira.contract_address);
+        start_prank(CheatTarget::One(token), trader);erc.approve(akira.contract_address, amount);stop_prank(CheatTarget::One(token));
+        start_prank(CheatTarget::One(akira.contract_address), trader); akira.deposit(trader, token, amount); stop_prank(CheatTarget::One(akira.contract_address));
         assert(akira.total_supply(token) == prev_total_supply + amount,'WRONG_MINT');
         assert(akira.balanceOf(trader, token) == prev_user_balance + amount,'WRONG_MINT'); 
     }
@@ -102,13 +103,14 @@
         let latest_gas_price = akira.get_latest_gas_price();
         let gas_deduct = latest_gas_price * 2 * gas_action.into();
         GasFee{ gas_per_action:get_withdraw_action_cost(), fee_token:get_eth_addr(), 
-                max_gas_price: latest_gas_price * 2, conversion_rate: (1,1),
+                max_gas_price: gas_deduct, conversion_rate: (1,1),
         }
     }
 
     fn sign(message_hash:felt252,pub:felt252,priv:felt252)->(felt252, felt252) {
-        let mut signer = StarkCurveKeyPair{public_key:pub, private_key:priv};
-        return signer.sign(message_hash).unwrap();
+        let mut signer = KeyPairTrait::<felt252, felt252>::from_secret_key(priv);
+
+        return signer.sign(message_hash);
     }
 
 

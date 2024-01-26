@@ -11,7 +11,7 @@ struct Withdraw {
     amount: u256, // amount of token, at the end user will receive amount of token diff from gas fee or amount - gas_fee, so user can always withdraw all his balances 
     salt: felt252, // random salt
     gas_fee: GasFee, // for some paths, this activity to be executed requires gasfee
-    reciever: ContractAddress // receiver of withdrawal tokens
+    receiver: ContractAddress // receiver of withdrawal tokens
 }
 
 #[derive(Copy, Drop, Serde, PartialEq)]
@@ -53,6 +53,7 @@ mod withdraw_component {
     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait, IERC20Dispatcher};
     use starknet::{get_caller_address, get_contract_address, get_block_timestamp, ContractAddress};
     use starknet::info::get_block_number;
+    use kurosawa_akira::utils::common::DisplayContractAddress;
 
 
     #[event]
@@ -74,7 +75,7 @@ mod withdraw_component {
         #[key]
         maker: ContractAddress,
         token: ContractAddress,
-        reciever: ContractAddress,
+        receiver: ContractAddress,
         salt: felt252,
         amount: u256,
         gas_price: u256,
@@ -123,16 +124,16 @@ mod withdraw_component {
             // 1) Only maker itself can execute it
             // 2) Only one in progress onchain withdrawal per token allowed
             // 3) We require user to have GasFee with latest_gas_price * 2 for exchange be able to execute it on behalf of user once it is possible
-            assert(get_caller_address() == withdraw.maker, 'WRONG_MAKER');
-            assert(withdraw.amount > 0, 'WITHDRAW_CANT_BE_ZERO');
+            assert!(get_caller_address() == withdraw.maker, "WRONG_MAKER: withdraw maker ({}) should be equal caller ({})", withdraw.maker, get_caller_address());
+            assert!(withdraw.amount > 0, "WITHDRAW_CANT_BE_ZERO");
             let key = (withdraw.token, withdraw.maker);            
             let (pending_ts, w_prev): (SlowModeDelay, Withdraw)  = self.pending_reqs.read(key);
             let w_hash = withdraw.get_poseidon_hash();
 
-            assert(w_prev != withdraw, 'ALREADY_REQUESTED');
-            assert(w_prev.amount == 0 || self.completed_reqs.read(w_prev.get_poseidon_hash()), 'NOT_YET_COMPLETED_PREV');
+            assert!(w_prev != withdraw, "ALREADY_REQUESTED: withdraw for this token already requested");
+            assert!(w_prev.amount == 0 || self.completed_reqs.read(w_prev.get_poseidon_hash()), "NOT_YET_COMPLETED_PREV: previous withdraw has not been completed yet");
            
-            assert(!self.completed_reqs.read(w_hash),'ALREADY_COMPLETED');
+            assert!(!self.completed_reqs.read(w_hash), "ALREADY_COMPLETED: requested withdraw has already been completed");
             self.validate(withdraw.maker, withdraw.token, withdraw.amount, withdraw.gas_fee);
             
             self.pending_reqs.write(key, (SlowModeDelay {block:get_block_number(), ts: get_block_timestamp()}, withdraw));
@@ -146,17 +147,18 @@ mod withdraw_component {
             // Here user will not be charged for gasFee because he is the actual executor
             let caller = get_caller_address();
             let (delay, w_req): (SlowModeDelay,Withdraw) = self.pending_reqs.read((token, caller));
-            assert(caller == w_req.maker, 'WRONG_MAKER');
-            assert(key == w_req.get_poseidon_hash(),'WRONG_WITHDRAW');
-            assert(!self.completed_reqs.read(key), 'ALREADY_COMPLETED');
+            assert!(caller == w_req.maker, "WRONG_MAKER: withdraw maker ({}) should be equal caller ({})", w_req.maker, get_caller_address());
+            assert!(key == w_req.get_poseidon_hash(),"WRONG_WITHDRAW: wrong key ({}) for pending withdraw ({})", key, w_req.get_poseidon_hash());
+            assert!(!self.completed_reqs.read(key), "ALREADY_COMPLETED: withdraw has been completed already");
             
             let limit:SlowModeDelay = self.delay.read();
-            assert(get_block_number() - delay.block >= limit.block && get_block_timestamp() - delay.ts >= limit.ts, 'FEW_TIME_PASSED');
+            let (block_delta, ts_delta) = (get_block_number() - delay.block, get_block_timestamp() - delay.ts);
+            assert!(block_delta >= limit.block && ts_delta >= limit.ts, "FEW_TIME_PASSED: wait at least {} block and {} ts (for now its {} and {})", delay.block, delay.ts, block_delta, ts_delta);
             
             let mut balancer = self.get_balancer_mut();
             balancer.burn(w_req.maker, w_req.amount, w_req.token);
-            IERC20Dispatcher{ contract_address: w_req.token}.transfer(w_req.reciever, w_req.amount);
-            self.emit(Withdrawal{maker:w_req.maker, token:w_req.token, amount:w_req.amount, salt:w_req.salt, reciever:w_req.reciever, gas_price:0,
+            IERC20Dispatcher{ contract_address: w_req.token}.transfer(w_req.receiver, w_req.amount);
+            self.emit(Withdrawal{maker:w_req.maker, token:w_req.token, amount:w_req.amount, salt:w_req.salt, receiver:w_req.receiver, gas_price:0,
                         gas_fee:w_req.gas_fee,direct:true});
             
             self.completed_reqs.write(key, true);
@@ -178,11 +180,11 @@ mod withdraw_component {
         fn apply_withdraw(ref self: ComponentState<TContractState>, signed_withdraw: SignedWithdraw, gas_price:u256) {
             let hash = signed_withdraw.withdraw.get_poseidon_hash();
             let (delay, w_req):(SlowModeDelay, Withdraw) = self.pending_reqs.read((signed_withdraw.withdraw.token, signed_withdraw.withdraw.maker));
-            assert(!self.completed_reqs.read(hash), 'ALREADY_COMPLETED');
+            assert!(!self.completed_reqs.read(hash), "ALREADY_COMPLETED: withdraw (hash = {})", hash);
             
             if w_req != signed_withdraw.withdraw { // need to check sign cause offchain withdrawal
                 let (r, s) = signed_withdraw.sign;
-                assert(self.get_contract().check_sign(signed_withdraw.withdraw.maker, hash, r, s), 'WRONG_SIGN');
+                assert!(self.get_contract().check_sign(signed_withdraw.withdraw.maker, hash, r, s), "WRONG_SIGN: (hash, r, s) = ({}, {}, {})", hash, r, s);
             }
             let w_req = signed_withdraw.withdraw;
         
@@ -194,7 +196,7 @@ mod withdraw_component {
 
             contract.burn(w_req.maker, tfer_amount, w_req.token);
             IERC20Dispatcher { contract_address: w_req.token }.transfer(w_req.maker, tfer_amount);
-            self.emit(Withdrawal{maker:w_req.maker, token:w_req.token, amount: w_req.amount, salt:w_req.salt, reciever:w_req.reciever,gas_price,
+            self.emit(Withdrawal{maker:w_req.maker, token:w_req.token, amount: w_req.amount, salt:w_req.salt, receiver:w_req.receiver,gas_price,
                         gas_fee:w_req.gas_fee, direct:w_req == signed_withdraw.withdraw});
 
            self.completed_reqs.write(hash, true);
@@ -204,16 +206,13 @@ mod withdraw_component {
         fn validate(self:@ComponentState<TContractState>,maker:ContractAddress, token:ContractAddress, amount:u256, gas_fee:GasFee) {
             let balancer =  self.get_balancer();
             let balance = balancer.balanceOf(maker, token);
-            assert(gas_fee.gas_per_action == self.gas_steps.read().into(), 'WRONG_GAS_PER_ACTION');
-            assert(gas_fee.fee_token == balancer.wrapped_native_token.read(), 'WRONG_GAS_FEE_TOKEN');
+            let gas_steps = self.gas_steps.read().into();
+            assert!(gas_fee.gas_per_action == gas_steps, "WRONG_GAS_PER_ACTION: expected {} got {}", gas_steps, gas_fee.gas_per_action);
+            assert!(gas_fee.fee_token == balancer.wrapped_native_token.read(), "WRONG_GAS_FEE_TOKEN: expected {} got {}", balancer.wrapped_native_token.read(), gas_fee.fee_token);
             let required_gas = balancer.get_latest_gas_price() * 2 * gas_fee.gas_per_action.into();  //require  reserve a bit more
-            assert(balance >= amount , 'FEW_BALANCE');
-            if gas_fee.fee_token == token {
-                assert(amount >= required_gas, 'GAS_MORE_THAN_REQUESTED');
-
-            } else {
-                assert(balancer.balanceOf(maker, gas_fee.fee_token) >= required_gas, 'FEW_BALANCE_GAS');
-            }
+            assert!(balance >= amount , "FEW_BALANCE: need at least {}, but have only {}", amount, balance);
+            assert!(!(gas_fee.fee_token == token) || amount >= required_gas, "GAS_MORE_THAN_REQUESTED: failed amount ({}) >= required_gas ({})", amount, required_gas);
+            assert!(gas_fee.fee_token == token || balancer.balanceOf(maker, gas_fee.fee_token) >= required_gas, "FEW_BALANCE_GAS: failed maker_balance ({}) >= required_gas ({}) -- gas token {}", balancer.balanceOf(maker, gas_fee.fee_token), required_gas, gas_fee.fee_token);
         }
     }   
 

@@ -79,8 +79,8 @@ mod nonce_component {
             let nonce_increase = signed_nonce_increase.increase_nonce;
             let key = nonce_increase.get_poseidon_hash();
             let (r,s) = signed_nonce_increase.sign;
-            assert(self.get_contract().check_sign(nonce_increase.maker, key, r, s),'WRONG_SIG');
-            assert(nonce_increase.new_nonce > self.nonces.read(nonce_increase.maker), 'WRONG_NONCE');
+            assert!(self.get_contract().check_sign(nonce_increase.maker, key, r, s), "Failed maker signature check (key, r, s) = ({}, {}, {})", key, r, s);
+            assert!(nonce_increase.new_nonce > self.nonces.read(nonce_increase.maker), "Wrong nonce (Failed new_nonce ({}) > prev_nonce ({}))", nonce_increase.new_nonce, self.nonces.read(nonce_increase.maker));
             
             let mut balancer = self.get_balancer_mut();
             balancer.validate_and_apply_gas_fee_internal(nonce_increase.maker, nonce_increase.gas_fee, gas_price, 1);

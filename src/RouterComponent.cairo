@@ -1,3 +1,4 @@
+use core::option::OptionTrait;
 use starknet::ContractAddress;
 use kurosawa_akira::Order::GasFee;
 use kurosawa_akira::ExchangeBalanceComponent::{get_gas_fee_and_coin};
@@ -23,7 +24,7 @@ trait IRouter<TContractState> {
 
     // if router wish to bind new signers
     // reverse semantic compared to SignerComponent
-    // here router can have multiple signers associted to avoid risks  of exposing his router' private key
+    // here router can have multiple signers associated to avoid risks  of exposing his router' private key
     // so when it comes to signing unsafe taker orders router will sign order  by one of his associated signers keys
     fn add_router_binding(ref self: TContractState, signer: ContractAddress);
 
@@ -40,7 +41,7 @@ trait IRouter<TContractState> {
     fn validate_router(self: @TContractState, message: felt252, signature: (felt252, felt252), signer: ContractAddress, router:ContractAddress) -> bool;
 
     // in case of failed action due to wrong taker details we punish router and distribute this fine to exchange,
-    // because we wasted gas for nothing and to maker because he have lost opportuinity
+    // because we wasted gas for nothing and to maker because he have lost opportunity
     fn get_punishment_factor_bips(self: @TContractState) -> u16;
 
     // is router registered as router so he can route unsafe orders to our exchange 
@@ -53,7 +54,7 @@ trait IRouter<TContractState> {
 
     fn balance_of_router(self:@TContractState, router:ContractAddress, coin:ContractAddress)->u256;
 
-    // get router address assosiated with given signer
+    // get router address associated with given signer
     fn get_router(self:@TContractState, signer:ContractAddress) -> ContractAddress;
 
     // how much one must hold have in balance to be registered as router
@@ -68,6 +69,7 @@ mod router_component {
     use starknet::{get_caller_address, get_contract_address, get_block_timestamp};
     use starknet::info::get_block_number;
     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait, IERC20Dispatcher};
+    use kurosawa_akira::utils::common::DisplayContractAddress;
 
 
 
@@ -139,7 +141,7 @@ mod router_component {
         registered:LegacyMap::<ContractAddress,bool>,
         native_base_token:ContractAddress,
         signer_to_router:LegacyMap<ContractAddress,ContractAddress>,
-        pinishment_bips:u16   
+        punishment_bips:u16
     }
 
     #[embeddable_as(Routable)]
@@ -154,7 +156,8 @@ mod router_component {
             
             let pre = erc20.balanceOf(contract_addr);
             erc20.transferFrom(caller, contract_addr, amount);
-            assert(erc20.balanceOf(contract_addr) - pre == amount, 'WRONG_TFER');
+            let cur = erc20.balanceOf(contract_addr);
+            assert!(cur - pre == amount, "WRONG_TFER: failed erc20_balance - prev_balance ({}) == amount({})", cur - pre, amount);
             self.mint(router, coin, amount);
             self.emit(Deposit{router:router, token:coin, funder:caller, amount:amount});
         }
@@ -162,8 +165,8 @@ mod router_component {
         fn router_withdraw(ref self: ComponentState<TContractState>, coin: ContractAddress, amount: u256, receiver:ContractAddress) {
             let router = get_caller_address();
             let balance:u256 = self.token_to_user.read((coin,router)); 
-            assert(balance >= amount, 'FEW_COINS');
-            assert(self.registered.read(router) || balance - amount >= 2 * self.min_to_route.read(), 'FEW_FOR_ROUTE');
+            assert!(balance >= amount, "FEW_COINS: failed balance ({}) >= amount ({})", balance, amount);
+            assert!(self.registered.read(router) || balance - amount >= 2 * self.min_to_route.read(), "FEW_FOR_ROUTE: need to keep at least {} router balance", 2 * self.min_to_route.read());
             self.burn(router, coin, amount);
             let erc20 = IERC20Dispatcher{contract_address: coin};
             erc20.transfer(receiver,amount);
@@ -172,18 +175,18 @@ mod router_component {
 
         fn register_router(ref self: ComponentState<TContractState>) {
             let caller = get_caller_address();
-            assert(!self.registered.read(caller) ,'ALREADY_REGISTERED');
+            assert!(!self.registered.read(caller) ,"ALREADY_REGISTERED, router {} already registered", caller);
             let native_balance = self.token_to_user.read( (self.native_base_token.read(), caller));
-            assert(native_balance >= self.get_route_amount(), 'FEW_DEPOSITED');
+            assert!(native_balance >= self.get_route_amount(), "FEW_DEPOSITED: need at least {} base token to register new router", self.get_route_amount());
             self.registered.write(caller, true);
             self.emit(RouterRegistration{router:caller, status:0});
         }
 
         fn add_router_binding(ref self: ComponentState<TContractState>, signer: ContractAddress){
             let router = get_caller_address();
-            assert(self.registered.read(router) ,'NOT_REGISTERED');
+            assert!(self.registered.read(router) ,"NOT_REGISTERED: router {} not registered", router);
             let cur_router = self.signer_to_router.read(signer);
-            assert(!self.registered.read(cur_router), 'ALREADY_USED');
+            assert!(!self.registered.read(cur_router), "ALREADY_USED: given signer {} already used", signer);
             self.signer_to_router.write(signer,router);
             self.emit(Binding{router,signer,is_added:true});
         }
@@ -200,20 +203,21 @@ mod router_component {
 
         fn request_onchain_deregister(ref self: ComponentState<TContractState>) {
             let router = get_caller_address();
-            assert(self.registered.read(router), 'NOT_REGISTERED');
+            assert!(self.registered.read(router), "NOT_REGISTERED: not registered router {}", router);
             let ongoing:SlowModeDelay = self.pending_unregister.read(router.into());
-            assert(ongoing.block == 0, 'ALREADY_REQUESTED');
+            assert!(ongoing.block == 0, "DEREGISTER_ALREADY_REQUESTED: router {} already requested deregistration", router);
             self.pending_unregister.write(router.into(), SlowModeDelay{block:get_block_number(), ts:get_block_timestamp()});
             self.emit(RouterRegistration{router:router,status:1});
         }
          
         fn apply_onchain_deregister(ref self: ComponentState<TContractState>) {
             let router = get_caller_address();
-            assert(self.registered.read(router), 'NOT_REGISTERED');
+            assert!(self.registered.read(router), "NOT_REGISTERED: not registered router {}", router);
             let ongoing:SlowModeDelay = self.pending_unregister.read(router.into());
-            assert(ongoing.block != 0, 'NOT_REQUESTED');
+            assert!(ongoing.block != 0, "NOT_REQUESTED: router {} has not requested deregistration", router);
             let delay:SlowModeDelay = self.delay.read();
-            assert(get_block_number() - ongoing.block >= delay.block && get_block_timestamp() - ongoing.ts >= delay.ts,'FEW_TIME_PASSED');
+            let (block_delta, ts_delta) = (get_block_number() - ongoing.block, get_block_timestamp() - ongoing.ts);
+            assert!(block_delta >= delay.block && ts_delta >= delay.ts, "FEW_TIME_PASSED: wait at least {} block and {} ts (for now its {} and {})", delay.block, delay.ts, block_delta, ts_delta);
             
             self.registered.write(router, false);
             self.pending_unregister.write(router.into(), SlowModeDelay{block:0,ts:0});
@@ -222,16 +226,16 @@ mod router_component {
 
         fn validate_router(self: @ComponentState<TContractState>, message: felt252, signature: (felt252, felt252), signer: ContractAddress, router:ContractAddress) -> bool {
             // message should be correctly signed by signer and 
-            // signer should be assoaicted with expected router
+            // signer should be associated with expected router
             // and this router should actually be registered as router  
             let actual_router = self.signer_to_router.read(signer);
             if actual_router != router {return false;}
-            assert(self.registered.read(router), 'NOT_REGISTERED'); // this one should be controlled by exchange, if fails, exchage screwed
+            assert!(self.registered.read(router), "NOT_REGISTERED: not registered router {}", router); // this one should be controlled by exchange, if fails, exchage screwed
             let (sig_r, sig_s) = signature;
             return check_ecdsa_signature(message, signer.into(), sig_r, sig_s);
         }
 
-        fn get_punishment_factor_bips(self: @ComponentState<TContractState>) -> u16 { return self.pinishment_bips.read();}
+        fn get_punishment_factor_bips(self: @ComponentState<TContractState>) -> u16 { return self.punishment_bips.read();}
         
         fn is_registered(self: @ComponentState<TContractState>, router: ContractAddress) -> bool { return self.registered.read(router);}
 
@@ -246,10 +250,10 @@ mod router_component {
 
     #[generate_trait]
     impl InternalRoutableImpl<TContractState, +HasComponent<TContractState>> of InternalRoutable<TContractState> {
-        fn initializer(ref self: ComponentState<TContractState>, delay:SlowModeDelay, wrapped_native_token:ContractAddress, min_to_route:u256, pinishment_bips:u16 ) {
+        fn initializer(ref self: ComponentState<TContractState>, delay:SlowModeDelay, wrapped_native_token:ContractAddress, min_to_route:u256, punishment_bips:u16 ) {
             self.min_to_route.write(min_to_route); 
             self.native_base_token.write(wrapped_native_token);
-            self.pinishment_bips.write(pinishment_bips);
+            self.punishment_bips.write(punishment_bips);
             self.delay.write(delay);            
         }
         fn mint(ref self: ComponentState<TContractState>,router:ContractAddress,token:ContractAddress, amount:u256) {
@@ -262,7 +266,7 @@ mod router_component {
         fn burn(ref self: ComponentState<TContractState>,router:ContractAddress,token:ContractAddress, amount:u256) {
             // burn on router withdrawal and when we punish router on trade failed because of bad taker
             let balance:u256 = self.token_to_user.read((token, router)); 
-            assert(balance >= amount, 'FEW_TO_BURN_ROUTER');
+            assert!(balance >= amount, "FEW_TO_BURN_ROUTER: failed balance ({}) >= amount ({})", balance, amount);
             self.token_to_user.write((token, router), balance - amount);
             self.emit(RouterBurn{router, token, amount});
         }
