@@ -1,5 +1,5 @@
 use kurosawa_akira::Order::{SignedOrder,Order, OrderTradeInfo, OrderFee, FixedFee,
-            get_feeable_qty,get_limit_px, do_taker_price_checks, do_maker_checks,TakerSelfTradePreventionMode};
+            get_feeable_qty,get_limit_px, do_taker_price_checks, do_maker_checks, get_available_base_qty, TakerSelfTradePreventionMode};
 
 #[starknet::interface]
 trait ISafeTradeLogic<TContractState> {
@@ -18,7 +18,7 @@ mod safe_trade_component {
     
     use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
     use starknet::{get_contract_address, ContractAddress, get_block_timestamp};
-    use super::{do_taker_price_checks,do_maker_checks,get_feeable_qty, get_limit_px, SignedOrder,Order, TakerSelfTradePreventionMode, OrderTradeInfo, OrderFee, FixedFee};
+    use super::{do_taker_price_checks,do_maker_checks,get_available_base_qty, get_feeable_qty, get_limit_px, SignedOrder,Order, TakerSelfTradePreventionMode, OrderTradeInfo, OrderFee, FixedFee};
     use kurosawa_akira::utils::common::DisplayContractAddress;
 
     #[storage]
@@ -104,7 +104,6 @@ mod safe_trade_component {
                                 do_maker_checks(maker_order, maker_fill_info, contract.get_nonce(maker_order.maker));
                                 assert!(maker_order.fee.trade_fee.recipient == fee_recipient, "WRONG_MAKER_FEE_RECIPIENT: expected {} got {}", fee_recipient, maker_order.fee.trade_fee.recipient);
             
-
                                 let (r, s) = signed_order.sign;
                                 assert!(contract.check_sign(signed_order.order.maker, maker_hash, r, s), "WRONG_SIGN_MAKER: (maker_hash, r, s) : ({}, {} ,{})", maker_hash, r, s);
 
@@ -116,11 +115,10 @@ mod safe_trade_component {
                             if (taker_order.stp != TakerSelfTradePreventionMode::NONE) { // check stp mode, if not None reuqire prevention
                                 assert!(contract.get_signer(maker_order.maker) != contract.get_signer(taker_order.maker), "STP_VIOLATED");
                             }
-
-                            let (settle_px, maker_qty) = get_limit_px(maker_order, maker_fill_info);   
-                                         
+                            let settle_px = get_limit_px(maker_order, maker_fill_info);
+                            let maker_qty = get_available_base_qty(settle_px, maker_order, maker_fill_info);
                             let taker_qty = do_taker_price_checks(taker_order, settle_px, taker_fill_info);
-                            let mut settle_base_amount = if maker_qty > taker_qty {taker_qty} else {maker_qty};
+                            let mut settle_base_amount =  if maker_qty > taker_qty {taker_qty} else {maker_qty};
                             let oracle_settle_qty = oracle_settled_qty.pop_front().unwrap();
                             if oracle_settle_qty > 0 {
                                 assert!(oracle_settle_qty <= settle_base_amount, "WRONG_ORACLE_SETTLE_QTY {} for {}", oracle_settle_qty, maker_hash);
@@ -144,9 +142,11 @@ mod safe_trade_component {
                             total_quote += settle_quote_amount;
                             
                             maker_fill_info.filled_amount += settle_base_amount;
-                            taker_fill_info.filled_amount += settle_base_amount;
-                            
+                            maker_fill_info.filled_quote_amount += settle_quote_amount;
                             maker_fill_info.last_traded_px = settle_px;
+                            
+                            taker_fill_info.filled_amount += settle_base_amount;
+                            taker_fill_info.filled_quote_amount += settle_quote_amount;
                             taker_fill_info.last_traded_px = settle_px; 
                             
                             cur += 1;
@@ -185,7 +185,7 @@ mod safe_trade_component {
             // if taker_fill_info.filled_amount > 0 { assert(last_fill_taker_hash == taker_order_hash, 'IF_PARTIAL=>PREV_SAME');}
 
             assert!(taker_order.fee.router_fee.taker_pbips == 0, "TAKER_SAFE_REQUIRES_NO_ROUTER");
-            assert!(taker_order.quantity > taker_fill_info.filled_amount, "TAKER_ALREADY_FILLED");
+            // assert!(taker_order.quantity > taker_fill_info.filled_amount, "TAKER_ALREADY_FILLED"); #TODO we already checked that
             assert!(!taker_fill_info.as_taker_completed, "Taker order {} marked completed", taker_order_hash);
             assert!(get_block_timestamp() < taker_order.expire_at.into(), "Taker order expire {}", taker_order.expire_at);
 

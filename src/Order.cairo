@@ -5,6 +5,7 @@ use poseidon::poseidon_hash_span;
 use array::ArrayTrait;
 use array::SpanTrait;
 use starknet::{get_block_timestamp};
+use kurosawa_akira::utils::common::{min};
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct GasFee {
@@ -57,8 +58,9 @@ enum TakerSelfTradePreventionMode {
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct Order {
     maker: ContractAddress, // trading account that created order
-    price: u256, // price in quote asset raw amount, for taker order serves as protection price, for passive order executoin price
+    price: u256, // price in quote asset raw amount, for taker order serves as protection price, for passive order execution price, might be zero
     quantity: u256, // quantity in base asset raw amount
+    quote_qty: u256, // quantity in quote asset raw amount
     ticker: (ContractAddress, ContractAddress), // (base asset address, quote asset address) eg ETH/USDC
     fee: OrderFee, // order fees that user must fulfill once trade happens
     number_of_swaps_allowed: u8, // if order is taker, one can limit maximum number of trades can happens with this taker order (necesasry becase taker order incur gas fees)
@@ -70,7 +72,8 @@ struct Order {
     created_at: u32, // epoch time in seconds, time when order was created by user
     stp: TakerSelfTradePreventionMode,
     expire_at: u32, // epoch tine in seconds, time when order becomes invalid
-    version: u16 // exchange version 
+    version: u16, // exchange version
+    min_receive_amount:u256 // minimal amount that user willing to receive from the full mstching of order, default value 0, for now defined for unsafe takers, serves as slippage that filtered on exchange
 }   
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
@@ -82,7 +85,8 @@ struct SignedOrder {
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct OrderTradeInfo {
-    filled_amount: u256,
+    filled_amount: u256, // filled amount in base asset
+    filled_quote_amount:u256, // filled amount in quote qty
     last_traded_px: u256,
     num_trades_happened: u8,
     as_taker_completed: bool
@@ -95,12 +99,28 @@ fn get_feeable_qty(fixed_fee: FixedFee, feeable_qty: u256, is_maker:bool) -> u25
     return (feeable_qty * pbips.into() - 1) / 1_000_000 + 1;
 }
 
-fn get_limit_px(maker_order:Order, maker_fill_info:OrderTradeInfo) -> (u256, u256){
+fn get_limit_px(maker_order:Order, maker_fill_info:OrderTradeInfo) ->  u256{  //TODO: and qty rename
     let settle_px = if maker_fill_info.filled_amount > 0 {maker_fill_info.last_traded_px} else {maker_order.price};
-    return (settle_px, maker_order.quantity - maker_fill_info.filled_amount); 
+    return settle_px; 
 }
 
-fn do_taker_price_checks(taker_order:Order, settle_px:u256, taker_fill_info:OrderTradeInfo)->u256 {
+fn get_available_base_qty(settle_px:u256, order:Order, fill_info: OrderTradeInfo) -> u256 {
+    // calculate available qty in base asset that fulfillable
+    // if base_qty not specified it is defined by quote_qty
+    // elif quote_qty not specified it is defined by base_qty
+    // if both specified takes the minimum
+    // eg ETH/USDC
+    // buy order -> buy base asset in return for quote asset
+    // sell order -> buy quote asset in return for base asset
+    let quote_qty_by_quote_asset = order.base_asset * (order.quote_qty - fill_info.filled_quote_amount)  / settle_px;
+    let quote_qty_by_base_asset  = order.quantity - fill_info.filled_amount;
+    if (order.quantity == 0)  { return  quote_qty_by_quote_asset; }
+    if (order.quote_qty == 0) { return quote_qty_by_base_asset; }
+    // TODO maybe specify both doesnot makes sense?
+    return min(quote_qty_by_quote_asset, quote_qty_by_base_asset);
+}
+
+fn do_taker_price_checks(taker_order:Order, settle_px:u256, taker_fill_info:OrderTradeInfo) -> u256 {
     assert!(taker_order.flags.is_sell_side || settle_px <= taker_order.price, "BUY_PROTECTION_PRICE_FAILED: settle_px ({}) <= taker_order.price ({})", settle_px, taker_order.price);
     assert!(!taker_order.flags.is_sell_side || settle_px >= taker_order.price, "SELL_PROTECTION_PRICE_FAILED: settle_px ({}) >= taker_order.price ({})", settle_px, taker_order.price); 
 
@@ -112,24 +132,23 @@ fn do_taker_price_checks(taker_order:Order, settle_px:u256, taker_fill_info:Orde
             else { assert!(last_traded_px >= settle_px, "SELL_PARTIAL_FILL_ERR: failed last_traded_px ({}) >= settle_px ({})", last_traded_px, settle_px);}
         }
     }
-    let rem = taker_order.quantity - taker_fill_info.filled_amount;
+    let rem = get_available_base_qty(settle_px, taker_order, taker_fill_info);
     assert!(rem > 0, "FILLED_TAKER_ORDER");
+
     return rem;
 }
 
 fn do_maker_checks(maker_order:Order, maker_fill_info:OrderTradeInfo, nonce:u32)-> (u256, u256) {
     assert!(!maker_order.flags.is_market_order, "WRONG_MARKET_TYPE");
-    let remaining = maker_order.quantity - maker_fill_info.filled_amount;
-    assert!(remaining > 0, "MAKER_ALREADY_FILLED: remaining = ({})", remaining);
+    let settle_px = get_limit_px(maker_order, maker_fill_info);
+    let remaining = get_available_base_qty(settle_px, maker_order, maker_fill_info);
+    assert!(remaining > 0, "MAKER_ALREADY_FILLED_BY_BASE: remaining = ({})", remaining);
     assert!(maker_order.nonce >= nonce, "OLD_MAKER_NONCE: failed maker_order.nonce ({}) >= nonce ({})", maker_order.nonce, nonce);
     assert!(!maker_order.flags.full_fill_only, "WRONG_MAKER_FLAG: maker_order can't be full_fill_only");
     assert!(get_block_timestamp() < maker_order.expire_at.into(), "Maker order expire {}", maker_order.expire_at);
     if maker_order.flags.post_only {
         assert!(!maker_order.flags.best_level_only && !maker_order.flags.full_fill_only, "WRONG_MAKER_FLAGS");
     }
-    let settle_px = if maker_fill_info.filled_amount > 0 {maker_fill_info.last_traded_px} else {maker_order.price};
-
-
     return (settle_px, remaining); 
 }
 

@@ -263,6 +263,8 @@ mod test_common_trade {
         } else { FixedFee{recipient: zero_addr, maker_pbips:0, taker_pbips:0}
         };
         let mut order = Order {
+            min_receive_amount:0,
+            quote_qty:0,
             maker, price, quantity, ticker, number_of_swaps_allowed:num_swaps_allowed, salt, router_signer,
             base_asset: 1_000_000_000_000_000_000, nonce:akira.get_nonce(maker),
             fee: OrderFee {
@@ -469,7 +471,7 @@ mod tests_unsafe_trade {
         
         // grant necesasry allowances 
         grant_allowances(akira, tr2, eth, gas_fee);
-        grant_allowances(akira, tr2, usdc, usdc_amount+100000000);
+        grant_allowances(akira, tr2, usdc, usdc_amount);
 
         let mut buy_order = spawn_order(akira, tr2, usdc_amount, eth_amount, 
                 get_order_flags(false, false, false, false, true), 2, signer);
@@ -489,7 +491,7 @@ mod tests_unsafe_trade {
 
 
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        assert(akira.apply_unsafe_trade(buy_order, array![(sell_order, 0)],  (1+usdc_amount) * eth_amount / buy_order.order.base_asset, 100, false), 'FAILED_MATCH');
+        assert(akira.apply_unsafe_trade(buy_order, array![(sell_order, 0)],  (usdc_amount) * eth_amount / buy_order.order.base_asset, 100, false), 'FAILED_MATCH');
         stop_prank(CheatTarget::One(akira.contract_address));
 
 

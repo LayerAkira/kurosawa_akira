@@ -1,5 +1,5 @@
 use kurosawa_akira::Order::{SignedOrder,Order, OrderTradeInfo,OrderFee,FixedFee,
-            get_feeable_qty, get_limit_px, do_taker_price_checks, do_maker_checks,get_gas_fee_and_coin, GasFee};
+            get_feeable_qty, get_limit_px, do_taker_price_checks, do_maker_checks,get_available_base_qty,get_gas_fee_and_coin, GasFee};
 
 #[starknet::interface]
 trait IUnSafeTradeLogic<TContractState> {
@@ -19,7 +19,7 @@ mod unsafe_trade_component {
     
     use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
     use starknet::{get_contract_address, ContractAddress, get_block_timestamp};
-    use super::{do_taker_price_checks,do_maker_checks,get_feeable_qty,get_limit_px,SignedOrder,Order,OrderTradeInfo,OrderFee,FixedFee,get_gas_fee_and_coin,GasFee};
+    use super::{do_taker_price_checks,do_maker_checks,get_available_base_qty,get_feeable_qty,get_limit_px,SignedOrder,Order,OrderTradeInfo,OrderFee,FixedFee,get_gas_fee_and_coin,GasFee};
     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait, IERC20Dispatcher};
 
     use kurosawa_akira::RouterComponent::router_component as router_component;
@@ -124,7 +124,7 @@ mod unsafe_trade_component {
             // prevent exchange trigger reimbure on purpose
             //  else we can send 0 as total_amount_matched and it will trigger failure on checks and trigger router punishment
             //  we need this oracle because we dont know beforehand how much taker will spent because px is protection price
-            assert!(total_amount_matched <= upper_bound_taker_give, "WRONG_AMOUNT_MATCHED_ORACLE");
+            assert!(total_amount_matched <= upper_bound_taker_give, "WRONG_AMOUNT_MATCHED_ORACLE got {} should be less {}", total_amount_matched, upper_bound_taker_give);
                         
             // TODO bit dumb that it fires exception, how reimburse in that case? cause custom contract can force fails on signature validation
             let (mut amount_out, _) = if check_sign(taker_order.maker, taker_hash, signed_taker_order.router_sign) {
@@ -161,8 +161,11 @@ mod unsafe_trade_component {
                             } else { amount_out -= amount_quote; taker_received += amount_base;}
                         }    
                         maker_fill_info.filled_amount += amount_base;
-                        taker_fill_info.filled_amount += amount_base;
+                        maker_fill_info.filled_quote_amount += amount_quote;
                         maker_fill_info.last_traded_px = settle_px;
+                        
+                        taker_fill_info.filled_amount += amount_base;
+                        taker_fill_info.filled_quote_amount += amount_quote;
                         taker_fill_info.last_traded_px = settle_px;
                         
                         
@@ -198,6 +201,18 @@ mod unsafe_trade_component {
         }
 
 
+        fn _infer_upper_bound_required(self:@ComponentState<TContractState>, taker_order:Order, taker_fill_info:OrderTradeInfo) ->u256 {
+            // Gives approxiation how much user must have tokens that he is willing to spend
+            if taker_order.flags.is_sell_side { // sell of base asset
+                return get_available_base_qty(taker_order.price, taker_order, taker_fill_info);
+            } else { // sell of quote asset
+                if taker_order.quote_qty > 0 { return taker_order.quote_qty - taker_fill_info.filled_quote_amount;} // precise amount
+                // settle_px * settle_base_amount / maker_order.base_asset
+                return  taker_order.price * (taker_order.quantity - taker_fill_info.filled_amount) / taker_order.base_asset; // up to proection px
+            }     
+        }
+        // 1eth
+
         fn _do_part_taker_validate(self:@ComponentState<TContractState>, signed_taker_order:SignedOrder, taker_hash:felt252, taker_fill_info:OrderTradeInfo, trades:u8) -> u256 {
             //Returns max user can actually spend
             let router = self.get_router();
@@ -206,8 +221,8 @@ mod unsafe_trade_component {
             //Validate router, job of exchange because of this assert
             assert!(router.validate_router(taker_hash, signed_taker_order.router_sign, 
                     taker_order.router_signer, taker_order.fee.router_fee.recipient), "WRONG_ROUTER_SIGN");
-            
-            let remaining_taker_amount = taker_order.quantity - taker_fill_info.filled_amount;
+            // TODO
+            let remaining_taker_amount =  self._infer_upper_bound_required(taker_order, taker_fill_info);
             assert!(remaining_taker_amount > 0, "WRONG_TAKER_AMOUNT");
         
             assert!(!taker_order.flags.post_only, "WRONG_TAKER_FLAG: post_only must be False");
@@ -215,11 +230,11 @@ mod unsafe_trade_component {
             assert!(!taker_fill_info.as_taker_completed, "Taker order {} marked completed", taker_hash);
             assert!(get_block_timestamp() < taker_order.expire_at.into(), "Taker order expire {}", taker_order.expire_at);
 
-            if signed_taker_order.order.flags.is_sell_side {remaining_taker_amount} else {remaining_taker_amount * signed_taker_order.order.price}
+            return remaining_taker_amount;
         }
 
 
-        fn _do_maker_checks_and_common(ref self:ComponentState<TContractState>,signed_maker_order:SignedOrder,taker_order:Order,taker_fill_info:OrderTradeInfo,oracle_settle_qty:u256)->(u256,u256,u256,OrderTradeInfo,felt252) {
+        fn _do_maker_checks_and_common(ref self:ComponentState<TContractState>, signed_maker_order:SignedOrder,taker_order:Order,taker_fill_info:OrderTradeInfo,oracle_settle_qty:u256)->(u256,u256,u256,OrderTradeInfo,felt252) {
             let contract  = self.get_contract();
             let (maker_order, (r,s)) = (signed_maker_order.order, signed_maker_order.sign);
             let maker_hash = maker_order.get_poseidon_hash();
@@ -230,8 +245,8 @@ mod unsafe_trade_component {
             // additional check
             assert!(maker_order.flags.post_only, "MAKER_ONLY_POST_ONLY");
                         
-            let (settle_px, maker_qty) = get_limit_px(maker_order, maker_fill_info);
-                        
+            let settle_px = get_limit_px(maker_order, maker_fill_info);
+            let maker_qty = get_available_base_qty(settle_px, maker_order, maker_fill_info);
             let taker_qty = do_taker_price_checks(taker_order, settle_px, taker_fill_info);
                         
             let mut settle_base_amount = if maker_qty > taker_qty {taker_qty} else {maker_qty};
