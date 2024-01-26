@@ -45,7 +45,8 @@ trait IWithdraw<TContractState> {
 
 #[starknet::component]
 mod withdraw_component {
-    use kurosawa_akira::FundsTraits::{PoseidonHash,PoseidonHashImpl};
+    use kurosawa_akira::ExchangeBalanceComponent::INewExchangeBalance;
+use kurosawa_akira::FundsTraits::{PoseidonHash,PoseidonHashImpl};
     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as balance_component;
     use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
     use super::{Withdraw, SignedWithdraw, SlowModeDelay, IWithdraw, GasFee};
@@ -154,14 +155,8 @@ mod withdraw_component {
             let limit:SlowModeDelay = self.delay.read();
             let (block_delta, ts_delta) = (get_block_number() - delay.block, get_block_timestamp() - delay.ts);
             assert!(block_delta >= limit.block && ts_delta >= limit.ts, "FEW_TIME_PASSED: wait at least {} block and {} ts (for now its {} and {})", delay.block, delay.ts, block_delta, ts_delta);
-            
-            let mut balancer = self.get_balancer_mut();
-            balancer.burn(w_req.maker, w_req.amount, w_req.token);
-            IERC20Dispatcher{ contract_address: w_req.token}.transfer(w_req.receiver, w_req.amount);
-            self.emit(Withdrawal{maker:w_req.maker, token:w_req.token, amount:w_req.amount, salt:w_req.salt, receiver:w_req.receiver, gas_price:0,
-                        gas_fee:w_req.gas_fee,direct:true});
-            
-            self.completed_reqs.write(key, true);
+
+            self._transfer(w_req, key, w_req.amount, 0, true);
         }
 
     }
@@ -192,16 +187,9 @@ mod withdraw_component {
 
              // payment to exchange for gas
             let gas_fee_amount = contract.validate_and_apply_gas_fee_internal(w_req.maker, w_req.gas_fee, gas_price, 1);
-            let tfer_amount = if w_req.token == w_req.gas_fee.fee_token {w_req.amount - gas_fee_amount } else {  w_req.amount};
-
-            contract.burn(w_req.maker, tfer_amount, w_req.token);
-            IERC20Dispatcher { contract_address: w_req.token }.transfer(w_req.maker, tfer_amount);
-            self.emit(Withdrawal{maker:w_req.maker, token:w_req.token, amount: w_req.amount, salt:w_req.salt, receiver:w_req.receiver,gas_price,
-                        gas_fee:w_req.gas_fee, direct:w_req == signed_withdraw.withdraw});
-
-           self.completed_reqs.write(hash, true);
+            let tfer_amount = if w_req.token == w_req.gas_fee.fee_token {w_req.amount - gas_fee_amount } else { w_req.amount};
+            self._transfer(w_req,hash,tfer_amount,gas_price, w_req == signed_withdraw.withdraw);
         }
-
 
         fn validate(self:@ComponentState<TContractState>,maker:ContractAddress, token:ContractAddress, amount:u256, gas_fee:GasFee) {
             let balancer =  self.get_balancer();
@@ -214,6 +202,29 @@ mod withdraw_component {
             assert!(!(gas_fee.fee_token == token) || amount >= required_gas, "GAS_MORE_THAN_REQUESTED: failed amount ({}) >= required_gas ({})", amount, required_gas);
             assert!(gas_fee.fee_token == token || balancer.balanceOf(maker, gas_fee.fee_token) >= required_gas, "FEW_BALANCE_GAS: failed maker_balance ({}) >= required_gas ({}) -- gas token {}", balancer.balanceOf(maker, gas_fee.fee_token), required_gas, gas_fee.fee_token);
         }
+
+        fn _transfer(ref self: ComponentState<TContractState>, w_req:Withdraw, w_hash:felt252, tfer_amount:u256, gas_price:u256, direct:bool) {
+            // burn tokens on exchange
+            // tfer them to recipient via erc20 interface, validate that tfer was correct i.e exhancge didnt spend more then burnt
+            let mut contract = self.get_balancer_mut();
+            contract.burn(w_req.maker, tfer_amount, w_req.token);
+            let erc20 = IERC20Dispatcher { contract_address: w_req.token };
+            let balance_before = erc20.balanceOf(get_contract_address());
+            
+            erc20.transfer(w_req.maker, tfer_amount);
+            
+            let transferred = balance_before - erc20.balanceOf(get_contract_address());
+            assert!(transferred <= tfer_amount, "WRONG_TRANSFER_AMOUNT expected {} actual {}",  tfer_amount, transferred);
+
+            self.emit(Withdrawal{maker:w_req.maker, token:w_req.token, amount: w_req.amount, salt:w_req.salt, receiver:w_req.receiver,gas_price,
+                        gas_fee:w_req.gas_fee, direct:direct});
+           self.completed_reqs.write(w_hash, true);
+            
+            
+        }
+
+        
+
     }   
 
 
