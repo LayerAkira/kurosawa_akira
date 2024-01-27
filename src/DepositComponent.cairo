@@ -9,7 +9,7 @@ trait IDeposit<TContractState> {
 mod deposit_component {
     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::InternalExchangeBalanceble;
     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as balance_component;
-    use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
+    use balance_component::{InternalExchangeBalancebleImpl, ExchangeBalancebleImpl};
     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait, IERC20Dispatcher};
     use starknet::{get_caller_address, get_contract_address, ContractAddress};
 

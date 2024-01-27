@@ -250,7 +250,7 @@ mod test_common_trade {
     fn zero_router() -> ContractAddress { 0.try_into().unwrap()}
 
 
-    fn spawn_order(akira:ILayerAkiraDispatcher, maker:ContractAddress, price:u256, quantity:u256,
+    fn spawn_order(akira:ILayerAkiraDispatcher, maker:ContractAddress, price:u256, base_qty:u256,
             flags:OrderFlags,
             num_swaps_allowed:u8, router_signer:ContractAddress) ->SignedOrder {
         let zero_addr:ContractAddress = 0.try_into().unwrap();
@@ -265,7 +265,7 @@ mod test_common_trade {
         let mut order = Order {
             min_receive_amount:0,
             quote_qty:0,
-            maker, price, quantity, ticker, number_of_swaps_allowed:num_swaps_allowed, salt, router_signer,
+            maker, price, base_qty, ticker, number_of_swaps_allowed:num_swaps_allowed, salt, router_signer,
             base_asset: 1_000_000_000_000_000_000, nonce:akira.get_nonce(maker),
             fee: OrderFee {
                 trade_fee:  FixedFee{recipient:fee_recipient, maker_pbips, taker_pbips},
@@ -310,7 +310,7 @@ mod test_common_trade {
 }
 
 #[cfg(test)]
-mod tests_safe_trade {
+mod tests_ecosystem_trade {
     use core::clone::Clone;
     use kurosawa_akira::test_utils::test_common::{deposit,get_eth_addr,tfer_eth_funds_to,get_fee_recipient_exchange,get_slow_mode, 
     get_trader_address_1,get_trader_address_2,get_trader_signer_and_pk_1,get_usdc_addr,tfer_usdc_funds_to,
@@ -337,7 +337,7 @@ mod tests_safe_trade {
 
 
     fn get_order_flags(full_fill_only:bool,best_level_only:bool,post_only:bool,is_sell_side:bool,is_market_order:bool) -> OrderFlags{
-        return OrderFlags{full_fill_only, best_level_only, post_only, is_sell_side, is_market_order, to_safe_book: true};
+        return OrderFlags{full_fill_only, best_level_only, post_only, is_sell_side, is_market_order, to_ecosystem_book: true};
     }
 
     #[test]
@@ -354,7 +354,7 @@ mod tests_safe_trade {
         let buy_order = spawn_order(akira, tr2, usdc_amount, eth_amount, buy_limit_flags, 2, zero_router());
 
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        akira.apply_safe_trades(array![(buy_order,false)], array![sell_order], array![(1,false)], array![0], 100, get_swap_gas_cost());
+        akira.apply_ecosystem_trades(array![(buy_order,false)], array![sell_order], array![(1,false)], array![0], 100, get_swap_gas_cost());
         let maker_fee = get_feeable_qty(sell_order.order.fee.trade_fee, usdc_amount, true);
         assert(akira.balanceOf(sell_order.order.maker, usdc) == usdc_amount - maker_fee,'WRONG_MATCH_RECIEVE_USDC');
         assert(akira.balanceOf(buy_order.order.maker, usdc) == 0,'WRONG_MATCH_SEND_USDC');
@@ -388,7 +388,7 @@ mod tests_safe_trade {
         let buy_order = spawn_order(akira, tr2, usdc_amount, eth_amount, buy_limit_flags, 0,  zero_router());
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
 
-        akira.apply_safe_trades(array![(sell_order, false)], array![buy_order], array![(1,false)], array![0], 100, get_swap_gas_cost());
+        akira.apply_ecosystem_trades(array![(sell_order, false)], array![buy_order], array![(1,false)], array![0], 100, get_swap_gas_cost());
 
         //0 cause remaining eth was spent on gas
         assert!(akira.balanceOf(sell_order.order.maker, eth) == 0, "WRONG_MATCH_ETH_SELL");
@@ -400,7 +400,7 @@ mod tests_safe_trade {
 }
 
 #[cfg(test)]
-mod tests_unsafe_trade {
+mod tests_router_trade {
     use core::clone::Clone;
     use kurosawa_akira::test_utils::test_common::{deposit,get_eth_addr,tfer_eth_funds_to, get_fee_recipient_exchange, get_slow_mode, 
     get_trader_address_1,get_trader_address_2,get_trader_signer_and_pk_1,get_usdc_addr,tfer_usdc_funds_to,
@@ -431,7 +431,7 @@ mod tests_unsafe_trade {
     }
 
     fn get_order_flags(full_fill_only:bool, best_level_only:bool, post_only:bool, is_sell_side:bool, is_market_order:bool) -> OrderFlags{
-        return OrderFlags{full_fill_only, best_level_only, post_only, is_sell_side, is_market_order, to_safe_book: false};
+        return OrderFlags{full_fill_only, best_level_only, post_only, is_sell_side, is_market_order, to_ecosystem_book: false};
     }
 
     #[test]
@@ -447,7 +447,7 @@ mod tests_unsafe_trade {
                 get_order_flags(false, false, false, false, true), 2, zero_router());
         
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        akira.apply_unsafe_trade(buy_order, array![(sell_order,0)], usdc_amount*eth_amount / buy_order.order.base_asset, 100,get_swap_gas_cost(), false);
+        akira.apply_router_trade(buy_order, array![(sell_order,0)], usdc_amount*eth_amount / buy_order.order.base_asset, 100,get_swap_gas_cost(), false);
         stop_prank(CheatTarget::One(akira.contract_address));
     }  
 
@@ -491,7 +491,7 @@ mod tests_unsafe_trade {
 
 
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        assert(akira.apply_unsafe_trade(buy_order, array![(sell_order, 0)],  (usdc_amount) * eth_amount / buy_order.order.base_asset, 100, get_swap_gas_cost(), false), 'FAILED_MATCH');
+        assert(akira.apply_router_trade(buy_order, array![(sell_order, 0)],  (usdc_amount) * eth_amount / buy_order.order.base_asset, 100, get_swap_gas_cost(), false), 'FAILED_MATCH');
         stop_prank(CheatTarget::One(akira.contract_address));
 
 
@@ -507,8 +507,8 @@ mod tests_unsafe_trade {
         
         assert(akira.balanceOf(sell_order.order.maker, eth) == 0, 'WRONG_MATCH_SEND_ETH');
        
-        assert(akira.balanceOf(buy_order.order.maker, eth) == 0, 'WRONG_UNSAFE_BALANCE_ETH');
-        assert(akira.balanceOf(buy_order.order.maker, usdc) == 0, 'WRONG_UNSAFE_BALANCE_USDC');
+        assert(akira.balanceOf(buy_order.order.maker, eth) == 0, 'WRONG_ROUTER_T_BALANCE_ETH');
+        assert(akira.balanceOf(buy_order.order.maker, usdc) == 0, 'WRONG_ROUTER_T_BALANCE_USDC');
 
         let (eth_b, usdc_b) = (eth_erc.balanceOf(taker) - eth_b, usdc_b - usdc_erc.balanceOf(taker));
         assert(usdc_b == usdc_amount, 'DEDUCTED_AS_EXPECTED');
@@ -547,11 +547,11 @@ mod tests_unsafe_trade {
         let (eth_b, usdc_b, router_b) = (eth_erc.balanceOf(taker), usdc_erc.balanceOf(taker), akira.balance_of_router(router, usdc));
 
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        assert(akira.apply_unsafe_trade(sell_order, array![(buy_order,0)],  eth_amount, 100, get_swap_gas_cost(), false), 'FAILED_MATCH');
+        assert(akira.apply_router_trade(sell_order, array![(buy_order,0)],  eth_amount, 100, get_swap_gas_cost(), false), 'FAILED_MATCH');
         stop_prank(CheatTarget::One(akira.contract_address));
          
-        assert(akira.balanceOf(sell_order.order.maker, eth) == 0, 'WRONG_UNSAFE_BALANCE_ETH');
-        assert(akira.balanceOf(sell_order.order.maker, usdc) == 0, 'WRONG_UNSAFE_BALANCE_USDC');
+        assert(akira.balanceOf(sell_order.order.maker, eth) == 0, 'WRONG_ROUTER_T_BALANCE_ETH');
+        assert(akira.balanceOf(sell_order.order.maker, usdc) == 0, 'WRONG_ROUTER_T_BALANCE_USDC');
         let taker_fee = get_feeable_qty(sell_order.order.fee.trade_fee, usdc_amount, false);
         let router_fee = get_feeable_qty(sell_order.order.fee.router_fee, usdc_amount, false);
         assert(akira.balance_of_router(router, usdc) - router_b == router_fee, 'WRONG_ROUTER_RECEIVED');
@@ -604,7 +604,7 @@ mod tests_unsafe_trade {
         let router_b = akira.balance_of_router(router, eth);
 
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        assert(!akira.apply_unsafe_trade(buy_order, array![(sell_order, 0)],  usdc_amount * eth_amount / buy_order.order.base_asset, 100, get_swap_gas_cost(), false), 'EXPECTS_FAIL');
+        assert(!akira.apply_router_trade(buy_order, array![(sell_order, 0)],  usdc_amount * eth_amount / buy_order.order.base_asset, 100, get_swap_gas_cost(), false), 'EXPECTS_FAIL');
         stop_prank(CheatTarget::One(akira.contract_address));
         let charge = 2 * gas_fee * akira.get_punishment_factor_bips().into() / 10000;
         assert(router_b - akira.balance_of_router(router, eth) == charge, 'WRONG_RECEIVED');

@@ -39,7 +39,7 @@ struct OrderFlags {
     post_only: bool,
     is_sell_side: bool,
     is_market_order: bool,
-    to_safe_book: bool
+    to_ecosystem_book: bool
 }
 
 
@@ -59,7 +59,7 @@ enum TakerSelfTradePreventionMode {
 struct Order {
     maker: ContractAddress, // trading account that created order
     price: u256, // price in quote asset raw amount, for taker order serves as protection price, for passive order execution price, might be zero
-    quantity: u256, // quantity in base asset raw amount
+    base_qty: u256, // qunatity in base asset raw amount
     quote_qty: u256, // quantity in quote asset raw amount
     ticker: (ContractAddress, ContractAddress), // (base asset address, quote asset address) eg ETH/USDC
     fee: OrderFee, // order fees that user must fulfill once trade happens
@@ -67,26 +67,26 @@ struct Order {
     salt: felt252, // random salt for security
     nonce: u32, // maker nonce, for order be valid this nonce must be >= in Nonce component
     flags: OrderFlags, // various order flags of order
-    router_signer: ContractAddress, // if taker order is unsafe aka trader outside of our ecosystem then this is router that router this trader to us, for makers and safe order always 0
+    router_signer: ContractAddress, // if taker order is router aka trader outside of our ecosystem then this is router that router this trader to us, for makers and ecosystem order always 0
     base_asset: u256, // raw amount of base asset representing 1, eg 1 eth is 10**18
     created_at: u32, // epoch time in seconds, time when order was created by user
     stp: TakerSelfTradePreventionMode,
     expire_at: u32, // epoch tine in seconds, time when order becomes invalid
     version: u16, // exchange version
-    min_receive_amount:u256 // minimal amount that user willing to receive from the full mstching of order, default value 0, for now defined for unsafe takers, serves as slippage that filtered on exchange
+    min_receive_amount: u256 // minimal amount that user willing to receive from the full mstching of order, default value 0, for now defined for router takers, serves as slippage that filtered on exchange
 }   
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct SignedOrder {
     order: Order,
     sign: (felt252, felt252), // makers' signer signature of poseidon hash of order,
-    router_sign: (felt252,felt252) // router_signer signature of poseidon hash of order in case of unsafe taker order, else (0, 0)
+    router_sign: (felt252,felt252) // router_signer signature of poseidon hash of order in case of router taker order, else (0, 0)
 }
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct OrderTradeInfo {
-    filled_amount: u256, // filled amount in base asset
-    filled_quote_amount:u256, // filled amount in quote qty
+    filled_base_amount: u256, // filled amount in base asset
+    filled_quote_amount: u256, // filled amount in quote qty
     last_traded_px: u256,
     num_trades_happened: u8,
     as_taker_completed: bool
@@ -100,7 +100,7 @@ fn get_feeable_qty(fixed_fee: FixedFee, feeable_qty: u256, is_maker:bool) -> u25
 }
 
 fn get_limit_px(maker_order:Order, maker_fill_info:OrderTradeInfo) ->  u256{  //TODO: and qty rename
-    let settle_px = if maker_fill_info.filled_amount > 0 || maker_fill_info.filled_quote_amount > 0 {maker_fill_info.last_traded_px} else {maker_order.price};
+    let settle_px = if maker_fill_info.filled_base_amount > 0 || maker_fill_info.filled_quote_amount > 0 {maker_fill_info.last_traded_px} else {maker_order.price};
     return settle_px; 
 }
 
@@ -113,8 +113,8 @@ fn get_available_base_qty(settle_px:u256, order:Order, fill_info: OrderTradeInfo
     // buy order -> buy base asset in return for quote asset
     // sell order -> buy quote asset in return for base asset
     let quote_qty_by_quote_asset = order.base_asset * (order.quote_qty - fill_info.filled_quote_amount)  / settle_px;
-    let quote_qty_by_base_asset  = order.quantity - fill_info.filled_amount;
-    if (order.quantity == 0)  { return  quote_qty_by_quote_asset; }
+    let quote_qty_by_base_asset  = order.base_qty - fill_info.filled_base_amount;
+    if (order.base_qty == 0)  { return  quote_qty_by_quote_asset; }
     if (order.quote_qty == 0) { return quote_qty_by_base_asset; }
     // TODO maybe specify both doesnot makes sense?
     return min(quote_qty_by_quote_asset, quote_qty_by_base_asset);
@@ -124,7 +124,7 @@ fn do_taker_price_checks(taker_order:Order, settle_px:u256, taker_fill_info:Orde
     assert!(taker_order.flags.is_sell_side || settle_px <= taker_order.price, "BUY_PROTECTION_PRICE_FAILED: settle_px ({}) <= taker_order.price ({})", settle_px, taker_order.price);
     assert!(!taker_order.flags.is_sell_side || settle_px >= taker_order.price, "SELL_PROTECTION_PRICE_FAILED: settle_px ({}) >= taker_order.price ({})", settle_px, taker_order.price); 
 
-    if taker_fill_info.filled_amount > 0 || taker_fill_info.filled_quote_amount > 0 {
+    if taker_fill_info.filled_base_amount > 0 || taker_fill_info.filled_quote_amount > 0 {
         let last_traded_px = taker_fill_info.last_traded_px;
         if taker_order.flags.best_level_only { assert!(last_traded_px == settle_px , "BEST_LVL_ONLY: failed last_traded_px ({}) == settle_px ({})", last_traded_px, settle_px);}
         else {
