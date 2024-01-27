@@ -100,7 +100,7 @@ mod unsafe_trade_component {
     impl InternalUnSafeTradableImpl<TContractState, +HasComponent<TContractState>,+INonceLogic<TContractState>, +balance_component::HasComponent<TContractState>, +router_component::HasComponent<TContractState>, +Drop<TContractState>, +ISignerLogic<TContractState>> of InternalUnSafeTradable<TContractState> {
         // exposed only in contract user
         fn apply_trades_simple(ref self: ComponentState<TContractState>, signed_taker_order:SignedOrder, mut signed_maker_orders:Array<(SignedOrder,u256)>, 
-        mut total_amount_matched:u256, gas_price:u256, as_taker_completed:bool, version:u16)  -> bool{
+        mut total_amount_matched:u256, gas_price:u256,  cur_gas_per_action:u32, as_taker_completed:bool, version:u16)  -> bool{
             // Once offchain trading engine yield unsafe trade exchange will push the happened trades ASAP because flow for this trades not safe:
             //  User can revoke allowances
             //  User can not have enough funds at time of settlement
@@ -128,7 +128,7 @@ mod unsafe_trade_component {
                         
             // TODO bit dumb that it fires exception, how reimburse in that case? cause custom contract can force fails on signature validation
             let (mut amount_out, _) = if check_sign(taker_order.maker, taker_hash, signed_taker_order.router_sign) {
-                            self._prepare_taker(taker_order, total_amount_matched, exchange, trades, gas_price)  } 
+                            self._prepare_taker(taker_order, total_amount_matched, exchange, trades, gas_price, cur_gas_per_action)  } 
                     else {
                         (0,0)
             };
@@ -196,7 +196,7 @@ mod unsafe_trade_component {
             if failed { return false;}
 
             // do the reward and pay for the gas, we accumulate all and consume at once, avoiding repetitive actions
-            self.finalize_taker(taker_order, taker_hash, taker_received, amount_out, exchange, gas_price, trades);  
+            self.finalize_taker(taker_order, taker_hash, taker_received, amount_out, exchange, gas_price, trades, cur_gas_per_action);  
 
             return true;     
         }
@@ -272,7 +272,7 @@ mod unsafe_trade_component {
         }
 
         fn _prepare_taker(ref self:ComponentState<TContractState>, taker_order:Order, mut out_amount:u256, exchange:ContractAddress,swaps:u8,
-                            gas_price:u256) ->(u256,u256) {
+                            gas_price:u256, cur_gas_per_action:u32) ->(u256,u256) {
             //Checks that user have:
             //  required allowance of out token that he about to spend
             //  required amount of out token that he about to spent
@@ -284,7 +284,7 @@ mod unsafe_trade_component {
 
             
             let (erc20_base, erc20_quote) = (IERC20Dispatcher{contract_address:base}, IERC20Dispatcher{contract_address:quote});
-            let (spent_gas, gas_coin) = get_gas_fee_and_coin(taker_order.fee.gas_fee, gas_price, balancer.wrapped_native_token.read());
+            let (spent_gas, gas_coin) = get_gas_fee_and_coin(taker_order.fee.gas_fee, gas_price, balancer.wrapped_native_token.read(), cur_gas_per_action);
 
             let (erc, taker_out_balance, taker_out_allowance, mut out_token) = if taker_order.flags.is_sell_side {
                 (erc20_base, erc20_base.balanceOf(taker_order.maker), erc20_base.allowance(taker_order.maker, exchange), base)
@@ -324,7 +324,7 @@ mod unsafe_trade_component {
             return (trade_amount, spent_gas);
         }
 
-        fn finalize_taker(ref self:ComponentState<TContractState>, taker_order:Order,taker_hash:felt252, received_amount:u256, unspent_amount:u256, exchange:ContractAddress,gas_price:u256, trades:u8) {
+        fn finalize_taker(ref self:ComponentState<TContractState>, taker_order:Order,taker_hash:felt252, received_amount:u256, unspent_amount:u256, exchange:ContractAddress,gas_price:u256, trades:u8, cur_gas_per_action:u32) {
             // pay for gas
             // Reward router
             // Transfer unspent amounts to the user back
@@ -332,7 +332,7 @@ mod unsafe_trade_component {
             let (mut balancer, mut router) = (self.get_balancer_mut(),self.get_router_mut());
 
             // do the gas tfer
-            let (spent, gas_coin) = super::get_gas_fee_and_coin(taker_order.fee.gas_fee, gas_price, balancer.wrapped_native_token.read());
+            let (spent, gas_coin) = super::get_gas_fee_and_coin(taker_order.fee.gas_fee, gas_price, balancer.wrapped_native_token.read(), cur_gas_per_action);
             let spent = spent * trades.into();
             balancer.internal_transfer(taker_order.maker, balancer.fee_recipient.read(), spent, gas_coin);
             

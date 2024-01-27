@@ -66,7 +66,7 @@ mod safe_trade_component {
 
         // exposed only in contract user
         fn apply_trades(ref self: ComponentState<TContractState>, mut taker_orders:Array<(SignedOrder, bool)>, mut maker_orders:Array<SignedOrder>, mut iters:Array<(u8, bool)>, 
-                    mut oracle_settled_qty:Array<u256>, gas_price:u256, version:u16, ) {
+                    mut oracle_settled_qty:Array<u256>, gas_price:u256,cur_gas_per_action:u32, version:u16) {
             let mut maker_order = *maker_orders.at(0).order;
             let mut maker_hash: felt252  = 0.try_into().unwrap();  
             let mut maker_fill_info = self.orders_trade_info.read(maker_hash);
@@ -158,7 +158,7 @@ mod safe_trade_component {
 
                         self.orders_trade_info.write(taker_hash, taker_fill_info);
                         
-                        self.apply_taker_fee_and_gas(taker_order, total_base, total_quote, gas_price, trades);
+                        self.apply_taker_fee_and_gas(taker_order, total_base, total_quote, gas_price, trades, cur_gas_per_action);
 
                     },
                     Option::None(_) => {
@@ -205,7 +205,7 @@ mod safe_trade_component {
                     amount_base, amount_quote, is_sell_side:maker_order.flags.is_sell_side });
         }   
         
-        fn apply_taker_fee_and_gas(ref self: ComponentState<TContractState>, taker_order:Order, base_amount:u256, quote_amount:u256, gas_price:u256, trades:u8) {
+        fn apply_taker_fee_and_gas(ref self: ComponentState<TContractState>, taker_order:Order, base_amount:u256, quote_amount:u256, gas_price:u256, trades:u8, cur_gas_per_action:u32) {
             let mut balancer = self.get_balancer_mut();
             
             let taker_fee_token = if taker_order.flags.is_sell_side { let (b,q) = taker_order.ticker; q} else {let (b,q) = taker_order.ticker; b};
@@ -215,7 +215,7 @@ mod safe_trade_component {
                 balancer.internal_transfer(taker_order.maker, taker_order.fee.trade_fee.recipient, taker_fee_amount, taker_fee_token);
             }
 
-            balancer.validate_and_apply_gas_fee_internal(taker_order.maker, taker_order.fee.gas_fee, gas_price, trades);
+            balancer.validate_and_apply_gas_fee_internal(taker_order.maker, taker_order.fee.gas_fee, gas_price, trades, cur_gas_per_action);
         }
 
     }

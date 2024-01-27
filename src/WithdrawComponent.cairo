@@ -172,7 +172,7 @@ use kurosawa_akira::FundsTraits::{PoseidonHash,PoseidonHashImpl};
         // Exchange can execute offchain withdrawal by makers if siganture is correct
         // or if there is ongoing pending withdrawal, exchange can process, 
         // in this case no need for signature verifaction because user already scheduled withdrawal onchain
-        fn apply_withdraw(ref self: ComponentState<TContractState>, signed_withdraw: SignedWithdraw, gas_price:u256) {
+        fn apply_withdraw(ref self: ComponentState<TContractState>, signed_withdraw: SignedWithdraw, gas_price:u256, cur_gas_per_action:u32) {
             let hash = signed_withdraw.withdraw.get_poseidon_hash();
             let (delay, w_req):(SlowModeDelay, Withdraw) = self.pending_reqs.read((signed_withdraw.withdraw.token, signed_withdraw.withdraw.maker));
             assert!(!self.completed_reqs.read(hash), "ALREADY_COMPLETED: withdraw (hash = {})", hash);
@@ -186,7 +186,7 @@ use kurosawa_akira::FundsTraits::{PoseidonHash,PoseidonHashImpl};
             let mut contract = self.get_balancer_mut();
 
              // payment to exchange for gas
-            let gas_fee_amount = contract.validate_and_apply_gas_fee_internal(w_req.maker, w_req.gas_fee, gas_price, 1);
+            let gas_fee_amount = contract.validate_and_apply_gas_fee_internal(w_req.maker, w_req.gas_fee, gas_price, 1, cur_gas_per_action);
             let tfer_amount = if w_req.token == w_req.gas_fee.fee_token {w_req.amount - gas_fee_amount } else { w_req.amount};
             self._transfer(w_req,hash,tfer_amount,gas_price, w_req == signed_withdraw.withdraw);
         }

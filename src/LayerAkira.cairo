@@ -171,19 +171,19 @@ use kurosawa_akira::NonceComponent::nonce_component::InternalNonceable;
     }
 
     #[external(v0)]
-    fn apply_increase_nonce(ref self: ContractState, signed_nonce: SignedIncreaseNonce, gas_price:u256) {
+    fn apply_increase_nonce(ref self: ContractState, signed_nonce: SignedIncreaseNonce, gas_price:u256, cur_gas_per_action:u32) {
         assert_whitelisted_invokers(@self);
-        self.nonce_s.apply_increase_nonce(signed_nonce,gas_price);
+        self.nonce_s.apply_increase_nonce(signed_nonce, gas_price, cur_gas_per_action);
         self.balancer_s.latest_gas.write(gas_price);
     }
 
 
     #[external(v0)]
-    fn apply_increase_nonces(ref self: ContractState, mut signed_nonces: Array<SignedIncreaseNonce>, gas_price:u256) {
+    fn apply_increase_nonces(ref self: ContractState, mut signed_nonces: Array<SignedIncreaseNonce>, gas_price:u256, cur_gas_per_action:u32) {
         assert_whitelisted_invokers(@self);
         loop {
             match signed_nonces.pop_front(){
-                Option::Some(signed_nonce) => { self.nonce_s.apply_increase_nonce(signed_nonce,gas_price);},
+                Option::Some(signed_nonce) => { self.nonce_s.apply_increase_nonce(signed_nonce, gas_price, cur_gas_per_action);},
                 Option::None(_) => {break;}
             };
         };
@@ -191,18 +191,18 @@ use kurosawa_akira::NonceComponent::nonce_component::InternalNonceable;
     }
 
     #[external(v0)]
-    fn apply_withdraw(ref self: ContractState, signed_withdraw: SignedWithdraw, gas_price:u256) {
+    fn apply_withdraw(ref self: ContractState, signed_withdraw: SignedWithdraw, gas_price:u256, cur_gas_per_action:u32) {
         assert_whitelisted_invokers(@self);
-        self.withdraw_s.apply_withdraw(signed_withdraw, gas_price);
+        self.withdraw_s.apply_withdraw(signed_withdraw, gas_price, cur_gas_per_action);
         self.balancer_s.latest_gas.write(gas_price);
     }
 
     #[external(v0)]
-    fn apply_withdraws(ref self: ContractState, mut signed_withdraws: Array<SignedWithdraw>, gas_price:u256) {
+    fn apply_withdraws(ref self: ContractState, mut signed_withdraws: Array<SignedWithdraw>, gas_price:u256, cur_gas_per_action:u32) {
         assert_whitelisted_invokers(@self);
         loop {
             match signed_withdraws.pop_front(){
-                Option::Some(signed_withdraw) => {self.withdraw_s.apply_withdraw(signed_withdraw, gas_price)},
+                Option::Some(signed_withdraw) => {self.withdraw_s.apply_withdraw(signed_withdraw, gas_price, cur_gas_per_action)},
                 Option::None(_) => {break;}
             };
         };
@@ -210,29 +210,29 @@ use kurosawa_akira::NonceComponent::nonce_component::InternalNonceable;
     }
 
     #[external(v0)]
-    fn apply_safe_trades(ref self: ContractState, taker_orders:Array<(SignedOrder,bool)>, maker_orders: Array<SignedOrder>, iters:Array<(u8, bool)>, oracle_settled_qty:Array<u256>, gas_price:u256) {
+    fn apply_safe_trades(ref self: ContractState, taker_orders:Array<(SignedOrder,bool)>, maker_orders: Array<SignedOrder>, iters:Array<(u8, bool)>, oracle_settled_qty:Array<u256>, gas_price:u256, cur_gas_per_action:u32) {
         assert_whitelisted_invokers(@self);
-        self.safe_trade_s.apply_trades(taker_orders, maker_orders, iters, oracle_settled_qty, gas_price, self.exchange_version.read());
+        self.safe_trade_s.apply_trades(taker_orders, maker_orders, iters, oracle_settled_qty, gas_price, cur_gas_per_action, self.exchange_version.read());
         self.balancer_s.latest_gas.write(gas_price);
     }
 
     #[external(v0)]
-    fn apply_unsafe_trade(ref self: ContractState, taker_order:SignedOrder, maker_orders: Array<(SignedOrder,u256)>, total_amount_matched:u256,  gas_price:u256, as_taker_completed:bool) -> bool {
+    fn apply_unsafe_trade(ref self: ContractState, taker_order:SignedOrder, maker_orders: Array<(SignedOrder,u256)>, total_amount_matched:u256, gas_price:u256, cur_gas_per_action:u32,as_taker_completed:bool, ) -> bool {
         assert_whitelisted_invokers(@self);
-        let res = self.unsafe_trade_s.apply_trades_simple(taker_order, maker_orders, total_amount_matched, gas_price, as_taker_completed, self.exchange_version.read());
+        let res = self.unsafe_trade_s.apply_trades_simple(taker_order, maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed, self.exchange_version.read());
         self.balancer_s.latest_gas.write(gas_price);
         return res;
     }
 
     #[external(v0)]
-    fn apply_unsafe_trades(ref self: ContractState,  mut bulk:Array<(SignedOrder, Array<(SignedOrder,u256)>, u256, bool)>,  gas_price:u256) -> Array<bool> { 
+    fn apply_unsafe_trades(ref self: ContractState,  mut bulk:Array<(SignedOrder, Array<(SignedOrder,u256)>, u256, bool)>,  gas_price:u256,  cur_gas_per_action:u32 ) -> Array<bool> { 
         assert_whitelisted_invokers(@self);
         let mut res: Array<bool> = ArrayTrait::new();
             
         loop {
             match bulk.pop_front(){
                 Option::Some((taker_order, maker_orders, total_amount_matched, as_taker_completed)) => {
-                    res.append(self.unsafe_trade_s.apply_trades_simple(taker_order, maker_orders, total_amount_matched, gas_price, as_taker_completed, self.exchange_version.read()));
+                    res.append(self.unsafe_trade_s.apply_trades_simple(taker_order, maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed, self.exchange_version.read()));
                 },
                 Option::None(_) => {break;}
             };

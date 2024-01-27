@@ -153,11 +153,13 @@ fn do_maker_checks(maker_order:Order, maker_fill_info:OrderTradeInfo, nonce:u32)
 }
 
 
-fn get_gas_fee_and_coin(gas_fee: GasFee, cur_gas_price: u256, native_token:ContractAddress) -> (u256, ContractAddress) {
+fn get_gas_fee_and_coin(gas_fee: GasFee, cur_gas_price: u256, native_token:ContractAddress, cur_gas_per_action:u32) -> (u256, ContractAddress) {
     if cur_gas_price == 0 { return (0, native_token);}
     if gas_fee.gas_per_action == 0 { return (0, native_token);}
     assert!(gas_fee.max_gas_price >= cur_gas_price, "Failed: max_gas_price ({}) >= cur_gas_price ({})", gas_fee.max_gas_price, cur_gas_price);
-    let spend_native = gas_fee.gas_per_action.into() * cur_gas_price;
+    assert!(gas_fee.gas_per_action >= cur_gas_per_action, "Failed: gas_per_action ({}) >= cur_gas_per_action ({})", gas_fee.gas_per_action, cur_gas_per_action);
+    
+    let spend_native = cur_gas_per_action.into() * cur_gas_price;
     
     if gas_fee.fee_token == native_token {
         return (spend_native, native_token);
