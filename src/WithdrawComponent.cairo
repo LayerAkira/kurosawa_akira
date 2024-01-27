@@ -2,7 +2,7 @@ use starknet::ContractAddress;
 use serde::Serde;
 use kurosawa_akira::Order::GasFee;
 use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
-
+use kurosawa_akira::Order::{get_gas_fee_and_coin};
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct Withdraw {
@@ -45,8 +45,9 @@ trait IWithdraw<TContractState> {
 
 #[starknet::component]
 mod withdraw_component {
+    use core::traits::Into;
     use kurosawa_akira::ExchangeBalanceComponent::INewExchangeBalance;
-use kurosawa_akira::FundsTraits::{PoseidonHash,PoseidonHashImpl};
+    use kurosawa_akira::FundsTraits::{PoseidonHash,PoseidonHashImpl};
     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as balance_component;
     use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
     use super::{Withdraw, SignedWithdraw, SlowModeDelay, IWithdraw, GasFee};
@@ -89,7 +90,7 @@ use kurosawa_akira::FundsTraits::{PoseidonHash,PoseidonHashImpl};
         delay: SlowModeDelay, // set by exchange, can be updated but no more then original
         pending_reqs: LegacyMap::<(ContractAddress,ContractAddress),(SlowModeDelay, Withdraw)>,
         completed_reqs: LegacyMap::<felt252,bool>,
-        gas_steps: u16, //set by us, mirrors estimation from offchain engine
+        gas_steps: u32, //set by us, during exec of rollups of withdraws, same semantic as with latest gas
     }
 
     #[embeddable_as(Withdrawable)]
@@ -164,7 +165,7 @@ use kurosawa_akira::FundsTraits::{PoseidonHash,PoseidonHashImpl};
      #[generate_trait]
     impl InternalWithdrawableImpl<TContractState, +HasComponent<TContractState>,
     +balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of InternalWithdrawable<TContractState> {
-        fn initializer(ref self: ComponentState<TContractState> ,delay:SlowModeDelay, gas_steps_cost:u16) {
+        fn initializer(ref self: ComponentState<TContractState> ,delay:SlowModeDelay, gas_steps_cost:u32) {
             self.delay.write(delay);
             self.gas_steps.write(gas_steps_cost);
         }
@@ -188,16 +189,16 @@ use kurosawa_akira::FundsTraits::{PoseidonHash,PoseidonHashImpl};
              // payment to exchange for gas
             let gas_fee_amount = contract.validate_and_apply_gas_fee_internal(w_req.maker, w_req.gas_fee, gas_price, 1, cur_gas_per_action);
             let tfer_amount = if w_req.token == w_req.gas_fee.fee_token {w_req.amount - gas_fee_amount } else { w_req.amount};
-            self._transfer(w_req,hash,tfer_amount,gas_price, w_req == signed_withdraw.withdraw);
+            self._transfer(w_req, hash, tfer_amount, gas_price, w_req == signed_withdraw.withdraw);
         }
-
-        fn validate(self:@ComponentState<TContractState>,maker:ContractAddress, token:ContractAddress, amount:u256, gas_fee:GasFee) {
+        fn validate(self:@ComponentState<TContractState>, maker:ContractAddress, token:ContractAddress, amount:u256, gas_fee:GasFee) {
+            // User must specify gas fee, by specifying adequate max_gas_price it will allow to exchange to finalizing withdrawal on user behalf bypassing delay
             let balancer =  self.get_balancer();
             let balance = balancer.balanceOf(maker, token);
             let gas_steps = self.gas_steps.read().into();
             assert!(gas_fee.gas_per_action == gas_steps, "WRONG_GAS_PER_ACTION: expected {} got {}", gas_steps, gas_fee.gas_per_action);
             assert!(gas_fee.fee_token == balancer.wrapped_native_token.read(), "WRONG_GAS_FEE_TOKEN: expected {} got {}", balancer.wrapped_native_token.read(), gas_fee.fee_token);
-            let required_gas = balancer.get_latest_gas_price() * 2 * gas_fee.gas_per_action.into();  //require  reserve a bit more
+            let required_gas = gas_fee.max_gas_price * gas_fee.gas_per_action.into();
             assert!(balance >= amount , "FEW_BALANCE: need at least {}, but have only {}", amount, balance);
             assert!(!(gas_fee.fee_token == token) || amount >= required_gas, "GAS_MORE_THAN_REQUESTED: failed amount ({}) >= required_gas ({})", amount, required_gas);
             assert!(gas_fee.fee_token == token || balancer.balanceOf(maker, gas_fee.fee_token) >= required_gas, "FEW_BALANCE_GAS: failed maker_balance ({}) >= required_gas ({}) -- gas token {}", balancer.balanceOf(maker, gas_fee.fee_token), required_gas, gas_fee.fee_token);

@@ -83,9 +83,8 @@ use kurosawa_akira::NonceComponent::nonce_component::InternalNonceable;
         unsafe_trade_s: unsafe_trade_component::Storage,
 
         max_slow_mode_delay:SlowModeDelay, // upper bound for all delayed actions
-        max_withdraw_action_cost:u16, // upper bound for onchain withdraw gas steps estimation
         exchange_invokers: LegacyMap::<ContractAddress, bool>,
-        owner: ContractAddress, // owner of contact that have permissions to grant and revoke role for invokers and update slow mode and max_withdraw_action_cost
+        owner: ContractAddress, // owner of contact that have permissions to grant and revoke role for invokers and update slow mode 
         exchange_version:u16 // exchange version
     }
 
@@ -95,14 +94,14 @@ use kurosawa_akira::NonceComponent::nonce_component::InternalNonceable;
                 wrapped_native_token:ContractAddress,
                 fee_recipient:ContractAddress,
                 max_slow_mode_delay:SlowModeDelay, 
-                withdraw_max_action_cost:u16, // propably u16
+                withdraw_action_cost:u32, // propably u16
                 exchange_invoker:ContractAddress,
                 min_to_route:u256, // minimum amount neccesary to start to provide 
                 owner:ContractAddress) {
         self.max_slow_mode_delay.write(max_slow_mode_delay);
-        self.max_withdraw_action_cost.write(withdraw_max_action_cost);
+
         self.balancer_s.initializer(fee_recipient, wrapped_native_token);
-        self.withdraw_s.initializer(max_slow_mode_delay, withdraw_max_action_cost);
+        self.withdraw_s.initializer(max_slow_mode_delay, withdraw_action_cost);
         self.exchange_invokers.write(exchange_invoker, true);
         self.owner.write(owner);
         self.router_s.initializer(max_slow_mode_delay, wrapped_native_token, min_to_route, 10_000);
@@ -128,14 +127,12 @@ use kurosawa_akira::NonceComponent::nonce_component::InternalNonceable;
     }
 
     #[external(v0)]
-    fn update_withdraw_component_params(ref self: ContractState, new_withdraw_steps: u16, new_delay:SlowModeDelay) {
+    fn update_withdraw_component_params(ref self: ContractState, new_delay:SlowModeDelay) {
         assert!(self.owner.read() == get_caller_address(), "Access denied: update_withdraw_component_params is only for the owner's use");
         let max = self.max_slow_mode_delay.read();
         assert!(new_delay.block <= max.block && new_delay.ts <= max.ts, "Failed withdraw params update: new_delay <= max_slow_mode_delay");
-        assert!(new_withdraw_steps <= self.max_withdraw_action_cost.read() , "Failed withdraw params update: new_withdraw_steps ({}) <= max_withdraw_action_cost ({})", new_withdraw_steps, self.max_withdraw_action_cost.read());
         self.withdraw_s.delay.write(new_delay);
-        self.withdraw_s.gas_steps.write(new_withdraw_steps);
-        self.emit(WithdrawComponentUpdate{new_withdraw_steps, new_delay});
+        self.emit(WithdrawComponentUpdate{new_delay});
     }
 
     #[external(v0)]
@@ -195,6 +192,7 @@ use kurosawa_akira::NonceComponent::nonce_component::InternalNonceable;
         assert_whitelisted_invokers(@self);
         self.withdraw_s.apply_withdraw(signed_withdraw, gas_price, cur_gas_per_action);
         self.balancer_s.latest_gas.write(gas_price);
+        self.withdraw_s.gas_steps.write(cur_gas_per_action);
     }
 
     #[external(v0)]
@@ -206,6 +204,7 @@ use kurosawa_akira::NonceComponent::nonce_component::InternalNonceable;
                 Option::None(_) => {break;}
             };
         };
+        self.withdraw_s.gas_steps.write(cur_gas_per_action);
         self.balancer_s.latest_gas.write(gas_price);
     }
 
@@ -270,7 +269,7 @@ use kurosawa_akira::NonceComponent::nonce_component::InternalNonceable;
     #[derive(Drop, starknet::Event)]
     struct RouterComponentUpdate {new_delay:SlowModeDelay, min_amount_to_route:u256, new_punishment_bips:u16}
     #[derive(Drop, starknet::Event)]
-    struct WithdrawComponentUpdate {new_withdraw_steps: u16, new_delay:SlowModeDelay}
+    struct WithdrawComponentUpdate {new_delay:SlowModeDelay}
     #[derive(Drop, starknet::Event)]
     struct VersionUpdate {new_version:u16}
     

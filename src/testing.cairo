@@ -31,8 +31,8 @@ mod tests_deposit_and_withdrawal_and_nonce {
     }
 
     fn get_withdraw(trader:ContractAddress, amount:u256, token:ContractAddress, akira:ILayerAkiraDispatcher, salt:felt252)-> Withdraw {
-        let gas_fee = prepare_double_gas_fee_native(akira,100);
-        let amount = if token == akira.get_wrapped_native_token() { amount} else {amount};
+        let gas_fee = prepare_double_gas_fee_native(akira, 100);
+        let amount = if token == akira.get_wrapped_native_token() {amount} else {amount};
         return Withdraw {maker:trader, token, amount, salt, gas_fee, receiver:trader};
         
     }
@@ -141,7 +141,7 @@ mod tests_deposit_and_withdrawal_and_nonce {
 
     #[test]
     #[fork("block_based")]
-    #[should_panic(expected: ("ALREADY_COMPLETED: withdraw (hash = 3264006212390713571005350791477427546026143341786610974461275213037650812163)",))]
+    #[should_panic(expected: ("ALREADY_COMPLETED: withdraw (hash = 145530779622766435564951937819183289966524278531640966956212381983041765687)",))]
     fn test_withdraw_eth_indirect_twice() {
         let akira = ILayerAkiraDispatcher{contract_address:spawn_exchange()};
         let (trader, eth_addr, amount_deposit) = (get_trader_address_1(), get_eth_addr(),1_000_000);
@@ -150,7 +150,7 @@ mod tests_deposit_and_withdrawal_and_nonce {
         tfer_eth_funds_to(trader, amount_deposit); deposit(trader, amount_deposit, eth_addr, akira); 
         
         let w = get_withdraw(trader, amount_deposit, eth_addr, akira, 0);
-
+        
         start_prank(CheatTarget::One(akira.contract_address), trader); akira.bind_to_signer(pub.try_into().unwrap()); stop_prank(CheatTarget::One(akira.contract_address));
 
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
@@ -314,7 +314,7 @@ mod tests_safe_trade {
     use core::clone::Clone;
     use kurosawa_akira::test_utils::test_common::{deposit,get_eth_addr,tfer_eth_funds_to,get_fee_recipient_exchange,get_slow_mode, 
     get_trader_address_1,get_trader_address_2,get_trader_signer_and_pk_1,get_usdc_addr,tfer_usdc_funds_to,
-    get_withdraw_action_cost,spawn_exchange,prepare_double_gas_fee_native,sign,get_trader_signer_and_pk_2};
+    get_withdraw_action_cost,spawn_exchange, prepare_double_gas_fee_native, sign, get_trader_signer_and_pk_2};
     use kurosawa_akira::FundsTraits::PoseidonHash;
     use core::{traits::Into,array::ArrayTrait,option::OptionTrait,traits::TryInto,result::ResultTrait};
     use starknet::{ContractAddress,info::get_block_number,get_caller_address};
