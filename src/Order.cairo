@@ -100,7 +100,7 @@ fn get_feeable_qty(fixed_fee: FixedFee, feeable_qty: u256, is_maker:bool) -> u25
 }
 
 fn get_limit_px(maker_order:Order, maker_fill_info:OrderTradeInfo) ->  u256{  //TODO: and qty rename
-    let settle_px = if maker_fill_info.filled_amount > 0 {maker_fill_info.last_traded_px} else {maker_order.price};
+    let settle_px = if maker_fill_info.filled_amount > 0 || maker_fill_info.filled_quote_amount > 0 {maker_fill_info.last_traded_px} else {maker_order.price};
     return settle_px; 
 }
 
@@ -124,7 +124,7 @@ fn do_taker_price_checks(taker_order:Order, settle_px:u256, taker_fill_info:Orde
     assert!(taker_order.flags.is_sell_side || settle_px <= taker_order.price, "BUY_PROTECTION_PRICE_FAILED: settle_px ({}) <= taker_order.price ({})", settle_px, taker_order.price);
     assert!(!taker_order.flags.is_sell_side || settle_px >= taker_order.price, "SELL_PROTECTION_PRICE_FAILED: settle_px ({}) >= taker_order.price ({})", settle_px, taker_order.price); 
 
-    if taker_fill_info.filled_amount > 0 {
+    if taker_fill_info.filled_amount > 0 || taker_fill_info.filled_quote_amount > 0 {
         let last_traded_px = taker_fill_info.last_traded_px;
         if taker_order.flags.best_level_only { assert!(last_traded_px == settle_px , "BEST_LVL_ONLY: failed last_traded_px ({}) == settle_px ({})", last_traded_px, settle_px);}
         else {

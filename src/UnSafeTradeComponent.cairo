@@ -1,6 +1,6 @@
 use kurosawa_akira::Order::{SignedOrder,Order, OrderTradeInfo,OrderFee,FixedFee,
             get_feeable_qty, get_limit_px, do_taker_price_checks, do_maker_checks,get_available_base_qty,get_gas_fee_and_coin, GasFee};
-
+use kurosawa_akira::utils::common::{min};
 #[starknet::interface]
 trait IUnSafeTradeLogic<TContractState> {
     fn get_unsafe_trade_info(self: @TContractState, order_hash: felt252) -> OrderTradeInfo;
@@ -180,6 +180,7 @@ mod unsafe_trade_component {
                     Option::None(_) => { 
                         if failed {
                             taker_fill_info.filled_amount = taker_order.quantity;
+                            taker_fill_info.filled_quote_amount = taker_order.quote_qty;
                             self.orders_trade_info.write(taker_hash, taker_fill_info);
                         } else {
                             taker_fill_info.num_trades_happened += trades;
@@ -206,9 +207,11 @@ mod unsafe_trade_component {
             if taker_order.flags.is_sell_side { // sell of base asset
                 return get_available_base_qty(taker_order.price, taker_order, taker_fill_info);
             } else { // sell of quote asset
-                if taker_order.quote_qty > 0 { return taker_order.quote_qty - taker_fill_info.filled_quote_amount;} // precise amount
-                // settle_px * settle_base_amount / maker_order.base_asset
-                return  taker_order.price * (taker_order.quantity - taker_fill_info.filled_amount) / taker_order.base_asset; // up to proection px
+                let by_quote_asset = taker_order.quote_qty - taker_fill_info.filled_quote_amount;
+                let by_base_asset = taker_order.price * (taker_order.quantity - taker_fill_info.filled_amount) / taker_order.base_asset;
+                if taker_order.quantity == 0 {return by_quote_asset;}
+                if taker_order.quote_qty == 0 { return by_base_asset;}
+                return super::min(by_quote_asset, by_base_asset);
             }     
         }
         // 1eth

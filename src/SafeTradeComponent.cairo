@@ -108,7 +108,8 @@ mod safe_trade_component {
                                 assert!(contract.check_sign(signed_order.order.maker, maker_hash, r, s), "WRONG_SIGN_MAKER: (maker_hash, r, s) : ({}, {} ,{})", maker_hash, r, s);
 
                             } else {
-                                assert!(maker_order.quantity > maker_fill_info.filled_amount, "MAKER_ALREADY_PREVIOUSLY_FILLED");
+                                let remaining = get_available_base_qty(get_limit_px(maker_order, maker_fill_info), maker_order, maker_fill_info);
+                                assert!(remaining > 0, "MAKER_ALREADY_PREVIOUSLY_FILLED");
                                 use_prev_maker = false;
                             }
                             
