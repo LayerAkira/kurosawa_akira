@@ -212,12 +212,12 @@ mod withdraw_component {
             let erc20 = IERC20Dispatcher { contract_address: w_req.token };
             let balance_before = erc20.balanceOf(get_contract_address());
             
-            erc20.transfer(w_req.maker, tfer_amount);
+            erc20.transfer(w_req.receiver, tfer_amount);
             
             let transferred = balance_before - erc20.balanceOf(get_contract_address());
             assert!(transferred <= tfer_amount, "WRONG_TRANSFER_AMOUNT expected {} actual {}",  tfer_amount, transferred);
 
-            self.emit(Withdrawal{maker:w_req.maker, token:w_req.token, amount: w_req.amount, salt:w_req.salt, receiver:w_req.receiver,gas_price,
+            self.emit(Withdrawal{maker:w_req.maker, token:w_req.token, amount: w_req.amount, salt:w_req.salt, receiver:w_req.receiver, gas_price,
                         gas_fee:w_req.gas_fee, direct:direct});
            self.completed_reqs.write(w_hash, true);
             
