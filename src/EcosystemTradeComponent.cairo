@@ -1,14 +1,14 @@
 use kurosawa_akira::Order::{SignedOrder,Order, OrderTradeInfo, OrderFee, FixedFee,
-            get_feeable_qty,get_limit_px, do_taker_price_checks, do_maker_checks,TakerSelfTradePreventionMode};
+            get_feeable_qty,get_limit_px, do_taker_price_checks, do_maker_checks, get_available_base_qty, TakerSelfTradePreventionMode};
 
 #[starknet::interface]
-trait ISafeTradeLogic<TContractState> {
-    fn get_safe_trade_info(self: @TContractState, order_hash: felt252) -> OrderTradeInfo;
-    fn get_safe_trades_info(self: @TContractState, order_hashes: Array<felt252>) -> Array<OrderTradeInfo>;
+trait IEcosystemTradeLogic<TContractState> {
+    fn get_ecosystem_trade_info(self: @TContractState, order_hash: felt252) -> OrderTradeInfo;
+    fn get_ecosystem_trades_info(self: @TContractState, order_hashes: Array<felt252>) -> Array<OrderTradeInfo>;
 }
 
 #[starknet::component]
-mod safe_trade_component {
+mod ecosystem_trade_component {
     use kurosawa_akira::ExchangeBalanceComponent::INewExchangeBalance;
     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::InternalExchangeBalanceble;
     use core::{traits::TryInto,option::OptionTrait,array::ArrayTrait};
@@ -18,7 +18,7 @@ mod safe_trade_component {
     
     use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
     use starknet::{get_contract_address, ContractAddress, get_block_timestamp};
-    use super::{do_taker_price_checks,do_maker_checks,get_feeable_qty, get_limit_px, SignedOrder,Order, TakerSelfTradePreventionMode, OrderTradeInfo, OrderFee, FixedFee};
+    use super::{do_taker_price_checks,do_maker_checks,get_available_base_qty, get_feeable_qty, get_limit_px, SignedOrder,Order, TakerSelfTradePreventionMode, OrderTradeInfo, OrderFee, FixedFee};
     use kurosawa_akira::utils::common::DisplayContractAddress;
 
     #[storage]
@@ -44,16 +44,16 @@ mod safe_trade_component {
         is_sell_side: bool,
     }
 
-    #[embeddable_as(SafeTradable)]
-    impl SafeTradableImpl<TContractState, +HasComponent<TContractState>,+INonceLogic<TContractState>,+balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of super::ISafeTradeLogic<ComponentState<TContractState>> {
-        fn get_safe_trade_info(self: @ComponentState<TContractState>, order_hash: felt252) -> OrderTradeInfo {
+    #[embeddable_as(EcosystemTradable)]
+    impl EcosystemTradableImpl<TContractState, +HasComponent<TContractState>,+INonceLogic<TContractState>,+balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of super::IEcosystemTradeLogic<ComponentState<TContractState>> {
+        fn get_ecosystem_trade_info(self: @ComponentState<TContractState>, order_hash: felt252) -> OrderTradeInfo {
             return self.orders_trade_info.read(order_hash);
         }
-        fn get_safe_trades_info(self: @ComponentState<TContractState>, mut order_hashes: Array<felt252>) -> Array<OrderTradeInfo> {
+        fn get_ecosystem_trades_info(self: @ComponentState<TContractState>, mut order_hashes: Array<felt252>) -> Array<OrderTradeInfo> {
             let mut res = ArrayTrait::new();
             loop {
                 match order_hashes.pop_front(){
-                    Option::Some(order_hash) => {res.append(self.get_safe_trade_info(order_hash))}, Option::None(_) => {break();}
+                    Option::Some(order_hash) => {res.append(self.get_ecosystem_trade_info(order_hash))}, Option::None(_) => {break();}
                 }
             };
             return res; 
@@ -61,12 +61,12 @@ mod safe_trade_component {
     }
 
      #[generate_trait]
-    impl InternalSafeTradableImpl<TContractState, +HasComponent<TContractState>,+INonceLogic<TContractState>,
-    +balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of InternalSafeTradable<TContractState> {
+    impl InternalEcosystemTradableImpl<TContractState, +HasComponent<TContractState>,+INonceLogic<TContractState>,
+    +balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of InternalEcosystemTradable<TContractState> {
 
         // exposed only in contract user
         fn apply_trades(ref self: ComponentState<TContractState>, mut taker_orders:Array<(SignedOrder, bool)>, mut maker_orders:Array<SignedOrder>, mut iters:Array<(u8, bool)>, 
-                    mut oracle_settled_qty:Array<u256>, gas_price:u256, version:u16, ) {
+                    mut oracle_settled_qty:Array<u256>, gas_price:u256,cur_gas_per_action:u32, version:u16) {
             let mut maker_order = *maker_orders.at(0).order;
             let mut maker_hash: felt252  = 0.try_into().unwrap();  
             let mut maker_fill_info = self.orders_trade_info.read(maker_hash);
@@ -104,23 +104,22 @@ mod safe_trade_component {
                                 do_maker_checks(maker_order, maker_fill_info, contract.get_nonce(maker_order.maker));
                                 assert!(maker_order.fee.trade_fee.recipient == fee_recipient, "WRONG_MAKER_FEE_RECIPIENT: expected {} got {}", fee_recipient, maker_order.fee.trade_fee.recipient);
             
-
                                 let (r, s) = signed_order.sign;
                                 assert!(contract.check_sign(signed_order.order.maker, maker_hash, r, s), "WRONG_SIGN_MAKER: (maker_hash, r, s) : ({}, {} ,{})", maker_hash, r, s);
 
                             } else {
-                                assert!(maker_order.quantity > maker_fill_info.filled_amount, "MAKER_ALREADY_PREVIOUSLY_FILLED");
+                                let remaining = get_available_base_qty(get_limit_px(maker_order, maker_fill_info), maker_order, maker_fill_info);
+                                assert!(remaining > 0, "MAKER_ALREADY_PREVIOUSLY_FILLED");
                                 use_prev_maker = false;
                             }
                             
                             if (taker_order.stp != TakerSelfTradePreventionMode::NONE) { // check stp mode, if not None reuqire prevention
                                 assert!(contract.get_signer(maker_order.maker) != contract.get_signer(taker_order.maker), "STP_VIOLATED");
                             }
-
-                            let (settle_px, maker_qty) = get_limit_px(maker_order, maker_fill_info);   
-                                         
+                            let settle_px = get_limit_px(maker_order, maker_fill_info);
+                            let maker_qty = get_available_base_qty(settle_px, maker_order, maker_fill_info);
                             let taker_qty = do_taker_price_checks(taker_order, settle_px, taker_fill_info);
-                            let mut settle_base_amount = if maker_qty > taker_qty {taker_qty} else {maker_qty};
+                            let mut settle_base_amount =  if maker_qty > taker_qty {taker_qty} else {maker_qty};
                             let oracle_settle_qty = oracle_settled_qty.pop_front().unwrap();
                             if oracle_settle_qty > 0 {
                                 assert!(oracle_settle_qty <= settle_base_amount, "WRONG_ORACLE_SETTLE_QTY {} for {}", oracle_settle_qty, maker_hash);
@@ -129,7 +128,7 @@ mod safe_trade_component {
 
                             assert!(taker_order.flags.is_sell_side != maker_order.flags.is_sell_side, "WRONG_SIDE");
                             assert!(taker_order.ticker == maker_order.ticker,"MISMATCH_TICKER");
-                            assert!(taker_order.flags.to_safe_book == maker_order.flags.to_safe_book && taker_order.flags.to_safe_book, "WRONG_BOOK_DESTINATION");
+                            assert!(taker_order.flags.to_ecosystem_book == maker_order.flags.to_ecosystem_book && taker_order.flags.to_ecosystem_book, "WRONG_BOOK_DESTINATION");
                             assert!(taker_order.base_asset == maker_order.base_asset, "WRONG_ASSET_AMOUNT");
                             assert!(maker_order.version == version, "WRONG_MAKER_VERSION");
                             let settle_quote_amount = settle_px * settle_base_amount / maker_order.base_asset;
@@ -143,10 +142,12 @@ mod safe_trade_component {
                             total_base += settle_base_amount;
                             total_quote += settle_quote_amount;
                             
-                            maker_fill_info.filled_amount += settle_base_amount;
-                            taker_fill_info.filled_amount += settle_base_amount;
-                            
+                            maker_fill_info.filled_base_amount += settle_base_amount;
+                            maker_fill_info.filled_quote_amount += settle_quote_amount;
                             maker_fill_info.last_traded_px = settle_px;
+                            
+                            taker_fill_info.filled_base_amount += settle_base_amount;
+                            taker_fill_info.filled_quote_amount += settle_quote_amount;
                             taker_fill_info.last_traded_px = settle_px; 
                             
                             cur += 1;
@@ -157,7 +158,7 @@ mod safe_trade_component {
 
                         self.orders_trade_info.write(taker_hash, taker_fill_info);
                         
-                        self.apply_taker_fee_and_gas(taker_order, total_base, total_quote, gas_price, trades);
+                        self.apply_taker_fee_and_gas(taker_order, total_base, total_quote, gas_price, trades, cur_gas_per_action);
 
                     },
                     Option::None(_) => {
@@ -182,10 +183,10 @@ mod safe_trade_component {
             // NASTY for now omit because headache if we lost info about order
             // let (last_fill_taker_hash, is_foc, remaining):(felt252, bool, u256) = self.last_taker_order_and_foc.read();
             // if last_fill_taker_hash != taker_order_hash { assert(!is_foc || remaining == 0, 'FOK_PREVIOUS');}
-            // if taker_fill_info.filled_amount > 0 { assert(last_fill_taker_hash == taker_order_hash, 'IF_PARTIAL=>PREV_SAME');}
+            // if taker_fill_info.filled_base_amount > 0 { assert(last_fill_taker_hash == taker_order_hash, 'IF_PARTIAL=>PREV_SAME');}
 
-            assert!(taker_order.fee.router_fee.taker_pbips == 0, "TAKER_SAFE_REQUIRES_NO_ROUTER");
-            assert!(taker_order.quantity > taker_fill_info.filled_amount, "TAKER_ALREADY_FILLED");
+            assert!(taker_order.fee.router_fee.taker_pbips == 0, "TAKER_ECOSYSTEM_REQUIRES_NO_ROUTER");
+            // assert!(taker_order.base_qty > taker_fill_info.filled_base_amount, "TAKER_ALREADY_FILLED"); #TODO we already checked that
             assert!(!taker_fill_info.as_taker_completed, "Taker order {} marked completed", taker_order_hash);
             assert!(get_block_timestamp() < taker_order.expire_at.into(), "Taker order expire {}", taker_order.expire_at);
 
@@ -197,24 +198,24 @@ mod safe_trade_component {
             balancer.rebalance_after_trade(maker_order.maker, taker_order.maker,maker_order.ticker, amount_base, amount_quote,maker_order.flags.is_sell_side);
             balancer.apply_maker_fee(maker_order.maker, maker_order.fee.trade_fee, maker_order.flags.is_sell_side,
                                  maker_order.ticker, amount_base, amount_quote);
-            assert!(maker_order.fee.router_fee.taker_pbips == 0, "MAKER_SAFE_REQUIRES_NO_ROUTER");
+            assert!(maker_order.fee.router_fee.taker_pbips == 0, "MAKER_ECOSYSTEM_REQUIRES_NO_ROUTER");
             
             self.emit(Trade{
                     maker:maker_order.maker, taker:taker_order.maker, ticker:maker_order.ticker,
                     amount_base, amount_quote, is_sell_side:maker_order.flags.is_sell_side });
         }   
         
-        fn apply_taker_fee_and_gas(ref self: ComponentState<TContractState>, taker_order:Order, base_amount:u256, quote_amount:u256, gas_price:u256, trades:u8) {
+        fn apply_taker_fee_and_gas(ref self: ComponentState<TContractState>, taker_order:Order, base_amount:u256, quote_amount:u256, gas_price:u256, trades:u8, cur_gas_per_action:u32) {
             let mut balancer = self.get_balancer_mut();
             
             let taker_fee_token = if taker_order.flags.is_sell_side { let (b,q) = taker_order.ticker; q} else {let (b,q) = taker_order.ticker; b};
             let taker_fee_amount = get_feeable_qty(taker_order.fee.trade_fee, if taker_order.flags.is_sell_side { quote_amount } else {base_amount}, false);
-            assert!(taker_order.fee.router_fee.taker_pbips == 0, "TAKER_SAFE_REQUIRES_NO_ROUTER");
+            assert!(taker_order.fee.router_fee.taker_pbips == 0, "TAKER_ECOSYSTEM_REQUIRES_NO_ROUTER");
             if taker_fee_amount > 0 {
                 balancer.internal_transfer(taker_order.maker, taker_order.fee.trade_fee.recipient, taker_fee_amount, taker_fee_token);
             }
 
-            balancer.validate_and_apply_gas_fee_internal(taker_order.maker, taker_order.fee.gas_fee, gas_price, trades);
+            balancer.validate_and_apply_gas_fee_internal(taker_order.maker, taker_order.fee.gas_fee, gas_price, trades, cur_gas_per_action);
         }
 
     }

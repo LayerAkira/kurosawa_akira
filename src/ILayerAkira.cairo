@@ -44,7 +44,7 @@ trait ILayerAkira<TContractState> {
     // if router wish to bind new signers
     fn add_router_binding(ref self: TContractState, signer: ContractAddress);
 
-    // if some signer key gets compromised router can safely remove them
+    // if some signer key gets compromised router can ecosystemly remove them
     fn remove_router_binding(ref self: TContractState, signer: ContractAddress);
 
     fn request_onchain_deregister(ref self: TContractState);
@@ -73,11 +73,11 @@ trait ILayerAkira<TContractState> {
 
 
 
-    fn get_safe_trade_info(self: @TContractState, order_hash: felt252) -> OrderTradeInfo;
+    fn get_ecosystem_trade_info(self: @TContractState, order_hash: felt252) -> OrderTradeInfo;
 
 
 
-    fn get_unsafe_trade_info(self: @TContractState, order_hash: felt252) -> OrderTradeInfo;
+    fn get_router_trade_info(self: @TContractState, order_hash: felt252) -> OrderTradeInfo;
 
 
     fn request_onchain_withdraw(ref self: TContractState, withdraw: Withdraw);
@@ -116,17 +116,17 @@ trait ILayerAkira<TContractState> {
 
     // layer akira
 
-    fn apply_increase_nonce(ref self: TContractState, signed_nonce: SignedIncreaseNonce, gas_price:u256);
+    fn apply_increase_nonce(ref self: TContractState, signed_nonce: SignedIncreaseNonce, gas_price:u256, cur_gas_per_action:u32);
 
-    fn apply_withdraw(ref self: TContractState, signed_withdraw: SignedWithdraw, gas_price:u256);
+    fn apply_withdraw(ref self: TContractState, signed_withdraw: SignedWithdraw, gas_price:u256, cur_gas_per_action:u32);
 
-    fn apply_withdraws(ref self: TContractState, signed_withdraws: Array<SignedWithdraw>, gas_price:u256);
+    fn apply_withdraws(ref self: TContractState, signed_withdraws: Array<SignedWithdraw>, gas_price:u256, cur_gas_per_action:u32);
 
-    fn apply_safe_trades(ref self: TContractState, taker_orders:Array<(SignedOrder,bool)>, maker_orders: Array<SignedOrder>, iters:Array<(u8,bool)>, oracle_settled_qty:Array<u256>, gas_price:u256);
+    fn apply_ecosystem_trades(ref self: TContractState, taker_orders:Array<(SignedOrder,bool)>, maker_orders: Array<SignedOrder>, iters:Array<(u8,bool)>, oracle_settled_qty:Array<u256>, gas_price:u256, cur_gas_per_action:u32);
     
-    fn apply_unsafe_trade(ref self: TContractState, taker_order:SignedOrder, maker_orders: Array<(SignedOrder,u256)>, total_amount_matched:u256,  gas_price:u256, as_taker_completed:bool) -> bool;
+    fn apply_router_trade(ref self: TContractState, taker_order:SignedOrder, maker_orders: Array<(SignedOrder,u256)>, total_amount_matched:u256,  gas_price:u256, cur_gas_per_action:u32, as_taker_completed:bool) -> bool;
     
-    fn apply_unsafe_trades(ref self: TContractState, bulk:Array<(SignedOrder, Array<(SignedOrder,u256)>, u256,bool)>,  gas_price:u256) -> Array<bool>;
+    fn apply_router_trades(ref self: TContractState, bulk:Array<(SignedOrder, Array<(SignedOrder,u256)>, u256,bool)>,  gas_price:u256, cur_gas_per_action:u32) -> Array<bool>;
 
     // super
 

@@ -25,7 +25,7 @@ trait IRouter<TContractState> {
     // if router wish to bind new signers
     // reverse semantic compared to SignerComponent
     // here router can have multiple signers associated to avoid risks  of exposing his router' private key
-    // so when it comes to signing unsafe taker orders router will sign order  by one of his associated signers keys
+    // so when it comes to signing router taker orders router will sign order  by one of his associated signers keys
     fn add_router_binding(ref self: TContractState, signer: ContractAddress);
 
     // if some signer' key gets compromised router can ASAP remove it
@@ -44,8 +44,8 @@ trait IRouter<TContractState> {
     // because we wasted gas for nothing and to maker because he have lost opportunity
     fn get_punishment_factor_bips(self: @TContractState) -> u16;
 
-    // is router registered as router so he can route unsafe orders to our exchange 
-    // and we can match them offchain and then apply in unsafe rollup ASAP
+    // is router registered as router so he can route router orders to our exchange
+    // and we can match them offchain and then apply in router rollup ASAP
     fn is_registered(self: @TContractState, router: ContractAddress) -> bool;
 
     // does router have sufficient amount of base token to route

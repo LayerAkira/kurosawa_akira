@@ -100,10 +100,8 @@
     }
 
     fn prepare_double_gas_fee_native(akira:ILayerAkiraDispatcher, gas_action:u32)-> GasFee {
-        let latest_gas_price = akira.get_latest_gas_price();
-        let gas_deduct = latest_gas_price * 2 * gas_action.into();
-        GasFee{ gas_per_action:get_withdraw_action_cost(), fee_token:get_eth_addr(), 
-                max_gas_price: gas_deduct, conversion_rate: (1,1),
+        GasFee{ gas_per_action:gas_action, fee_token:get_eth_addr(), 
+                max_gas_price: 2 * akira.get_latest_gas_price(), conversion_rate: (1,1),
         }
     }
 
