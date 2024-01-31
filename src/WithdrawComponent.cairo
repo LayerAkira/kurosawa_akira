@@ -1,125 +1,125 @@
-use starknet::ContractAddress;
-use serde::Serde;
-use kurosawa_akira::Order::GasFee;
-use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
-use kurosawa_akira::Order::{get_gas_fee_and_coin};
+// use starknet::ContractAddress;
+// use serde::Serde;
+// use kurosawa_akira::Order::GasFee;
+// use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
+// use kurosawa_akira::Order::{get_gas_fee_and_coin};
 
-#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
-struct Withdraw {
-    maker: ContractAddress, // trading account that want to withdraw
-    token: ContractAddress, // address of erc20 token of interest, 
-    amount: u256, // amount of token, at the end user will receive amount of token diff from gas fee or amount - gas_fee, so user can always withdraw all his balances 
-    salt: felt252, // random salt
-    gas_fee: GasFee, // for some paths, this activity to be executed requires gasfee
-    receiver: ContractAddress // receiver of withdrawal tokens
-}
+// #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+// struct Withdraw {
+//     maker: ContractAddress, // trading account that want to withdraw
+//     token: ContractAddress, // address of erc20 token of interest, 
+//     amount: u256, // amount of token, at the end user will receive amount of token diff from gas fee or amount - gas_fee, so user can always withdraw all his balances 
+//     salt: felt252, // random salt
+//     gas_fee: GasFee, // for some paths, this activity to be executed requires gasfee
+//     receiver: ContractAddress // receiver of withdrawal tokens
+// }
 
-#[derive(Copy, Drop, Serde, PartialEq)]
-struct SignedWithdraw {
-    withdraw: Withdraw,
-    sign: (felt252, felt252)
-}
+// #[derive(Copy, Drop, Serde, PartialEq)]
+// struct SignedWithdraw {
+//     withdraw: Withdraw,
+//     sign: (felt252, felt252)
+// }
 
-#[starknet::interface]
-trait IWithdraw<TContractState> {
-    // schedules onchain withdrawal, so user can actually withdraw by invoking apply_onchain_withdraw
-    fn request_onchain_withdraw(ref self: TContractState, withdraw: Withdraw);
-    // get information about current pending onchain withdrawal by (maker, token), it returns ts and block when it happened and withdrawal struct
-    fn get_pending_withdraw(self:@TContractState, maker:ContractAddress, token:ContractAddress)->(SlowModeDelay,Withdraw);
+// #[starknet::interface]
+// trait IWithdraw<TContractState> {
+//     // schedules onchain withdrawal, so user can actually withdraw by invoking apply_onchain_withdraw
+//     fn request_onchain_withdraw(ref self: TContractState, withdraw: Withdraw);
+//     // get information about current pending onchain withdrawal by (maker, token), it returns ts and block when it happened and withdrawal struct
+//     fn get_pending_withdraw(self:@TContractState, maker:ContractAddress, token:ContractAddress)->(SlowModeDelay,Withdraw);
 
-    fn get_pending_withdraws(self:@TContractState,reqs:Array<(ContractAddress, ContractAddress)>)-> Array<(SlowModeDelay,Withdraw)>;
+//     fn get_pending_withdraws(self:@TContractState,reqs:Array<(ContractAddress, ContractAddress)>)-> Array<(SlowModeDelay,Withdraw)>;
     
-    // once user requested onchain withdraw and passed enouhg time user can execute apply_onchain_withdraw and therefore finalizing 2-step delayed withdrawal 
-    // after request_onchain_withdraw user must wait some seconds and blocks pass
-    // this is neccesary to not break trading flow other exchange participants
-    fn apply_onchain_withdraw(ref self: TContractState, token:ContractAddress, key:felt252);
+//     // once user requested onchain withdraw and passed enouhg time user can execute apply_onchain_withdraw and therefore finalizing 2-step delayed withdrawal 
+//     // after request_onchain_withdraw user must wait some seconds and blocks pass
+//     // this is neccesary to not break trading flow other exchange participants
+//     fn apply_onchain_withdraw(ref self: TContractState, token:ContractAddress, key:felt252);
 
-    // for user to build GasFee for onchain withdrawal he need withdraw_steps and gas_price (get_latest_gas())
-    fn get_withdraw_steps(self: @TContractState) -> u32;
+//     // for user to build GasFee for onchain withdrawal he need withdraw_steps and gas_price (get_latest_gas())
+//     fn get_withdraw_steps(self: @TContractState) -> u32;
 
-    // checks if withdraw request (w_hash is poseidon hash of Withdraw) completed or not
-    fn is_request_completed(self: @TContractState, w_hash: felt252) -> bool;
-    fn is_requests_completed(self: @TContractState, reqs: Array<felt252>) -> Array<bool>;
-}
-
-
-#[starknet::component]
-mod withdraw_component {
-    use core::traits::Into;
-    use kurosawa_akira::ExchangeBalanceComponent::INewExchangeBalance;
-    use kurosawa_akira::FundsTraits::{PoseidonHash,PoseidonHashImpl};
-    use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as balance_component;
-    use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
-    use super::{Withdraw, SignedWithdraw, SlowModeDelay, IWithdraw, GasFee};
-    use kurosawa_akira::SignerComponent::{ISignerLogic};
-    use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait, IERC20Dispatcher};
-    use starknet::{get_caller_address, get_contract_address, get_block_timestamp, ContractAddress};
-    use starknet::info::get_block_number;
-    use kurosawa_akira::utils::common::DisplayContractAddress;
+//     // checks if withdraw request (w_hash is poseidon hash of Withdraw) completed or not
+//     fn is_request_completed(self: @TContractState, w_hash: felt252) -> bool;
+//     fn is_requests_completed(self: @TContractState, reqs: Array<felt252>) -> Array<bool>;
+// }
 
 
-    #[event]
-    #[derive(Drop, starknet::Event)]
-    enum Event {
-        ReqOnChainWithdraw: ReqOnChainWithdraw,
-        Withdrawal: Withdrawal
-    }
-
-    #[derive(Drop, starknet::Event)]
-    struct ReqOnChainWithdraw {
-        #[key]
-        maker: ContractAddress,
-        withdraw:Withdraw
-    }
-
-    #[derive(Drop, starknet::Event)]
-    struct Withdrawal {
-        #[key]
-        maker: ContractAddress,
-        token: ContractAddress,
-        receiver: ContractAddress,
-        salt: felt252,
-        amount: u256,
-        gas_price: u256,
-        gas_fee: GasFee,
-        direct: bool
-    }
-
-    #[storage]
-    struct Storage {
-        delay: SlowModeDelay, // set by exchange, can be updated but no more then original
-        pending_reqs: LegacyMap::<(ContractAddress,ContractAddress),(SlowModeDelay, Withdraw)>,
-        completed_reqs: LegacyMap::<felt252,bool>,
-        gas_steps: u32, //set by us, during exec of rollups of withdraws, same semantic as with latest gas
-    }
-
-    #[embeddable_as(Withdrawable)]
-    impl WithdrawableImpl<TContractState, +HasComponent<TContractState>,+balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of IWithdraw<ComponentState<TContractState>> {
-
-        fn is_request_completed(self:@ComponentState<TContractState>, w_hash:felt252) -> bool { self.completed_reqs.read(w_hash)}
-        fn is_requests_completed(self:@ComponentState<TContractState>, mut reqs:Array<felt252>) -> Array<bool> {
-            let mut res: Array = ArrayTrait::new();            
-            loop {
-                match reqs.pop_front(){ Option::Some(hash) => { res.append(self.completed_reqs.read(hash));}, Option::None(_) => {break;}};
-            };
-            return res;
-        }
+// #[starknet::component]
+// mod withdraw_component {
+//     use core::traits::Into;
+//     use kurosawa_akira::ExchangeBalanceComponent::INewExchangeBalance;
+//     use kurosawa_akira::FundsTraits::{PoseidonHash,PoseidonHashImpl};
+//     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as balance_component;
+//     use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
+//     use super::{Withdraw, SignedWithdraw, SlowModeDelay, IWithdraw, GasFee};
+//     use kurosawa_akira::SignerComponent::{ISignerLogic};
+//     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait, IERC20Dispatcher};
+//     use starknet::{get_caller_address, get_contract_address, get_block_timestamp, ContractAddress};
+//     use starknet::info::get_block_number;
+//     use kurosawa_akira::utils::common::DisplayContractAddress;
 
 
-        fn get_pending_withdraw(self:@ComponentState<TContractState>,maker:ContractAddress, token:ContractAddress)->(SlowModeDelay, Withdraw) {
-            return self.pending_reqs.read((token, maker));
-        }
+//     #[event]
+//     #[derive(Drop, starknet::Event)]
+//     enum Event {
+//         ReqOnChainWithdraw: ReqOnChainWithdraw,
+//         Withdrawal: Withdrawal
+//     }
 
-        fn get_pending_withdraws(self:@ComponentState<TContractState>, mut reqs:Array<(ContractAddress, ContractAddress)>) -> Array<(SlowModeDelay,Withdraw)> {
-            //note reqs must not be empty
-            let mut res: Array = ArrayTrait::new();            
-            loop {
-                match reqs.pop_front(){
-                    Option::Some((maker,token)) => { res.append(self.pending_reqs.read((token, maker)));}, Option::None(_) => {break;}
-                };
-            };
-            return res;
-        }
+//     #[derive(Drop, starknet::Event)]
+//     struct ReqOnChainWithdraw {
+//         #[key]
+//         maker: ContractAddress,
+//         withdraw:Withdraw
+//     }
+
+//     #[derive(Drop, starknet::Event)]
+//     struct Withdrawal {
+//         #[key]
+//         maker: ContractAddress,
+//         token: ContractAddress,
+//         receiver: ContractAddress,
+//         salt: felt252,
+//         amount: u256,
+//         gas_price: u256,
+//         gas_fee: GasFee,
+//         direct: bool
+//     }
+
+//     #[storage]
+//     struct Storage {
+//         delay: SlowModeDelay, // set by exchange, can be updated but no more then original
+//         pending_reqs: LegacyMap::<(ContractAddress,ContractAddress),(SlowModeDelay, Withdraw)>,
+//         completed_reqs: LegacyMap::<felt252,bool>,
+//         gas_steps: u32, //set by us, during exec of rollups of withdraws, same semantic as with latest gas
+//     }
+
+    // #[embeddable_as(Withdrawable)]
+    // impl WithdrawableImpl<TContractState, +HasComponent<TContractState>,+balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of IWithdraw<ComponentState<TContractState>> {
+
+    //     fn is_request_completed(self:@ComponentState<TContractState>, w_hash:felt252) -> bool { self.completed_reqs.read(w_hash)}
+    //     fn is_requests_completed(self:@ComponentState<TContractState>, mut reqs:Array<felt252>) -> Array<bool> {
+    //         let mut res: Array = ArrayTrait::new();            
+    //         loop {
+    //             match reqs.pop_front(){ Option::Some(hash) => { res.append(self.completed_reqs.read(hash));}, Option::None(_) => {break;}};
+    //         };
+    //         return res;
+    //     }
+
+
+        // fn get_pending_withdraw(self:@ComponentState<TContractState>,maker:ContractAddress, token:ContractAddress)->(SlowModeDelay, Withdraw) {
+        //     return self.pending_reqs.read((token, maker));
+        // }
+
+        // fn get_pending_withdraws(self:@ComponentState<TContractState>, mut reqs:Array<(ContractAddress, ContractAddress)>) -> Array<(SlowModeDelay,Withdraw)> {
+        //     //note reqs must not be empty
+        //     let mut res: Array = ArrayTrait::new();            
+        //     loop {
+        //         match reqs.pop_front(){
+        //             Option::Some((maker,token)) => { res.append(self.pending_reqs.read((token, maker)));}, Option::None(_) => {break;}
+        //         };
+        //     };
+        //     return res;
+        // }
 
         fn request_onchain_withdraw(ref self: ComponentState<TContractState>, withdraw: Withdraw) {
             // Onchain withdrawals have several constraints:
@@ -142,7 +142,7 @@ mod withdraw_component {
             self.emit(ReqOnChainWithdraw{maker:withdraw.maker, withdraw});
         }
 
-        fn get_withdraw_steps(self: @ComponentState<TContractState>) -> u32 { self.gas_steps.read().into()}
+        // fn get_withdraw_steps(self: @ComponentState<TContractState>) -> u32 { self.gas_steps.read().into()}
 
 
         fn apply_onchain_withdraw(ref self: ComponentState<TContractState>, token:ContractAddress, key:felt252) {
@@ -160,11 +160,11 @@ mod withdraw_component {
             self._transfer(w_req, key, w_req.amount, 0, true);
         }
 
-    }
+    // }
 
-     #[generate_trait]
-    impl InternalWithdrawableImpl<TContractState, +HasComponent<TContractState>,
-    +balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of InternalWithdrawable<TContractState> {
+    //  #[generate_trait]
+    // impl InternalWithdrawableImpl<TContractState, +HasComponent<TContractState>,
+    // +balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of InternalWithdrawable<TContractState> {
         fn initializer(ref self: ComponentState<TContractState> ,delay:SlowModeDelay, gas_steps_cost:u32) {
             self.delay.write(delay);
             self.gas_steps.write(gas_steps_cost);
@@ -226,28 +226,28 @@ mod withdraw_component {
 
         
 
-    }   
+    //}   
 
 
-    // this (or something similar) will potentially be generated in the next RC
-    #[generate_trait]
-    impl GetBalancer<
-        TContractState,
-        +HasComponent<TContractState>,
-        +balance_component::HasComponent<TContractState>,
-        +Drop<TContractState>> of GetBalancerTrait<TContractState> {
-        fn get_balancer(
-            self: @ComponentState<TContractState>
-        ) -> @balance_component::ComponentState<TContractState> {
-            let contract = self.get_contract();
-            balance_component::HasComponent::<TContractState>::get_component(contract)
-        }
+//     // this (or something similar) will potentially be generated in the next RC
+//     #[generate_trait]
+//     impl GetBalancer<
+//         TContractState,
+//         +HasComponent<TContractState>,
+//         +balance_component::HasComponent<TContractState>,
+//         +Drop<TContractState>> of GetBalancerTrait<TContractState> {
+//         fn get_balancer(
+//             self: @ComponentState<TContractState>
+//         ) -> @balance_component::ComponentState<TContractState> {
+//             let contract = self.get_contract();
+//             balance_component::HasComponent::<TContractState>::get_component(contract)
+//         }
 
-        fn get_balancer_mut(
-            ref self: ComponentState<TContractState>
-        ) -> balance_component::ComponentState<TContractState> {
-            let mut contract = self.get_contract_mut();
-            balance_component::HasComponent::<TContractState>::get_component_mut(ref contract)
-        }
-    }
-}
+//         fn get_balancer_mut(
+//             ref self: ComponentState<TContractState>
+//         ) -> balance_component::ComponentState<TContractState> {
+//             let mut contract = self.get_contract_mut();
+//             balance_component::HasComponent::<TContractState>::get_component_mut(ref contract)
+//         }
+//     }
+// }
