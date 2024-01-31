@@ -1,155 +1,155 @@
-use core::option::OptionTrait;
-use starknet::ContractAddress;
-use kurosawa_akira::Order::GasFee;
-use kurosawa_akira::ExchangeBalanceComponent::{get_gas_fee_and_coin};
-use serde::Serde;
-use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
+// use core::option::OptionTrait;
+// use starknet::ContractAddress;
+// use kurosawa_akira::Order::GasFee;
+// use kurosawa_akira::ExchangeBalanceComponent::{get_gas_fee_and_coin};
+// use serde::Serde;
+// use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
 
-#[starknet::interface]
-trait IRouter<TContractState> {
-    // For first iteration we will accept orders from those routers that registered and reliable for us
-    // At second iteration, any router who have enough money deposited to router component is legit provider and we happily accept orders from them
+// #[starknet::interface]
+// trait IRouter<TContractState> {
+//     // For first iteration we will accept orders from those routers that registered and reliable for us
+//     // At second iteration, any router who have enough money deposited to router component is legit provider and we happily accept orders from them
 
 
-    // same semantic as in deposit component
-    fn router_deposit(ref self:TContractState, router:ContractAddress, coin:ContractAddress, amount:u256);
+//     // same semantic as in deposit component
+//     fn router_deposit(ref self:TContractState, router:ContractAddress, coin:ContractAddress, amount:u256);
     
-    //  native token can be withdrawn up to amount specified to be eligible of being router
-    //  other tokens can be withdrawn immediately because not influence on trading flow
-    fn router_withdraw(ref self: TContractState, coin: ContractAddress, amount: u256, receiver:ContractAddress);
+//     //  native token can be withdrawn up to amount specified to be eligible of being router
+//     //  other tokens can be withdrawn immediately because not influence on trading flow
+//     fn router_withdraw(ref self: TContractState, coin: ContractAddress, amount: u256, receiver:ContractAddress);
     
-    // register router so router can router orders offchain
-    // caller can be registered only if he have sufficient amount to route 
-    fn register_router(ref self: TContractState);
+//     // register router so router can router orders offchain
+//     // caller can be registered only if he have sufficient amount to route 
+//     fn register_router(ref self: TContractState);
 
-    // if router wish to bind new signers
-    // reverse semantic compared to SignerComponent
-    // here router can have multiple signers associated to avoid risks  of exposing his router' private key
-    // so when it comes to signing router taker orders router will sign order  by one of his associated signers keys
-    fn add_router_binding(ref self: TContractState, signer: ContractAddress);
+//     // if router wish to bind new signers
+//     // reverse semantic compared to SignerComponent
+//     // here router can have multiple signers associated to avoid risks  of exposing his router' private key
+//     // so when it comes to signing router taker orders router will sign order  by one of his associated signers keys
+//     fn add_router_binding(ref self: TContractState, signer: ContractAddress);
 
-    // if some signer' key gets compromised router can ASAP remove it
-    // TODO would be a minor feature in next release
-    // fn remove_router_binding(ref self: TContractState, signer: ContractAddress);
+//     // if some signer' key gets compromised router can ASAP remove it
+//     // TODO would be a minor feature in next release
+//     // fn remove_router_binding(ref self: TContractState, signer: ContractAddress);
     
-    // to not break logic it is applied in 2 txs with delay
-    fn request_onchain_deregister(ref self: TContractState);
+//     // to not break logic it is applied in 2 txs with delay
+//     fn request_onchain_deregister(ref self: TContractState);
     
-    fn apply_onchain_deregister(ref self: TContractState);
+//     fn apply_onchain_deregister(ref self: TContractState);
 
-    // validates that message was signed by signer that mapped to router
-    fn validate_router(self: @TContractState, message: felt252, signature: (felt252, felt252), signer: ContractAddress, router:ContractAddress) -> bool;
+//     // validates that message was signed by signer that mapped to router
+//     fn validate_router(self: @TContractState, message: felt252, signature: (felt252, felt252), signer: ContractAddress, router:ContractAddress) -> bool;
 
-    // in case of failed action due to wrong taker details we punish router and distribute this fine to exchange,
-    // because we wasted gas for nothing and to maker because he have lost opportunity
-    fn get_punishment_factor_bips(self: @TContractState) -> u16;
+//     // in case of failed action due to wrong taker details we punish router and distribute this fine to exchange,
+//     // because we wasted gas for nothing and to maker because he have lost opportunity
+//     fn get_punishment_factor_bips(self: @TContractState) -> u16;
 
-    // is router registered as router so he can route router orders to our exchange
-    // and we can match them offchain and then apply in router rollup ASAP
-    fn is_registered(self: @TContractState, router: ContractAddress) -> bool;
+//     // is router registered as router so he can route router orders to our exchange
+//     // and we can match them offchain and then apply in router rollup ASAP
+//     fn is_registered(self: @TContractState, router: ContractAddress) -> bool;
 
-    // does router have sufficient amount of base token to route
-    //  route must have some amount so in case of non legit taker we have balance to deduct from for punishment
-    fn have_sufficient_amount_to_route(self: @TContractState, router:ContractAddress) -> bool;
+//     // does router have sufficient amount of base token to route
+//     //  route must have some amount so in case of non legit taker we have balance to deduct from for punishment
+//     fn have_sufficient_amount_to_route(self: @TContractState, router:ContractAddress) -> bool;
 
-    fn balance_of_router(self:@TContractState, router:ContractAddress, coin:ContractAddress)->u256;
+//     fn balance_of_router(self:@TContractState, router:ContractAddress, coin:ContractAddress)->u256;
 
-    // get router address associated with given signer
-    fn get_router(self:@TContractState, signer:ContractAddress) -> ContractAddress;
+//     // get router address associated with given signer
+//     fn get_router(self:@TContractState, signer:ContractAddress) -> ContractAddress;
 
-    // how much one must hold have in balance to be registered as router
-    fn get_route_amount(self:@TContractState) -> u256;
-}
-
-
-#[starknet::component]
-mod router_component {
-    use ecdsa::check_ecdsa_signature;    
-    use super::{IRouter, ContractAddress, SlowModeDelay};
-    use starknet::{get_caller_address, get_contract_address, get_block_timestamp};
-    use starknet::info::get_block_number;
-    use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait, IERC20Dispatcher};
-    use kurosawa_akira::utils::common::DisplayContractAddress;
+//     // how much one must hold have in balance to be registered as router
+//     fn get_route_amount(self:@TContractState) -> u256;
+// }
 
 
+// #[starknet::component]
+// mod router_component {
+//     use ecdsa::check_ecdsa_signature;    
+//     use super::{IRouter, ContractAddress, SlowModeDelay};
+//     use starknet::{get_caller_address, get_contract_address, get_block_timestamp};
+//     use starknet::info::get_block_number;
+//     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait, IERC20Dispatcher};
+//     use kurosawa_akira::utils::common::DisplayContractAddress;
 
-    #[event]
-    #[derive(Drop, starknet::Event)]
-    enum Event {
-        Deposit:  Deposit,
-        Withdraw: Withdraw,
-        RouterRegistration: RouterRegistration,
-        Binding: Binding,
-        RouterMint: RouterMint,
-        RouterBurn: RouterBurn
-    }
 
-    #[derive(Drop, starknet::Event)]
-    struct Deposit {
-        #[key]
-        router: ContractAddress,
-        #[key]
-        token: ContractAddress,
-        funder: ContractAddress,
-        amount: u256,
-    }
 
-    #[derive(Drop, starknet::Event)]
-    struct Withdraw {
-        #[key]
-        router:ContractAddress,
-        #[key]
-        token:ContractAddress,
-        amount:u256,
-        receiver:ContractAddress,
-    }
+    // #[event]
+    // #[derive(Drop, starknet::Event)]
+    // enum Event {
+    //     Deposit:  Deposit,
+    //     Withdraw: Withdraw,
+    //     RouterRegistration: RouterRegistration,
+    //     Binding: Binding,
+    //     RouterMint: RouterMint,
+    //     RouterBurn: RouterBurn
+    // }
 
-    #[derive(Drop, starknet::Event)]
-    struct RouterRegistration {
-        #[key]
-        router:ContractAddress,
-        status: u8, //0registered, 1scheduled unregister, 2unregsiter
-    }
-    #[derive(Drop, starknet::Event)]
-    struct Binding {
-        #[key]
-        router:ContractAddress,
-        #[key]
-        signer:ContractAddress,
-        is_added:bool
-    }
+    // #[derive(Drop, starknet::Event)]
+    // struct Deposit {
+    //     #[key]
+    //     router: ContractAddress,
+    //     #[key]
+    //     token: ContractAddress,
+    //     funder: ContractAddress,
+    //     amount: u256,
+    // }
 
-    #[derive(Drop, starknet::Event)]
-    struct RouterMint {
-        token:ContractAddress,
-        router:ContractAddress,
-        amount:u256
-    }
-    #[derive(Drop, starknet::Event)]
-    struct RouterBurn {
-        router:ContractAddress,
-        token:ContractAddress,
-        amount:u256
-    }
+    // #[derive(Drop, starknet::Event)]
+    // struct Withdraw {
+    //     #[key]
+    //     router:ContractAddress,
+    //     #[key]
+    //     token:ContractAddress,
+    //     amount:u256,
+    //     receiver:ContractAddress,
+    // }
 
-    #[storage]
-    struct Storage {
-        pending_unregister:LegacyMap::<felt252, SlowModeDelay>,
-        delay: SlowModeDelay, // set by exchange, can be updated but no more then original
-        min_to_route:u256,
-        token_to_user:LegacyMap::<(ContractAddress,ContractAddress),u256>,
-        registered:LegacyMap::<ContractAddress,bool>,
-        native_base_token:ContractAddress,
-        signer_to_router:LegacyMap<ContractAddress,ContractAddress>,
-        punishment_bips:u16
-    }
+    // #[derive(Drop, starknet::Event)]
+    // struct RouterRegistration {
+    //     #[key]
+    //     router:ContractAddress,
+    //     status: u8, //0registered, 1scheduled unregister, 2unregsiter
+    // }
+    // #[derive(Drop, starknet::Event)]
+    // struct Binding {
+    //     #[key]
+    //     router:ContractAddress,
+    //     #[key]
+    //     signer:ContractAddress,
+    //     is_added:bool
+    // }
 
-    #[embeddable_as(Routable)]
-    impl RoutableImpl<TContractState, +HasComponent<TContractState>> of super::IRouter<ComponentState<TContractState>> {
+    // #[derive(Drop, starknet::Event)]
+    // struct RouterMint {
+    //     token:ContractAddress,
+    //     router:ContractAddress,
+    //     amount:u256
+    // }
+    // #[derive(Drop, starknet::Event)]
+    // struct RouterBurn {
+    //     router:ContractAddress,
+    //     token:ContractAddress,
+    //     amount:u256
+    // }
 
-        fn get_router(self:@ComponentState<TContractState>, signer:ContractAddress) -> ContractAddress { self.signer_to_router.read(signer)}
+    // #[storage]
+    // struct Storage {
+    //     pending_unregister:LegacyMap::<felt252, SlowModeDelay>,
+    //     delay: SlowModeDelay, // set by exchange, can be updated but no more then original
+    //     min_to_route:u256,
+    //     token_to_user:LegacyMap::<(ContractAddress,ContractAddress),u256>,
+    //     registered:LegacyMap::<ContractAddress,bool>,
+    //     native_base_token:ContractAddress,
+    //     signer_to_router:LegacyMap<ContractAddress,ContractAddress>,
+    //     punishment_bips:u16
+    // }
 
-        fn get_route_amount(self:@ComponentState<TContractState>) -> u256 { 2 * self.min_to_route.read() }
+    // #[embeddable_as(Routable)]
+    // impl RoutableImpl<TContractState, +HasComponent<TContractState>> of super::IRouter<ComponentState<TContractState>> {
+
+        // fn get_router(self:@ComponentState<TContractState>, signer:ContractAddress) -> ContractAddress { self.signer_to_router.read(signer)}
+
+        // fn get_route_amount(self:@ComponentState<TContractState>) -> u256 { 2 * self.min_to_route.read() }
         
         fn router_deposit(ref self:ComponentState<TContractState>, router:ContractAddress, coin:ContractAddress, amount:u256) {
             let (erc20, contract_addr, caller) = (IERC20Dispatcher{contract_address: coin}, get_contract_address(), get_caller_address());
@@ -235,21 +235,21 @@ mod router_component {
             return check_ecdsa_signature(message, signer.into(), sig_r, sig_s);
         }
 
-        fn get_punishment_factor_bips(self: @ComponentState<TContractState>) -> u16 { return self.punishment_bips.read();}
+        // fn get_punishment_factor_bips(self: @ComponentState<TContractState>) -> u16 { return self.punishment_bips.read();}
         
-        fn is_registered(self: @ComponentState<TContractState>, router: ContractAddress) -> bool { return self.registered.read(router);}
+        // fn is_registered(self: @ComponentState<TContractState>, router: ContractAddress) -> bool { return self.registered.read(router);}
 
-        fn have_sufficient_amount_to_route(self: @ComponentState<TContractState>, router:ContractAddress) -> bool {
-            return self.token_to_user.read((self.native_base_token.read(), router)) >= self.min_to_route.read();
-        }
+        // fn have_sufficient_amount_to_route(self: @ComponentState<TContractState>, router:ContractAddress) -> bool {
+        //     return self.token_to_user.read((self.native_base_token.read(), router)) >= self.min_to_route.read();
+        // }
 
-        fn balance_of_router(self:@ComponentState<TContractState>, router:ContractAddress, coin:ContractAddress)-> u256 {
-            return self.token_to_user.read((coin, router));
-        }
-    }
+        // fn balance_of_router(self:@ComponentState<TContractState>, router:ContractAddress, coin:ContractAddress)-> u256 {
+        //     return self.token_to_user.read((coin, router));
+        // }
+    // }
 
-    #[generate_trait]
-    impl InternalRoutableImpl<TContractState, +HasComponent<TContractState>> of InternalRoutable<TContractState> {
+    // #[generate_trait]
+    // impl InternalRoutableImpl<TContractState, +HasComponent<TContractState>> of InternalRoutable<TContractState> {
         fn initializer(ref self: ComponentState<TContractState>, delay:SlowModeDelay, wrapped_native_token:ContractAddress, min_to_route:u256, punishment_bips:u16 ) {
             self.min_to_route.write(min_to_route); 
             self.native_base_token.write(wrapped_native_token);
@@ -270,6 +270,6 @@ mod router_component {
             self.token_to_user.write((token, router), balance - amount);
             self.emit(RouterBurn{router, token, amount});
         }
-    }
+    // }
 
-}
+// }

@@ -1,68 +1,68 @@
-use kurosawa_akira::Order::{SignedOrder,Order, OrderTradeInfo, OrderFee, FixedFee,
-            get_feeable_qty,get_limit_px, do_taker_price_checks, do_maker_checks, get_available_base_qty, TakerSelfTradePreventionMode};
+// use kurosawa_akira::Order::{SignedOrder,Order, OrderTradeInfo, OrderFee, FixedFee,
+//             get_feeable_qty,get_limit_px, do_taker_price_checks, do_maker_checks, get_available_base_qty, TakerSelfTradePreventionMode};
 
-#[starknet::interface]
-trait IEcosystemTradeLogic<TContractState> {
-    fn get_ecosystem_trade_info(self: @TContractState, order_hash: felt252) -> OrderTradeInfo;
-    fn get_ecosystem_trades_info(self: @TContractState, order_hashes: Array<felt252>) -> Array<OrderTradeInfo>;
-}
+// #[starknet::interface]
+// trait IEcosystemTradeLogic<TContractState> {
+//     fn get_ecosystem_trade_info(self: @TContractState, order_hash: felt252) -> OrderTradeInfo;
+//     fn get_ecosystem_trades_info(self: @TContractState, order_hashes: Array<felt252>) -> Array<OrderTradeInfo>;
+// }
 
-#[starknet::component]
-mod ecosystem_trade_component {
-    use kurosawa_akira::ExchangeBalanceComponent::INewExchangeBalance;
-    use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::InternalExchangeBalanceble;
-    use core::{traits::TryInto,option::OptionTrait,array::ArrayTrait};
-    use kurosawa_akira::FundsTraits::{PoseidonHash,PoseidonHashImpl};
-    use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as balance_component;
-    use kurosawa_akira::{NonceComponent::INonceLogic,SignerComponent::ISignerLogic};
+// #[starknet::component]
+// mod ecosystem_trade_component {
+//     use kurosawa_akira::ExchangeBalanceComponent::INewExchangeBalance;
+//     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::InternalExchangeBalanceble;
+//     use core::{traits::TryInto,option::OptionTrait,array::ArrayTrait};
+//     use kurosawa_akira::FundsTraits::{PoseidonHash,PoseidonHashImpl};
+//     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as balance_component;
+//     use kurosawa_akira::{NonceComponent::INonceLogic,SignerComponent::ISignerLogic};
     
-    use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
-    use starknet::{get_contract_address, ContractAddress, get_block_timestamp};
-    use super::{do_taker_price_checks,do_maker_checks,get_available_base_qty, get_feeable_qty, get_limit_px, SignedOrder,Order, TakerSelfTradePreventionMode, OrderTradeInfo, OrderFee, FixedFee};
-    use kurosawa_akira::utils::common::DisplayContractAddress;
+//     use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
+//     use starknet::{get_contract_address, ContractAddress, get_block_timestamp};
+//     use super::{do_taker_price_checks,do_maker_checks,get_available_base_qty, get_feeable_qty, get_limit_px, SignedOrder,Order, TakerSelfTradePreventionMode, OrderTradeInfo, OrderFee, FixedFee};
+//     use kurosawa_akira::utils::common::DisplayContractAddress;
 
-    #[storage]
-    struct Storage {
-        orders_trade_info: LegacyMap::<felt252, OrderTradeInfo>
-    }
+    // #[storage]
+    // struct Storage {
+    //     orders_trade_info: LegacyMap::<felt252, OrderTradeInfo>
+    // }
 
 
-    #[event]
-    #[derive(Drop, starknet::Event)]
-    enum Event {
-        Trade: Trade,
-    }
+    // // #[event]
+    // // #[derive(Drop, starknet::Event)]
+    // // enum Event {
+    // //     Trade: Trade,
+    // // }
 
-    #[derive(Drop, starknet::Event)]
-    struct Trade {
-        maker:ContractAddress,
-        taker:ContractAddress,
-        #[key]
-        ticker:(ContractAddress,ContractAddress),
-        amount_base: u256,
-        amount_quote: u256,
-        is_sell_side: bool,
-    }
+    // #[derive(Drop, starknet::Event)]
+    // struct Trade {
+    //     maker:ContractAddress,
+    //     taker:ContractAddress,
+    //     #[key]
+    //     ticker:(ContractAddress,ContractAddress),
+    //     amount_base: u256,
+    //     amount_quote: u256,
+    //     is_sell_side: bool,
+    // }
 
-    #[embeddable_as(EcosystemTradable)]
-    impl EcosystemTradableImpl<TContractState, +HasComponent<TContractState>,+INonceLogic<TContractState>,+balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of super::IEcosystemTradeLogic<ComponentState<TContractState>> {
-        fn get_ecosystem_trade_info(self: @ComponentState<TContractState>, order_hash: felt252) -> OrderTradeInfo {
-            return self.orders_trade_info.read(order_hash);
-        }
-        fn get_ecosystem_trades_info(self: @ComponentState<TContractState>, mut order_hashes: Array<felt252>) -> Array<OrderTradeInfo> {
-            let mut res = ArrayTrait::new();
-            loop {
-                match order_hashes.pop_front(){
-                    Option::Some(order_hash) => {res.append(self.get_ecosystem_trade_info(order_hash))}, Option::None(_) => {break();}
-                }
-            };
-            return res; 
-        }
-    }
+    // #[embeddable_as(EcosystemTradable)]
+    // impl EcosystemTradableImpl<TContractState, +HasComponent<TContractState>,+INonceLogic<TContractState>,+balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of super::IEcosystemTradeLogic<ComponentState<TContractState>> {
+    //     fn get_ecosystem_trade_info(self: @ComponentState<TContractState>, order_hash: felt252) -> OrderTradeInfo {
+    //         return self.orders_trade_info.read(order_hash);
+    //     }
+    //     fn get_ecosystem_trades_info(self: @ComponentState<TContractState>, mut order_hashes: Array<felt252>) -> Array<OrderTradeInfo> {
+    //         let mut res = ArrayTrait::new();
+    //         loop {
+    //             match order_hashes.pop_front(){
+    //                 Option::Some(order_hash) => {res.append(self.get_ecosystem_trade_info(order_hash))}, Option::None(_) => {break();}
+    //             }
+    //         };
+    //         return res; 
+    //     }
+    // }
 
-     #[generate_trait]
-    impl InternalEcosystemTradableImpl<TContractState, +HasComponent<TContractState>,+INonceLogic<TContractState>,
-    +balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of InternalEcosystemTradable<TContractState> {
+    //  #[generate_trait]
+    // impl InternalEcosystemTradableImpl<TContractState, +HasComponent<TContractState>,+INonceLogic<TContractState>,
+    // +balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of InternalEcosystemTradable<TContractState> {
 
         // exposed only in contract user
         fn apply_trades(ref self: ComponentState<TContractState>, mut taker_orders:Array<(SignedOrder, bool)>, mut maker_orders:Array<SignedOrder>, mut iters:Array<(u8, bool)>, 
@@ -218,27 +218,27 @@ mod ecosystem_trade_component {
             balancer.validate_and_apply_gas_fee_internal(taker_order.maker, taker_order.fee.gas_fee, gas_price, trades, cur_gas_per_action);
         }
 
-    }
+    // }
 
-    // this (or something similar) will potentially be generated in the next RC
-    #[generate_trait]
-    impl GetBalancer<
-        TContractState,
-        +HasComponent<TContractState>,
-        +balance_component::HasComponent<TContractState>,
-        +Drop<TContractState>> of GetBalancerTrait<TContractState> {
-        fn get_balancer(
-            self: @ComponentState<TContractState>
-        ) -> @balance_component::ComponentState<TContractState> {
-            let contract = self.get_contract();
-            balance_component::HasComponent::<TContractState>::get_component(contract)
-        }
+//     // this (or something similar) will potentially be generated in the next RC
+//     #[generate_trait]
+//     impl GetBalancer<
+//         TContractState,
+//         +HasComponent<TContractState>,
+//         +balance_component::HasComponent<TContractState>,
+//         +Drop<TContractState>> of GetBalancerTrait<TContractState> {
+//         fn get_balancer(
+//             self: @ComponentState<TContractState>
+//         ) -> @balance_component::ComponentState<TContractState> {
+//             let contract = self.get_contract();
+//             balance_component::HasComponent::<TContractState>::get_component(contract)
+//         }
 
-        fn get_balancer_mut(
-            ref self: ComponentState<TContractState>
-        ) -> balance_component::ComponentState<TContractState> {
-            let mut contract = self.get_contract_mut();
-            balance_component::HasComponent::<TContractState>::get_component_mut(ref contract)
-        }
-    }
-}
+//         fn get_balancer_mut(
+//             ref self: ComponentState<TContractState>
+//         ) -> balance_component::ComponentState<TContractState> {
+//             let mut contract = self.get_contract_mut();
+//             balance_component::HasComponent::<TContractState>::get_component_mut(ref contract)
+//         }
+//     }
+// }

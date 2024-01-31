@@ -1,92 +1,92 @@
 
 
 
-#[starknet::contract]
-mod LayerAkira {
-    use core::starknet::event::EventEmitter;
-    use kurosawa_akira::NonceComponent::nonce_component::InternalNonceable;
-    use kurosawa_akira::FundsTraits::PoseidonHash;
-    use starknet::{ContractAddress, get_caller_address};
+// #[starknet::contract]
+// mod LayerAkira {
+//     use core::starknet::event::EventEmitter;
+//     use kurosawa_akira::NonceComponent::nonce_component::InternalNonceable;
+//     use kurosawa_akira::FundsTraits::PoseidonHash;
+//     use starknet::{ContractAddress, get_caller_address};
 
-    use kurosawa_akira::WithdrawComponent::withdraw_component::InternalWithdrawable;
-    use starknet::{get_contract_address};
+//     use kurosawa_akira::WithdrawComponent::withdraw_component::InternalWithdrawable;
+//     use starknet::{get_contract_address};
     
    
     
-    use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::InternalExchangeBalanceble;
-    use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as  exchange_balance_logic_component;
-    use kurosawa_akira::SignerComponent::signer_logic_component as  signer_logic_component;
-    use kurosawa_akira::DepositComponent::deposit_component as  deposit_component;
-    use kurosawa_akira::WithdrawComponent::withdraw_component as withdraw_component;
-    use kurosawa_akira::NonceComponent::nonce_component as nonce_component;
-    use kurosawa_akira::RouterComponent::router_component as router_component;
-    use kurosawa_akira::EcosystemTradeComponent::ecosystem_trade_component as ecosystem_trade_component;
-    use kurosawa_akira::RouterTradeComponent::router_trade_component as router_trade_component;
-    use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
-    use kurosawa_akira::WithdrawComponent::SignedWithdraw;
-    use kurosawa_akira::Order::{SignedOrder};
-    use kurosawa_akira::NonceComponent::SignedIncreaseNonce;
+//     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::InternalExchangeBalanceble;
+//     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as  exchange_balance_logic_component;
+//     use kurosawa_akira::SignerComponent::signer_logic_component as  signer_logic_component;
+//     use kurosawa_akira::DepositComponent::deposit_component as  deposit_component;
+//     use kurosawa_akira::WithdrawComponent::withdraw_component as withdraw_component;
+//     use kurosawa_akira::NonceComponent::nonce_component as nonce_component;
+//     use kurosawa_akira::RouterComponent::router_component as router_component;
+//     use kurosawa_akira::EcosystemTradeComponent::ecosystem_trade_component as ecosystem_trade_component;
+//     use kurosawa_akira::RouterTradeComponent::router_trade_component as router_trade_component;
+//     use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
+//     use kurosawa_akira::WithdrawComponent::SignedWithdraw;
+//     use kurosawa_akira::Order::{SignedOrder};
+//     use kurosawa_akira::NonceComponent::SignedIncreaseNonce;
     
-    use kurosawa_akira::EcosystemTradeComponent::ecosystem_trade_component::InternalEcosystemTradable;
-    use kurosawa_akira::RouterTradeComponent::router_trade_component::InternalRouterTradable;
+//     use kurosawa_akira::EcosystemTradeComponent::ecosystem_trade_component::InternalEcosystemTradable;
+//     use kurosawa_akira::RouterTradeComponent::router_trade_component::InternalRouterTradable;
     
-    use router_component::InternalRoutable;
+//     use router_component::InternalRoutable;
     
     
-    component!(path: exchange_balance_logic_component,storage: balancer_s, event:BalancerEvent);
-    component!(path: signer_logic_component,storage: signer_s, event:SignerEvent);
-    component!(path: deposit_component,storage: deposit_s, event:DepositEvent);
-    component!(path: withdraw_component,storage: withdraw_s, event:WithdrawEvent);    
-    component!(path: nonce_component, storage: nonce_s, event:NonceEvent);
-    component!(path: router_component, storage: router_s, event:RouterEvent);
-    component!(path: ecosystem_trade_component, storage: ecosystem_trade_s, event:EcosystemTradeEvent);
-    component!(path: router_trade_component, storage: router_trade_s, event:RouterTradeEvent);
+//     component!(path: exchange_balance_logic_component,storage: balancer_s, event:BalancerEvent);
+//     component!(path: signer_logic_component,storage: signer_s, event:SignerEvent);
+//     component!(path: deposit_component,storage: deposit_s, event:DepositEvent);
+//     component!(path: withdraw_component,storage: withdraw_s, event:WithdrawEvent);    
+//     component!(path: nonce_component, storage: nonce_s, event:NonceEvent);
+//     component!(path: router_component, storage: router_s, event:RouterEvent);
+//     component!(path: ecosystem_trade_component, storage: ecosystem_trade_s, event:EcosystemTradeEvent);
+//     component!(path: router_trade_component, storage: router_trade_s, event:RouterTradeEvent);
 
     
 
-    #[abi(embed_v0)]
-    impl ExchangeBalancebleImpl = exchange_balance_logic_component::ExchangeBalanceble<ContractState>;
-    #[abi(embed_v0)]
-    impl DepositableImpl = deposit_component::Depositable<ContractState>;
-    #[abi(embed_v0)]
-    impl SignableImpl = signer_logic_component::Signable<ContractState>;
-    #[abi(embed_v0)]
-    impl WithdrawableImpl = withdraw_component::Withdrawable<ContractState>;
-    #[abi(embed_v0)]
-    impl NonceableImpl = nonce_component::Nonceable<ContractState>;
-    #[abi(embed_v0)]
-    impl RoutableImpl = router_component::Routable<ContractState>;
-    #[abi(embed_v0)]
-    impl EcosystemTradableImpl = ecosystem_trade_component::EcosystemTradable<ContractState>;
-    #[abi(embed_v0)]
-    impl RouterTradableImpl = router_trade_component::RouterTradable<ContractState>;
+//     #[abi(embed_v0)]
+//     impl ExchangeBalancebleImpl = exchange_balance_logic_component::ExchangeBalanceble<ContractState>;
+//     #[abi(embed_v0)]
+//     impl DepositableImpl = deposit_component::Depositable<ContractState>;
+//     #[abi(embed_v0)]
+//     impl SignableImpl = signer_logic_component::Signable<ContractState>;
+//     #[abi(embed_v0)]
+//     impl WithdrawableImpl = withdraw_component::Withdrawable<ContractState>;
+//     #[abi(embed_v0)]
+//     impl NonceableImpl = nonce_component::Nonceable<ContractState>;
+//     #[abi(embed_v0)]
+//     impl RoutableImpl = router_component::Routable<ContractState>;
+//     #[abi(embed_v0)]
+//     impl EcosystemTradableImpl = ecosystem_trade_component::EcosystemTradable<ContractState>;
+//     #[abi(embed_v0)]
+//     impl RouterTradableImpl = router_trade_component::RouterTradable<ContractState>;
 
     
 
-    #[storage]
-    struct Storage {
-        #[substorage(v0)]
-        balancer_s: exchange_balance_logic_component::Storage,
-        #[substorage(v0)]
-        deposit_s: deposit_component::Storage,
-        #[substorage(v0)]
-        signer_s: signer_logic_component::Storage,
-        #[substorage(v0)]
-        withdraw_s: withdraw_component::Storage,
-        #[substorage(v0)]
-        nonce_s: nonce_component::Storage,
-        #[substorage(v0)]
-        router_s: router_component::Storage,
-        #[substorage(v0)]
-        ecosystem_trade_s: ecosystem_trade_component::Storage,
-        #[substorage(v0)]
-        router_trade_s: router_trade_component::Storage,
+//     #[storage]
+//     struct Storage {
+//         #[substorage(v0)]
+//         balancer_s: exchange_balance_logic_component::Storage,
+//         #[substorage(v0)]
+//         deposit_s: deposit_component::Storage,
+//         #[substorage(v0)]
+//         signer_s: signer_logic_component::Storage,
+//         #[substorage(v0)]
+//         withdraw_s: withdraw_component::Storage,
+//         #[substorage(v0)]
+//         nonce_s: nonce_component::Storage,
+//         #[substorage(v0)]
+//         router_s: router_component::Storage,
+//         #[substorage(v0)]
+//         ecosystem_trade_s: ecosystem_trade_component::Storage,
+//         #[substorage(v0)]
+//         router_trade_s: router_trade_component::Storage,
 
-        max_slow_mode_delay:SlowModeDelay, // upper bound for all delayed actions
-        exchange_invokers: LegacyMap::<ContractAddress, bool>,
-        owner: ContractAddress, // owner of contact that have permissions to grant and revoke role for invokers and update slow mode 
-        exchange_version:u16 // exchange version
-    }
+//         max_slow_mode_delay:SlowModeDelay, // upper bound for all delayed actions
+//         exchange_invokers: LegacyMap::<ContractAddress, bool>,
+//         owner: ContractAddress, // owner of contact that have permissions to grant and revoke role for invokers and update slow mode 
+//         exchange_version:u16 // exchange version
+//     }
 
 
     #[constructor]
@@ -114,8 +114,8 @@ mod LayerAkira {
         self.emit(UpdateExchangeInvoker{invoker, enabled});
     }
 
-    #[external(v0)]
-    fn version(self: @ContractState) -> u16 { return self.exchange_version.read();}
+    // #[external(v0)]
+    // fn version(self: @ContractState) -> u16 { return self.exchange_version.read();}
 
 
     #[external(v0)]
@@ -240,38 +240,38 @@ mod LayerAkira {
         return res;
     }
 
-    #[event]
-    #[derive(Drop, starknet::Event)]
-    enum Event {
-        BalancerEvent: exchange_balance_logic_component::Event,
-        DepositEvent: deposit_component::Event,
-        SignerEvent: signer_logic_component::Event,
-        WithdrawEvent: withdraw_component::Event,
+    // #[event]
+    // #[derive(Drop, starknet::Event)]
+    // enum Event {
+    //     BalancerEvent: exchange_balance_logic_component::Event,
+    //     DepositEvent: deposit_component::Event,
+    //     SignerEvent: signer_logic_component::Event,
+    //     WithdrawEvent: withdraw_component::Event,
         
-        NonceEvent: nonce_component::Event,
-        RouterEvent: router_component::Event,
-        EcosystemTradeEvent: ecosystem_trade_component::Event,
-        RouterTradeEvent: router_trade_component::Event,
-        UpdateExchangeInvoker: UpdateExchangeInvoker,
-        BaseTokenUpdate: BaseTokenUpdate,
-        FeeRecipientUpdate: FeeRecipientUpdate,
-        RouterComponentUpdate: RouterComponentUpdate,
-        WithdrawComponentUpdate: WithdrawComponentUpdate,
-        VersionUpdate: VersionUpdate
-    }
+    //     NonceEvent: nonce_component::Event,
+    //     RouterEvent: router_component::Event,
+    //     EcosystemTradeEvent: ecosystem_trade_component::Event,
+    //     RouterTradeEvent: router_trade_component::Event,
+    //     UpdateExchangeInvoker: UpdateExchangeInvoker,
+    //     BaseTokenUpdate: BaseTokenUpdate,
+    //     FeeRecipientUpdate: FeeRecipientUpdate,
+    //     RouterComponentUpdate: RouterComponentUpdate,
+    //     WithdrawComponentUpdate: WithdrawComponentUpdate,
+    //     VersionUpdate: VersionUpdate
+    // }
 
-    #[derive(Drop, starknet::Event)]
-    struct UpdateExchangeInvoker {#[key] invoker: ContractAddress, enabled: bool}
-    #[derive(Drop, starknet::Event)]
-    struct BaseTokenUpdate {new_base_token: ContractAddress}
-    #[derive(Drop, starknet::Event)]
-    struct FeeRecipientUpdate {new_fee_recipient: ContractAddress}
-    #[derive(Drop, starknet::Event)]
-    struct RouterComponentUpdate {new_delay:SlowModeDelay, min_amount_to_route:u256, new_punishment_bips:u16}
-    #[derive(Drop, starknet::Event)]
-    struct WithdrawComponentUpdate {new_delay:SlowModeDelay}
-    #[derive(Drop, starknet::Event)]
-    struct VersionUpdate {new_version:u16}
+    // #[derive(Drop, starknet::Event)]
+    // struct UpdateExchangeInvoker {#[key] invoker: ContractAddress, enabled: bool}
+    // #[derive(Drop, starknet::Event)]
+    // struct BaseTokenUpdate {new_base_token: ContractAddress}
+    // #[derive(Drop, starknet::Event)]
+    // struct FeeRecipientUpdate {new_fee_recipient: ContractAddress}
+    // #[derive(Drop, starknet::Event)]
+    // struct RouterComponentUpdate {new_delay:SlowModeDelay, min_amount_to_route:u256, new_punishment_bips:u16}
+    // #[derive(Drop, starknet::Event)]
+    // struct WithdrawComponentUpdate {new_delay:SlowModeDelay}
+    // #[derive(Drop, starknet::Event)]
+    // struct VersionUpdate {new_version:u16}
     
 
-}
+//}

@@ -1,39 +1,39 @@
-use starknet::ContractAddress;
+// use starknet::ContractAddress;
 
-#[starknet::interface]
-trait IDeposit<TContractState> {
-    fn deposit(ref self: TContractState, receiver:ContractAddress, token:ContractAddress, amount:u256);
-}
+// #[starknet::interface]
+// trait IDeposit<TContractState> {
+//     fn deposit(ref self: TContractState, receiver:ContractAddress, token:ContractAddress, amount:u256);
+// }
 
-#[starknet::component]
-mod deposit_component {
-    use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::InternalExchangeBalanceble;
-    use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as balance_component;
-    use balance_component::{InternalExchangeBalancebleImpl, ExchangeBalancebleImpl};
-    use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait, IERC20Dispatcher};
-    use starknet::{get_caller_address, get_contract_address, ContractAddress};
+// #[starknet::component]
+// mod deposit_component {
+//     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::InternalExchangeBalanceble;
+//     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as balance_component;
+//     use balance_component::{InternalExchangeBalancebleImpl, ExchangeBalancebleImpl};
+//     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait, IERC20Dispatcher};
+//     use starknet::{get_caller_address, get_contract_address, ContractAddress};
 
-    #[event]
-    #[derive(Drop, starknet::Event)]
-    enum Event {
-        Deposit: Deposit,
-    }
+//     #[event]
+//     #[derive(Drop, starknet::Event)]
+//     enum Event {
+//         Deposit: Deposit,
+//     }
 
-    #[derive(Drop, starknet::Event)]
-    struct Deposit {
-        #[key]
-        receiver: ContractAddress,
-        token: ContractAddress,
-        funder:ContractAddress,
-        amount: u256
-    }
+    // #[derive(Drop, starknet::Event)]
+    // struct Deposit {
+    //     #[key]
+    //     receiver: ContractAddress,
+    //     token: ContractAddress,
+    //     funder:ContractAddress,
+    //     amount: u256
+    // }
 
 
-    #[storage]
-    struct Storage {}
+//     #[storage]
+//     struct Storage {}
 
-    #[embeddable_as(Depositable)]
-    impl DepositableImpl<TContractState, +HasComponent<TContractState>,+balance_component::HasComponent<TContractState>,+Drop<TContractState>> of super::IDeposit<ComponentState<TContractState>> {
+    // #[embeddable_as(Depositable)]
+    // impl DepositableImpl<TContractState, +HasComponent<TContractState>,+balance_component::HasComponent<TContractState>,+Drop<TContractState>> of super::IDeposit<ComponentState<TContractState>> {
 
         fn deposit(ref self: ComponentState<TContractState>, receiver:ContractAddress, token:ContractAddress, amount:u256) {
             // User invokes this method and exchange will tfer amount of token to receiver
@@ -50,29 +50,29 @@ mod deposit_component {
             self.emit(Deposit{receiver:receiver, token:token, funder:caller, amount:amount});
         }
 
-    }
+    // }
 
 
 
-    // this (or something similar) will potentially be generated in the next RC
-    #[generate_trait]
-    impl GetBalancer<
-        TContractState,
-        +HasComponent<TContractState>,
-        +balance_component::HasComponent<TContractState>,
-        +Drop<TContractState>> of GetBalancerTrait<TContractState> {
-        fn get_balancer(
-            self: @ComponentState<TContractState>
-        ) -> @balance_component::ComponentState<TContractState> {
-            let contract = self.get_contract();
-            balance_component::HasComponent::<TContractState>::get_component(contract)
-        }
+//     // this (or something similar) will potentially be generated in the next RC
+//     #[generate_trait]
+//     impl GetBalancer<
+//         TContractState,
+//         +HasComponent<TContractState>,
+//         +balance_component::HasComponent<TContractState>,
+//         +Drop<TContractState>> of GetBalancerTrait<TContractState> {
+//         // fn get_balancer(
+//         //     self: @ComponentState<TContractState>
+//         // ) -> @balance_component::ComponentState<TContractState> {
+//         //     let contract = self.get_contract();
+//         //     balance_component::HasComponent::<TContractState>::get_component(contract)
+//         // }
 
-        fn get_balancer_mut(
-            ref self: ComponentState<TContractState>
-        ) -> balance_component::ComponentState<TContractState> {
-            let mut contract = self.get_contract_mut();
-            balance_component::HasComponent::<TContractState>::get_component_mut(ref contract)
-        }
-    }
-}
+//         fn get_balancer_mut(
+//             ref self: ComponentState<TContractState>
+//         ) -> balance_component::ComponentState<TContractState> {
+//             let mut contract = self.get_contract_mut();
+//             balance_component::HasComponent::<TContractState>::get_component_mut(ref contract)
+//         }
+//     }
+// // }

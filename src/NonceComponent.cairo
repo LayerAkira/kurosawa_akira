@@ -1,80 +1,80 @@
-use kurosawa_akira::Order::GasFee;
-use starknet::ContractAddress;
+// use kurosawa_akira::Order::GasFee;
+// use starknet::ContractAddress;
 
-#[derive(Copy, Drop, Serde, PartialEq)]
-struct IncreaseNonce {
-    maker: ContractAddress,
-    new_nonce: u32,
-    gas_fee: GasFee,
-    salt: felt252,
-}
+// #[derive(Copy, Drop, Serde, PartialEq)]
+// struct IncreaseNonce {
+//     maker: ContractAddress,
+//     new_nonce: u32,
+//     gas_fee: GasFee,
+//     salt: felt252,
+// }
 
-#[derive(Copy, Drop, Serde)]
-struct SignedIncreaseNonce {
-    increase_nonce: IncreaseNonce,
-    sign: (felt252, felt252),
-}
+// #[derive(Copy, Drop, Serde)]
+// struct SignedIncreaseNonce {
+//     increase_nonce: IncreaseNonce,
+//     sign: (felt252, felt252),
+// }
 
-#[starknet::interface]
-trait INonceLogic<TContractState> {
-    fn get_nonce(self: @TContractState, maker: ContractAddress) -> u32;
-    fn get_nonces(self: @TContractState, makers: Span<ContractAddress>)-> Array<u32>;
-}
+// #[starknet::interface]
+// trait INonceLogic<TContractState> {
+//     fn get_nonce(self: @TContractState, maker: ContractAddress) -> u32;
+//     fn get_nonces(self: @TContractState, makers: Span<ContractAddress>)-> Array<u32>;
+// }
 
 
 
-#[starknet::component]
-mod nonce_component {
-    use kurosawa_akira::ExchangeBalanceComponent::INewExchangeBalance;
-    use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as balance_component;
-    use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
-    use super::{GasFee,ContractAddress};
-    use kurosawa_akira::SignerComponent::{ISignerLogic};
-    use kurosawa_akira::FundsTraits::PoseidonHashImpl;
+// #[starknet::component]
+// mod nonce_component {
+//     use kurosawa_akira::ExchangeBalanceComponent::INewExchangeBalance;
+//     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as balance_component;
+//     use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
+//     use super::{GasFee,ContractAddress};
+//     use kurosawa_akira::SignerComponent::{ISignerLogic};
+//     use kurosawa_akira::FundsTraits::PoseidonHashImpl;
 
-    #[event]
-    #[derive(Drop, starknet::Event)]
-    enum Event {
-        NonceIncrease: NonceIncrease,
-    }
+    // #[event]
+    // #[derive(Drop, starknet::Event)]
+    // enum Event {
+    //     NonceIncrease: NonceIncrease,
+    // }
 
-    #[derive(Drop, starknet::Event)]
-    struct NonceIncrease {
-        #[key]
-        maker: ContractAddress,
-        new_nonce: u32,
-    }
+    // #[derive(Drop, starknet::Event)]
+    // struct NonceIncrease {
+    //     #[key]
+    //     maker: ContractAddress,
+    //     new_nonce: u32,
+    // }
 
-    #[storage]
-    struct Storage {
-        nonces: LegacyMap::<ContractAddress, u32>, // user address to his trading nonce
-    }
+    // #[storage]
+    // struct Storage {
+    //     nonces: LegacyMap::<ContractAddress, u32>, // user address to his trading nonce
+    // }
 
-    #[embeddable_as(Nonceable)]
-    impl NonceableImpl<TContractState, +HasComponent<TContractState>,
-    +balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of super::INonceLogic<ComponentState<TContractState>> {
+    // #[embeddable_as(Nonceable)]
+    // impl NonceableImpl<TContractState, +HasComponent<TContractState>,
+    // +balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of super::INonceLogic<ComponentState<TContractState>> {
 
         
         fn get_nonce(self: @ComponentState<TContractState>, maker: ContractAddress) -> u32 { self.nonces.read(maker)}
 
-        fn get_nonces(self: @ComponentState<TContractState>, makers: Span<ContractAddress>) -> Array<u32> {
-            //Note makers should not be zero
-            let mut res: Array<u32> = ArrayTrait::new();
-            let mut idx = 0;
-            let sz = makers.len(); 
-            loop {
-                let item = *makers.at(idx);
-                res.append(self.nonces.read(item));
-                idx += 1;
-                if idx == sz { break;}
-            };
-            return res;
-        }
-    }
+    //     fn get_nonces(self: @ComponentState<TContractState>, makers: Span<ContractAddress>) -> Array<u32> {
+    //         //Note makers should not be zero
+    //         let mut res: Array<u32> = ArrayTrait::new();
+    //         let mut idx = 0;
+    //         let sz = makers.len(); 
+    //         loop {
+    //             let item = *makers.at(idx);
+    //             res.append(self.nonces.read(item));
+    //             idx += 1;
+    //             if idx == sz { break;}
+    //         };
+    //         return res;
+    //     }
+    // }
 
-     #[generate_trait]
-    impl InternalWithdrawableImpl<TContractState, +HasComponent<TContractState>,
-    +balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of InternalNonceable<TContractState> {
+    //  #[generate_trait]
+    // impl InternalWithdrawableImpl<TContractState, +HasComponent<TContractState>,
+    // +balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of InternalNonceable<TContractState> {
         fn apply_increase_nonce(ref self: ComponentState<TContractState>, signed_nonce_increase: super::SignedIncreaseNonce, gas_price:u256, cur_gas_per_action:u32) {
             let nonce_increase = signed_nonce_increase.increase_nonce;
             let key = nonce_increase.get_poseidon_hash();
@@ -88,28 +88,28 @@ mod nonce_component {
 
             self.emit(NonceIncrease{ maker: nonce_increase.maker, new_nonce:nonce_increase.new_nonce});
         }
-    }
+    // }
 
-    // this (or something similar) will potentially be generated in the next RC
-    #[generate_trait]
-    impl GetBalancer<
-        TContractState,
-        +HasComponent<TContractState>,
-        +balance_component::HasComponent<TContractState>,
-        +Drop<TContractState>> of GetBalancerTrait<TContractState> {
-        fn get_balancer(
-            self: @ComponentState<TContractState>
-        ) -> @balance_component::ComponentState<TContractState> {
-            let contract = self.get_contract();
-            balance_component::HasComponent::<TContractState>::get_component(contract)
-        }
+//     // this (or something similar) will potentially be generated in the next RC
+//     #[generate_trait]
+//     impl GetBalancer<
+//         TContractState,
+//         +HasComponent<TContractState>,
+//         +balance_component::HasComponent<TContractState>,
+//         +Drop<TContractState>> of GetBalancerTrait<TContractState> {
+//         fn get_balancer(
+//             self: @ComponentState<TContractState>
+//         ) -> @balance_component::ComponentState<TContractState> {
+//             let contract = self.get_contract();
+//             balance_component::HasComponent::<TContractState>::get_component(contract)
+//         }
 
-        fn get_balancer_mut(
-            ref self: ComponentState<TContractState>
-        ) -> balance_component::ComponentState<TContractState> {
-            let mut contract = self.get_contract_mut();
-            balance_component::HasComponent::<TContractState>::get_component_mut(ref contract)
-        }
-    }   
+//         fn get_balancer_mut(
+//             ref self: ComponentState<TContractState>
+//         ) -> balance_component::ComponentState<TContractState> {
+//             let mut contract = self.get_contract_mut();
+//             balance_component::HasComponent::<TContractState>::get_component_mut(ref contract)
+//         }
+//     }   
 
-}
+// }

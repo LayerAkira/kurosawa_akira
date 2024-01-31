@@ -1,96 +1,96 @@
-use core::traits::Into;
-use starknet::ContractAddress;
-use serde::Serde;
-use poseidon::poseidon_hash_span;
-use array::ArrayTrait;
-use array::SpanTrait;
-use starknet::{get_block_timestamp};
-use kurosawa_akira::utils::common::{min};
+// use core::traits::Into;
+// use starknet::ContractAddress;
+// use serde::Serde;
+// use poseidon::poseidon_hash_span;
+// use array::ArrayTrait;
+// use array::SpanTrait;
+// use starknet::{get_block_timestamp};
+// use kurosawa_akira::utils::common::{min};
 
-#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
-struct GasFee {
-    gas_per_action: u32,
-    fee_token: ContractAddress,
-    max_gas_price: u256,
-    conversion_rate: (u256, u256),
-}
+// #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+// struct GasFee {
+//     gas_per_action: u32,
+//     fee_token: ContractAddress,
+//     max_gas_price: u256,
+//     conversion_rate: (u256, u256),
+// }
 
-#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
-struct FixedFee {
-    recipient: ContractAddress,
-    maker_pbips: u32,
-    taker_pbips: u32
-}
-
-
-#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
-struct OrderFee {
-    trade_fee: FixedFee,
-    router_fee: FixedFee,
-    gas_fee: GasFee,
-}
+// #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+// struct FixedFee {
+//     recipient: ContractAddress,
+//     maker_pbips: u32,
+//     taker_pbips: u32
+// }
 
 
-
-#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
-struct OrderFlags {
-    full_fill_only: bool, 
-    best_level_only: bool,
-    post_only: bool,
-    is_sell_side: bool,
-    is_market_order: bool,
-    to_ecosystem_book: bool
-}
+// #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+// struct OrderFee {
+//     trade_fee: FixedFee,
+//     router_fee: FixedFee,
+//     gas_fee: GasFee,
+// }
 
 
 
-// later trade group id can be binned together if multisig happens, offchain execution
+// #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+// struct OrderFlags {
+//     full_fill_only: bool, 
+//     best_level_only: bool,
+//     post_only: bool,
+//     is_sell_side: bool,
+//     is_market_order: bool,
+//     to_ecosystem_book: bool
+// }
 
-#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
-enum TakerSelfTradePreventionMode {
-    NONE, // allow self trading
-    EXPIRE_TAKER, // on contract side wont allow orders to match if they have same order signer, on exchange expiring remaining qty of taker
-    EXPIRE_MAKER, // on contract side wont allow orders to match if they have same order signer, on exchange expiring remaining qty of maker's orders
-    EXPIRE_BOTH, // on contract side wont allow orders to match, on exchange expiring remaining qty of taker and makers orders
-} // semantic take place only depending on takers' order mode
 
 
-#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
-struct Order {
-    maker: ContractAddress, // trading account that created order
-    price: u256, // price in quote asset raw amount, for taker order serves as protection price, for passive order execution price, might be zero
-    base_qty: u256, // qunatity in base asset raw amount
-    quote_qty: u256, // quantity in quote asset raw amount
-    ticker: (ContractAddress, ContractAddress), // (base asset address, quote asset address) eg ETH/USDC
-    fee: OrderFee, // order fees that user must fulfill once trade happens
-    number_of_swaps_allowed: u8, // if order is taker, one can limit maximum number of trades can happens with this taker order (necesasry becase taker order incur gas fees)
-    salt: felt252, // random salt for security
-    nonce: u32, // maker nonce, for order be valid this nonce must be >= in Nonce component
-    flags: OrderFlags, // various order flags of order
-    router_signer: ContractAddress, // if taker order is router aka trader outside of our ecosystem then this is router that router this trader to us, for makers and ecosystem order always 0
-    base_asset: u256, // raw amount of base asset representing 1, eg 1 eth is 10**18
-    created_at: u32, // epoch time in seconds, time when order was created by user
-    stp: TakerSelfTradePreventionMode,
-    expire_at: u32, // epoch tine in seconds, time when order becomes invalid
-    version: u16, // exchange version
-    min_receive_amount: u256 // minimal amount that user willing to receive from the full mstching of order, default value 0, for now defined for router takers, serves as slippage that filtered on exchange
-}   
+// // later trade group id can be binned together if multisig happens, offchain execution
 
-#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
-struct SignedOrder {
-    order: Order,
-    sign: (felt252, felt252), // makers' signer signature of poseidon hash of order,
-    router_sign: (felt252,felt252) // router_signer signature of poseidon hash of order in case of router taker order, else (0, 0)
-}
+// #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+// enum TakerSelfTradePreventionMode {
+//     NONE, // allow self trading
+//     EXPIRE_TAKER, // on contract side wont allow orders to match if they have same order signer, on exchange expiring remaining qty of taker
+//     EXPIRE_MAKER, // on contract side wont allow orders to match if they have same order signer, on exchange expiring remaining qty of maker's orders
+//     EXPIRE_BOTH, // on contract side wont allow orders to match, on exchange expiring remaining qty of taker and makers orders
+// } // semantic take place only depending on takers' order mode
 
-#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
-struct OrderTradeInfo {
-    filled_base_amount: u256, // filled amount in base asset
-    filled_quote_amount: u256, // filled amount in quote qty
-    last_traded_px: u256,
-    num_trades_happened: u8,
-    as_taker_completed: bool
-}
+
+// #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+// struct Order {
+//     maker: ContractAddress, // trading account that created order
+//     price: u256, // price in quote asset raw amount, for taker order serves as protection price, for passive order execution price, might be zero
+//     base_qty: u256, // qunatity in base asset raw amount
+//     quote_qty: u256, // quantity in quote asset raw amount
+//     ticker: (ContractAddress, ContractAddress), // (base asset address, quote asset address) eg ETH/USDC
+//     fee: OrderFee, // order fees that user must fulfill once trade happens
+//     number_of_swaps_allowed: u8, // if order is taker, one can limit maximum number of trades can happens with this taker order (necesasry becase taker order incur gas fees)
+//     salt: felt252, // random salt for security
+//     nonce: u32, // maker nonce, for order be valid this nonce must be >= in Nonce component
+//     flags: OrderFlags, // various order flags of order
+//     router_signer: ContractAddress, // if taker order is router aka trader outside of our ecosystem then this is router that router this trader to us, for makers and ecosystem order always 0
+//     base_asset: u256, // raw amount of base asset representing 1, eg 1 eth is 10**18
+//     created_at: u32, // epoch time in seconds, time when order was created by user
+//     stp: TakerSelfTradePreventionMode,
+//     expire_at: u32, // epoch tine in seconds, time when order becomes invalid
+//     version: u16, // exchange version
+//     min_receive_amount: u256 // minimal amount that user willing to receive from the full mstching of order, default value 0, for now defined for router takers, serves as slippage that filtered on exchange
+// }   
+
+// #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+// struct SignedOrder {
+//     order: Order,
+//     sign: (felt252, felt252), // makers' signer signature of poseidon hash of order,
+//     router_sign: (felt252,felt252) // router_signer signature of poseidon hash of order in case of router taker order, else (0, 0)
+// }
+
+// #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+// struct OrderTradeInfo {
+//     filled_base_amount: u256, // filled amount in base asset
+//     filled_quote_amount: u256, // filled amount in quote qty
+//     last_traded_px: u256,
+//     num_trades_happened: u8,
+//     as_taker_completed: bool
+// }
 
 
 fn get_feeable_qty(fixed_fee: FixedFee, feeable_qty: u256, is_maker:bool) -> u256 {

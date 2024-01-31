@@ -1,103 +1,103 @@
-use kurosawa_akira::Order::{SignedOrder,Order, OrderTradeInfo,OrderFee,FixedFee,
-            get_feeable_qty, get_limit_px, do_taker_price_checks, do_maker_checks,get_available_base_qty,get_gas_fee_and_coin, GasFee};
-use kurosawa_akira::utils::common::{min};
-#[starknet::interface]
-trait IUnEcosystemTradeLogic<TContractState> {
-    fn get_router_trade_info(self: @TContractState, order_hash: felt252) -> OrderTradeInfo;
-    fn get_router_trades_info(self: @TContractState, order_hashes: Array<felt252>) -> Array<OrderTradeInfo>;
-}
+// use kurosawa_akira::Order::{SignedOrder,Order, OrderTradeInfo,OrderFee,FixedFee,
+//             get_feeable_qty, get_limit_px, do_taker_price_checks, do_maker_checks,get_available_base_qty,get_gas_fee_and_coin, GasFee};
+// use kurosawa_akira::utils::common::{min};
+// #[starknet::interface]
+// trait IUnEcosystemTradeLogic<TContractState> {
+//     fn get_router_trade_info(self: @TContractState, order_hash: felt252) -> OrderTradeInfo;
+//     fn get_router_trades_info(self: @TContractState, order_hashes: Array<felt252>) -> Array<OrderTradeInfo>;
+// }
 
-#[starknet::component]
-mod router_trade_component {
+// #[starknet::component]
+// mod router_trade_component {
 
-    use kurosawa_akira::RouterComponent::router_component::InternalRoutable;
-    use kurosawa_akira::ExchangeBalanceComponent::INewExchangeBalance;
-    use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::InternalExchangeBalanceble;
-    use core::{traits::TryInto,option::OptionTrait,array::ArrayTrait};
-    use kurosawa_akira::FundsTraits::{PoseidonHash,PoseidonHashImpl,check_sign};
-    use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as balance_component;
+//     use kurosawa_akira::RouterComponent::router_component::InternalRoutable;
+//     use kurosawa_akira::ExchangeBalanceComponent::INewExchangeBalance;
+//     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::InternalExchangeBalanceble;
+//     use core::{traits::TryInto,option::OptionTrait,array::ArrayTrait};
+//     use kurosawa_akira::FundsTraits::{PoseidonHash,PoseidonHashImpl,check_sign};
+//     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as balance_component;
     
-    use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
-    use starknet::{get_contract_address, ContractAddress, get_block_timestamp};
-    use super::{do_taker_price_checks,do_maker_checks,get_available_base_qty,get_feeable_qty,get_limit_px,SignedOrder,Order,OrderTradeInfo,OrderFee,FixedFee,get_gas_fee_and_coin,GasFee};
-    use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait, IERC20Dispatcher};
+//     use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
+//     use starknet::{get_contract_address, ContractAddress, get_block_timestamp};
+//     use super::{do_taker_price_checks,do_maker_checks,get_available_base_qty,get_feeable_qty,get_limit_px,SignedOrder,Order,OrderTradeInfo,OrderFee,FixedFee,get_gas_fee_and_coin,GasFee};
+//     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait, IERC20Dispatcher};
 
-    use kurosawa_akira::RouterComponent::router_component as router_component;
-    use router_component::{RoutableImpl};
-    use kurosawa_akira::{NonceComponent::INonceLogic,SignerComponent::ISignerLogic,RouterComponent::IRouter};
-    use kurosawa_akira::utils::common::DisplayContractAddress;
+//     use kurosawa_akira::RouterComponent::router_component as router_component;
+//     use router_component::{RoutableImpl};
+//     use kurosawa_akira::{NonceComponent::INonceLogic,SignerComponent::ISignerLogic,RouterComponent::IRouter};
+//     use kurosawa_akira::utils::common::DisplayContractAddress;
     
     
-    #[storage]
-    struct Storage {
-        orders_trade_info: LegacyMap::<felt252, OrderTradeInfo>
-    }
+//     #[storage]
+//     struct Storage {
+//         orders_trade_info: LegacyMap::<felt252, OrderTradeInfo>
+//     }
 
 
-    #[event]
-    #[derive(Drop, starknet::Event)]
-    enum Event {
-        RouterTrade: RouterTrade,
-        RouterReward:RouterReward,
-        RouterPunish:RouterPunish,
-    }
+//     #[event]
+//     #[derive(Drop, starknet::Event)]
+//     enum Event {
+//         RouterTrade: RouterTrade,
+//         RouterReward:RouterReward,
+//         RouterPunish:RouterPunish,
+//     }
 
-    #[derive(Drop, starknet::Event)]
-    struct RouterTrade {
-        maker:ContractAddress,
-        taker:ContractAddress,
-        #[key]
-        ticker:(ContractAddress,ContractAddress),
-        #[key]
-        router:ContractAddress,
-        amount_base: u256,
-        amount_quote: u256,
-        is_sell_side: bool,
-        is_failed: bool
-    }
+//     #[derive(Drop, starknet::Event)]
+//     struct RouterTrade {
+//         maker:ContractAddress,
+//         taker:ContractAddress,
+//         #[key]
+//         ticker:(ContractAddress,ContractAddress),
+//         #[key]
+//         router:ContractAddress,
+//         amount_base: u256,
+//         amount_quote: u256,
+//         is_sell_side: bool,
+//         is_failed: bool
+//     }
 
-    #[derive(Drop, starknet::Event)]
-    struct RouterReward {
-        #[key]
-        router:ContractAddress,
-        ticker:(ContractAddress,ContractAddress),
-        order_hash:felt252,
-        amount:u256,
-        taker:ContractAddress,
-        is_sell_side: bool,
-    }
+//     #[derive(Drop, starknet::Event)]
+//     struct RouterReward {
+//         #[key]
+//         router:ContractAddress,
+//         ticker:(ContractAddress,ContractAddress),
+//         order_hash:felt252,
+//         amount:u256,
+//         taker:ContractAddress,
+//         is_sell_side: bool,
+//     }
 
 
-    #[derive(Drop, starknet::Event)]
-    struct RouterPunish {
-        #[key]
-        router:ContractAddress,
-        taker:ContractAddress,
-        taker_hash:felt252,
-        maker_hash:felt252,
-        amount:u256,
-    }
+//     #[derive(Drop, starknet::Event)]
+//     struct RouterPunish {
+//         #[key]
+//         router:ContractAddress,
+//         taker:ContractAddress,
+//         taker_hash:felt252,
+//         maker_hash:felt252,
+//         amount:u256,
+//     }
 
-    #[embeddable_as(RouterTradable)]
-    impl RouterTradableImpl<TContractState, +HasComponent<TContractState>,+INonceLogic<TContractState>,+balance_component::HasComponent<TContractState>,+router_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>,> of super::IUnEcosystemTradeLogic<ComponentState<TContractState>> {
-        fn get_router_trade_info(self: @ComponentState<TContractState>, order_hash: felt252) -> OrderTradeInfo {
-            return self.orders_trade_info.read(order_hash);
-        }
-        fn get_router_trades_info(self: @ComponentState<TContractState>, mut order_hashes: Array<felt252>) -> Array<OrderTradeInfo> {
-            //  Note order hashes must not be empty
-            let mut res = ArrayTrait::new();
-            loop {
-                match order_hashes.pop_front(){
-                    Option::Some(order_hash) => {res.append(self.get_router_trade_info(order_hash))}, Option::None(_) => {break();}
-                }
-            };
-            return res; 
-        }
+//     #[embeddable_as(RouterTradable)]
+//     impl RouterTradableImpl<TContractState, +HasComponent<TContractState>,+INonceLogic<TContractState>,+balance_component::HasComponent<TContractState>,+router_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>,> of super::IUnEcosystemTradeLogic<ComponentState<TContractState>> {
+    //     fn get_router_trade_info(self: @ComponentState<TContractState>, order_hash: felt252) -> OrderTradeInfo {
+    //         return self.orders_trade_info.read(order_hash);
+    //     }
+    //     fn get_router_trades_info(self: @ComponentState<TContractState>, mut order_hashes: Array<felt252>) -> Array<OrderTradeInfo> {
+    //         //  Note order hashes must not be empty
+    //         let mut res = ArrayTrait::new();
+    //         loop {
+    //             match order_hashes.pop_front(){
+    //                 Option::Some(order_hash) => {res.append(self.get_router_trade_info(order_hash))}, Option::None(_) => {break();}
+    //             }
+    //         };
+    //         return res; 
+    //     }
         
-    }
+    // }
 
-     #[generate_trait]
-    impl InternalRouterTradableImpl<TContractState, +HasComponent<TContractState>,+INonceLogic<TContractState>, +balance_component::HasComponent<TContractState>, +router_component::HasComponent<TContractState>, +Drop<TContractState>, +ISignerLogic<TContractState>> of InternalRouterTradable<TContractState> {
+    //  #[generate_trait]
+    // impl InternalRouterTradableImpl<TContractState, +HasComponent<TContractState>,+INonceLogic<TContractState>, +balance_component::HasComponent<TContractState>, +router_component::HasComponent<TContractState>, +Drop<TContractState>, +ISignerLogic<TContractState>> of InternalRouterTradable<TContractState> {
         // exposed only in contract user
         fn apply_trades_simple(ref self: ComponentState<TContractState>, signed_taker_order:SignedOrder, mut signed_maker_orders:Array<(SignedOrder,u256)>, 
         mut total_amount_matched:u256, gas_price:u256,  cur_gas_per_action:u32, as_taker_completed:bool, version:u16)  -> bool{
@@ -386,49 +386,49 @@ mod router_trade_component {
 
             self.emit(RouterPunish{router:router_addr, taker, taker_hash, maker_hash, amount: 2 * charged_fee});
         }
-    }
+    // }
 
-    // this (or something similar) will potentially be generated in the next RC
-    #[generate_trait]
-    impl GetBalancer<
-        TContractState,
-        +HasComponent<TContractState>,
-        +balance_component::HasComponent<TContractState>,
-        +Drop<TContractState>> of GetBalancerTrait<TContractState> {
-        fn get_balancer(
-            self: @ComponentState<TContractState>
-        ) -> @balance_component::ComponentState<TContractState> {
-            let contract = self.get_contract();
-            balance_component::HasComponent::<TContractState>::get_component(contract)
-        }
+//     // this (or something similar) will potentially be generated in the next RC
+//     #[generate_trait]
+//     impl GetBalancer<
+//         TContractState,
+//         +HasComponent<TContractState>,
+//         +balance_component::HasComponent<TContractState>,
+//         +Drop<TContractState>> of GetBalancerTrait<TContractState> {
+//         fn get_balancer(
+//             self: @ComponentState<TContractState>
+//         ) -> @balance_component::ComponentState<TContractState> {
+//             let contract = self.get_contract();
+//             balance_component::HasComponent::<TContractState>::get_component(contract)
+//         }
 
-        fn get_balancer_mut(
-            ref self: ComponentState<TContractState>
-        ) -> balance_component::ComponentState<TContractState> {
-            let mut contract = self.get_contract_mut();
-            balance_component::HasComponent::<TContractState>::get_component_mut(ref contract)
-        }
-    }
+//         fn get_balancer_mut(
+//             ref self: ComponentState<TContractState>
+//         ) -> balance_component::ComponentState<TContractState> {
+//             let mut contract = self.get_contract_mut();
+//             balance_component::HasComponent::<TContractState>::get_component_mut(ref contract)
+//         }
+//     }
 
-        // this (or something similar) will potentially be generated in the next RC
-    #[generate_trait]
-    impl GetRouter<
-        TContractState,
-        +HasComponent<TContractState>,
-        +router_component::HasComponent<TContractState>,
-        +Drop<TContractState>> of GetRouterTrait<TContractState> {
-        fn get_router(
-            self: @ComponentState<TContractState>
-        ) -> @router_component::ComponentState<TContractState> {
-            let contract = self.get_contract();
-            router_component::HasComponent::<TContractState>::get_component(contract)
-        }
+//         // this (or something similar) will potentially be generated in the next RC
+//     #[generate_trait]
+//     impl GetRouter<
+//         TContractState,
+//         +HasComponent<TContractState>,
+//         +router_component::HasComponent<TContractState>,
+//         +Drop<TContractState>> of GetRouterTrait<TContractState> {
+//         fn get_router(
+//             self: @ComponentState<TContractState>
+//         ) -> @router_component::ComponentState<TContractState> {
+//             let contract = self.get_contract();
+//             router_component::HasComponent::<TContractState>::get_component(contract)
+//         }
 
-        fn get_router_mut(
-            ref self: ComponentState<TContractState>
-        ) -> router_component::ComponentState<TContractState> {
-            let mut contract = self.get_contract_mut();
-            router_component::HasComponent::<TContractState>::get_component_mut(ref contract)
-        }
-    }
-}
+//         fn get_router_mut(
+//             ref self: ComponentState<TContractState>
+//         ) -> router_component::ComponentState<TContractState> {
+//             let mut contract = self.get_contract_mut();
+//             router_component::HasComponent::<TContractState>::get_component_mut(ref contract)
+//         }
+//     }
+// }
