@@ -222,7 +222,7 @@ mod test_common_trade {
     use serde::Serde;
     use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
     use kurosawa_akira::FundsTraits::check_sign;
-    use kurosawa_akira::Order::{SignedOrder, Order,TakerSelfTradePreventionMode, FixedFee,OrderFee,OrderFlags, get_feeable_qty};
+    use kurosawa_akira::Order::{SignedOrder, Order,Constraints,Quantity,TakerSelfTradePreventionMode, FixedFee,OrderFee,OrderFlags, get_feeable_qty};
 
 
     fn prepare() ->(ILayerAkiraDispatcher, ContractAddress, ContractAddress, ContractAddress, ContractAddress, u256, u256) {
@@ -269,20 +269,24 @@ mod test_common_trade {
         } else { FixedFee{recipient: zero_addr, maker_pbips:0, taker_pbips:0}
         };
         let mut order = Order {
-            min_receive_amount:0,
-            quote_qty,
-            maker, price, base_qty, ticker, number_of_swaps_allowed:num_swaps_allowed, salt, router_signer,
-            base_asset: 1_000_000_000_000_000_000, nonce:akira.get_nonce(maker),
+            qty:Quantity{base_qty, quote_qty, base_asset: 1_000_000_000_000_000_000},
+            constraints:Constraints {
+                number_of_swaps_allowed: num_swaps_allowed,
+                nonce:akira.get_nonce(maker),
+                router_signer,
+                created_at: 0,
+                duration_valid:3_294_967_295,
+                stp:TakerSelfTradePreventionMode::NONE,
+                min_receive_amount:0,
+            },
+            maker, price, ticker,  salt,
             fee: OrderFee {
                 trade_fee:  FixedFee{recipient:fee_recipient, maker_pbips, taker_pbips},
                 router_fee: router_fee,
                 gas_fee: prepare_double_gas_fee_native(akira, get_swap_gas_cost())
             },
             flags,
-            created_at:0,
-            stp:TakerSelfTradePreventionMode::NONE,
-            version:0,
-            expire_at: 3_294_967_295
+            version:0
         };
         let hash = order.get_poseidon_hash();
         let (pub, pk) = if maker == get_trader_address_1() {
@@ -342,8 +346,8 @@ mod tests_ecosystem_trade {
 
 
 
-    fn get_order_flags(full_fill_only:bool,best_level_only:bool,post_only:bool,is_sell_side:bool,is_market_order:bool) -> OrderFlags{
-        return OrderFlags{full_fill_only, best_level_only, post_only, is_sell_side, is_market_order, to_ecosystem_book: true};
+    fn get_order_flags(full_fill_only:bool,best_level_only:bool,post_only:bool,is_sell_side:bool,is_market_order:bool,) -> OrderFlags{
+        return OrderFlags{full_fill_only, best_level_only, post_only, is_sell_side, is_market_order, to_ecosystem_book: true, external_funds:false};
     }
 
     #[test]
@@ -601,8 +605,9 @@ mod tests_router_trade {
         stop_prank(CheatTarget::One(token));
     }
 
+    // router ones
     fn get_order_flags(full_fill_only:bool, best_level_only:bool, post_only:bool, is_sell_side:bool, is_market_order:bool) -> OrderFlags{
-        return OrderFlags{full_fill_only, best_level_only, post_only, is_sell_side, is_market_order, to_ecosystem_book: false};
+        return OrderFlags{full_fill_only, best_level_only, post_only, is_sell_side, is_market_order, to_ecosystem_book: false, external_funds: is_market_order};
     }
 
     #[test]
@@ -618,7 +623,7 @@ mod tests_router_trade {
                 get_order_flags(false, false, false, false, true), 2, zero_router());
         
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        akira.apply_router_trade(buy_order, array![(sell_order,0)], usdc_amount*eth_amount / buy_order.order.base_asset, 100,get_swap_gas_cost(), false);
+        akira.apply_router_trade(buy_order, array![(sell_order,0)], usdc_amount*eth_amount / buy_order.order.qty.base_asset, 100,get_swap_gas_cost(), false);
         stop_prank(CheatTarget::One(akira.contract_address));
     }  
 
@@ -662,7 +667,7 @@ mod tests_router_trade {
 
 
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        assert(akira.apply_router_trade(buy_order, array![(sell_order, 0)],  (usdc_amount) * eth_amount / buy_order.order.base_asset, 100, get_swap_gas_cost(), false), 'FAILED_MATCH');
+        assert(akira.apply_router_trade(buy_order, array![(sell_order, 0)],  (usdc_amount) * eth_amount / buy_order.order.qty.base_asset, 100, get_swap_gas_cost(), false), 'FAILED_MATCH');
         stop_prank(CheatTarget::One(akira.contract_address));
 
 
@@ -775,7 +780,7 @@ mod tests_router_trade {
         let router_b = akira.balance_of_router(router, eth);
 
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        assert(!akira.apply_router_trade(buy_order, array![(sell_order, 0)],  usdc_amount * eth_amount / buy_order.order.base_asset, 100, get_swap_gas_cost(), false), 'EXPECTS_FAIL');
+        assert(!akira.apply_router_trade(buy_order, array![(sell_order, 0)],  usdc_amount * eth_amount / buy_order.order.qty.base_asset, 100, get_swap_gas_cost(), false), 'EXPECTS_FAIL');
         stop_prank(CheatTarget::One(akira.contract_address));
         let charge = 2 * gas_fee * akira.get_punishment_factor_bips().into() / 10000;
         assert(router_b - akira.balance_of_router(router, eth) == charge, 'WRONG_RECEIVED');
@@ -1150,6 +1155,7 @@ mod tests_router_trade {
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
         assert(akira.apply_router_trade(buy_order_, array![(sell_order,0)],  expected_qty, 100, get_swap_gas_cost(), false), 'FAILED_MATCH');
         stop_prank(CheatTarget::One(akira.contract_address));
+
          
         assert(akira.balanceOf(buy_order_.order.maker, eth) == 0, 'WRONG_ROUTER_T_BALANCE_ETH');
         assert(akira.balanceOf(buy_order_.order.maker, usdc) == 0, 'WRONG_ROUTER_T_BALANCE_USDC');

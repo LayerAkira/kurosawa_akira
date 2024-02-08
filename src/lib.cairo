@@ -8,7 +8,6 @@ mod RouterComponent;
 mod Order;
 mod FundsTraits;
 mod EcosystemTradeComponent;
-mod RouterTradeComponent;
 mod LayerAkira;
 mod ILayerAkira;
 mod testing;

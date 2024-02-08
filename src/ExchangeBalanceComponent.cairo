@@ -25,13 +25,17 @@ trait INewExchangeBalance<TContractState> {
 mod exchange_balance_logic_component {
     use starknet::{ContractAddress, get_caller_address};
     use super::{INewExchangeBalance, FixedFee, get_feeable_qty};
-    
+    use kurosawa_akira::utils::common::DisplayContractAddress;
+
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
         Mint:Mint,
         Transfer:Transfer,
-        Burn:Burn
+        Burn:Burn,
+        FeeReward:FeeReward,
+        Punish:Punish,
+        Trade:Trade
     }
 
     // Debug events
@@ -54,6 +58,34 @@ mod exchange_balance_logic_component {
         from_: ContractAddress,
         to: ContractAddress,
         amount: u256
+    }
+
+
+    #[derive(Drop, starknet::Event)]
+    struct FeeReward {
+        #[key]
+        recipient:ContractAddress,
+        token:ContractAddress,
+        amount:u256,
+    }
+    #[derive(Drop, starknet::Event)]
+    struct Punish {
+        #[key]
+        router:ContractAddress,
+        taker_hash:felt252,
+        maker_hash:felt252,
+        amount:u256,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct Trade {
+        maker:ContractAddress, taker:ContractAddress,
+        #[key]
+        ticker:(ContractAddress,ContractAddress),
+        #[key]
+        router_maker:ContractAddress, router_taker:ContractAddress,
+        amount_base: u256, amount_quote: u256,
+        is_sell_side: bool, is_failed: bool, is_ecosystem_book:bool
     }
 
 
@@ -106,9 +138,7 @@ mod exchange_balance_logic_component {
     }
     
     #[generate_trait]
-    impl InternalExchangeBalancebleImpl<
-        TContractState, +HasComponent<TContractState>
-    > of InternalExchangeBalanceble<TContractState> {
+    impl InternalExchangeBalancebleImpl<TContractState, +HasComponent<TContractState>> of InternalExchangeBalanceble<TContractState> {
         fn initializer(ref self: ComponentState<TContractState>, fee_recipient:ContractAddress, wrapped_native_token:ContractAddress) {
             self.wrapped_native_token.write(wrapped_native_token);
             self.fee_recipient.write(fee_recipient);
@@ -162,11 +192,11 @@ mod exchange_balance_logic_component {
             }
         }
 
-        fn apply_maker_fee(ref self: ComponentState<TContractState>, maker:ContractAddress, fee:FixedFee, is_sell_side:bool, ticker:(ContractAddress,ContractAddress), base_amount:u256, quote_amount:u256) {
-            let maker_fee_token = if is_sell_side { let (b, q) = ticker; q } else {let (b, q) = ticker; b};
-            let maker_fee_amount = get_feeable_qty(fee, if is_sell_side { quote_amount } else {base_amount}, true);
-            
-            if maker_fee_amount > 0 { self.internal_transfer(maker, fee.recipient, maker_fee_amount, maker_fee_token);}
+        fn apply_fixed_fee(ref self: ComponentState<TContractState>, trader:ContractAddress, fee:FixedFee, is_sell_side:bool, ticker:(ContractAddress,ContractAddress), base_amount:u256, quote_amount:u256, is_maker:bool) -> (ContractAddress, u256) {
+            let (fee_token, fee_amount) = if is_sell_side { let (b, q) = ticker; (q, quote_amount) } else {let (b, q) = ticker; (b, base_amount)};
+            let fee_amount = get_feeable_qty(fee, fee_amount, is_maker);
+            if fee_amount > 0 { self.internal_transfer(trader, fee.recipient, fee_amount, fee_token);}
+            return (fee_token, fee_amount);
         }
     }
 }

@@ -11,8 +11,6 @@ mod LayerAkira {
     use kurosawa_akira::WithdrawComponent::withdraw_component::InternalWithdrawable;
     use starknet::{get_contract_address};
     
-   
-    
     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component::InternalExchangeBalanceble;
     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as  exchange_balance_logic_component;
     use kurosawa_akira::SignerComponent::signer_logic_component as  signer_logic_component;
@@ -21,14 +19,12 @@ mod LayerAkira {
     use kurosawa_akira::NonceComponent::nonce_component as nonce_component;
     use kurosawa_akira::RouterComponent::router_component as router_component;
     use kurosawa_akira::EcosystemTradeComponent::ecosystem_trade_component as ecosystem_trade_component;
-    use kurosawa_akira::RouterTradeComponent::router_trade_component as router_trade_component;
     use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
     use kurosawa_akira::WithdrawComponent::SignedWithdraw;
     use kurosawa_akira::Order::{SignedOrder};
     use kurosawa_akira::NonceComponent::SignedIncreaseNonce;
     
     use kurosawa_akira::EcosystemTradeComponent::ecosystem_trade_component::InternalEcosystemTradable;
-    use kurosawa_akira::RouterTradeComponent::router_trade_component::InternalRouterTradable;
     
     use router_component::InternalRoutable;
     
@@ -40,8 +36,7 @@ mod LayerAkira {
     component!(path: nonce_component, storage: nonce_s, event:NonceEvent);
     component!(path: router_component, storage: router_s, event:RouterEvent);
     component!(path: ecosystem_trade_component, storage: ecosystem_trade_s, event:EcosystemTradeEvent);
-    component!(path: router_trade_component, storage: router_trade_s, event:RouterTradeEvent);
-
+    
     
 
     #[abi(embed_v0)]
@@ -58,9 +53,6 @@ mod LayerAkira {
     impl RoutableImpl = router_component::Routable<ContractState>;
     #[abi(embed_v0)]
     impl EcosystemTradableImpl = ecosystem_trade_component::EcosystemTradable<ContractState>;
-    #[abi(embed_v0)]
-    impl RouterTradableImpl = router_trade_component::RouterTradable<ContractState>;
-
     
 
     #[storage]
@@ -79,9 +71,7 @@ mod LayerAkira {
         router_s: router_component::Storage,
         #[substorage(v0)]
         ecosystem_trade_s: ecosystem_trade_component::Storage,
-        #[substorage(v0)]
-        router_trade_s: router_trade_component::Storage,
-
+        
         max_slow_mode_delay:SlowModeDelay, // upper bound for all delayed actions
         exchange_invokers: LegacyMap::<ContractAddress, bool>,
         owner: ContractAddress, // owner of contact that have permissions to grant and revoke role for invokers and update slow mode 
@@ -211,14 +201,14 @@ mod LayerAkira {
     #[external(v0)]
     fn apply_ecosystem_trades(ref self: ContractState, taker_orders:Array<(SignedOrder,bool)>, maker_orders: Array<SignedOrder>, iters:Array<(u8, bool)>, oracle_settled_qty:Array<u256>, gas_price:u256, cur_gas_per_action:u32) {
         assert_whitelisted_invokers(@self);
-        self.ecosystem_trade_s.apply_trades(taker_orders, maker_orders, iters, oracle_settled_qty, gas_price, cur_gas_per_action, self.exchange_version.read());
+        self.ecosystem_trade_s.apply_ecosystem_trades(taker_orders, maker_orders, iters, oracle_settled_qty, gas_price, cur_gas_per_action, self.exchange_version.read());
         self.balancer_s.latest_gas.write(gas_price);
     }
 
     #[external(v0)]
     fn apply_router_trade(ref self: ContractState, taker_order:SignedOrder, maker_orders: Array<(SignedOrder,u256)>, total_amount_matched:u256, gas_price:u256, cur_gas_per_action:u32,as_taker_completed:bool, ) -> bool {
         assert_whitelisted_invokers(@self);
-        let res = self.router_trade_s.apply_trades_simple(taker_order, maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed, self.exchange_version.read());
+        let res = self.ecosystem_trade_s.apply_single_taker(taker_order, maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed, self.exchange_version.read());
         self.balancer_s.latest_gas.write(gas_price);
         return res;
     }
@@ -231,7 +221,8 @@ mod LayerAkira {
         loop {
             match bulk.pop_front(){
                 Option::Some((taker_order, maker_orders, total_amount_matched, as_taker_completed)) => {
-                    res.append(self.router_trade_s.apply_trades_simple(taker_order, maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed, self.exchange_version.read()));
+                    res.append(self.ecosystem_trade_s.apply_single_taker(taker_order, maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed, self.exchange_version.read()));
+
                 },
                 Option::None(_) => {break;}
             };
@@ -251,7 +242,6 @@ mod LayerAkira {
         NonceEvent: nonce_component::Event,
         RouterEvent: router_component::Event,
         EcosystemTradeEvent: ecosystem_trade_component::Event,
-        RouterTradeEvent: router_trade_component::Event,
         UpdateExchangeInvoker: UpdateExchangeInvoker,
         BaseTokenUpdate: BaseTokenUpdate,
         FeeRecipientUpdate: FeeRecipientUpdate,
