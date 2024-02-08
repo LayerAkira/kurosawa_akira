@@ -303,6 +303,7 @@ mod ecosystem_trade_component {
             assert!(router.validate_router(taker_hash, signed_taker_order.router_sign, taker_order.constraints.router_signer, taker_order.fee.router_fee.recipient), "WRONG_ROUTER_SIGN");
             // nonce here so router cant on purpose send old orders of user
             super::generic_taker_check(taker_order, taker_fill_info, contract.get_nonce(taker_order.maker), swaps, taker_hash, version, fee_recipient);
+            assert!(taker_order.flags.is_market_order, "WRONG_MARKET_TYPE_EXTERNAL"); // external ones cant become passive orders
             let remaining_taker_amount =  self._infer_upper_bound_required(taker_order, taker_fill_info);
             assert!(remaining_taker_amount > 0, "WRONG_TAKER_AMOUNT");
             return (taker_order, taker_hash, taker_fill_info, remaining_taker_amount);
