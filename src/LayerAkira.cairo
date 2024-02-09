@@ -206,7 +206,7 @@ mod LayerAkira {
     }
 
     #[external(v0)]
-    fn apply_router_trade(ref self: ContractState, taker_order:SignedOrder, maker_orders: Array<(SignedOrder,u256)>, total_amount_matched:u256, gas_price:u256, cur_gas_per_action:u32,as_taker_completed:bool, ) -> bool {
+    fn apply_single_execution_step(ref self: ContractState, taker_order:SignedOrder, maker_orders: Array<(SignedOrder,u256)>, total_amount_matched:u256, gas_price:u256, cur_gas_per_action:u32,as_taker_completed:bool, ) -> bool {
         assert_whitelisted_invokers(@self);
         let res = self.ecosystem_trade_s.apply_single_taker(taker_order, maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed, self.exchange_version.read());
         self.balancer_s.latest_gas.write(gas_price);
@@ -214,7 +214,7 @@ mod LayerAkira {
     }
 
     #[external(v0)]
-    fn apply_router_trades(ref self: ContractState,  mut bulk:Array<(SignedOrder, Array<(SignedOrder,u256)>, u256, bool)>,  gas_price:u256,  cur_gas_per_action:u32 ) -> Array<bool> {
+    fn apply_execution_steps(ref self: ContractState,  mut bulk:Array<(SignedOrder, Array<(SignedOrder,u256)>, u256, bool)>,  gas_price:u256,  cur_gas_per_action:u32 ) -> Array<bool> {
         assert_whitelisted_invokers(@self);
         let mut res: Array<bool> = ArrayTrait::new();
             

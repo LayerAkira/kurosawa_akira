@@ -124,9 +124,9 @@ trait ILayerAkira<TContractState> {
 
     fn apply_ecosystem_trades(ref self: TContractState, taker_orders:Array<(SignedOrder,bool)>, maker_orders: Array<SignedOrder>, iters:Array<(u8,bool)>, oracle_settled_qty:Array<u256>, gas_price:u256, cur_gas_per_action:u32);
     
-    fn apply_router_trade(ref self: TContractState, taker_order:SignedOrder, maker_orders: Array<(SignedOrder,u256)>, total_amount_matched:u256,  gas_price:u256, cur_gas_per_action:u32, as_taker_completed:bool) -> bool;
+    fn apply_single_execution_step(ref self: TContractState, taker_order:SignedOrder, maker_orders: Array<(SignedOrder,u256)>, total_amount_matched:u256,  gas_price:u256, cur_gas_per_action:u32, as_taker_completed:bool) -> bool;
     
-    fn apply_router_trades(ref self: TContractState, bulk:Array<(SignedOrder, Array<(SignedOrder,u256)>, u256,bool)>,  gas_price:u256, cur_gas_per_action:u32) -> Array<bool>;
+    fn apply_execution_steps(ref self: TContractState, bulk:Array<(SignedOrder, Array<(SignedOrder,u256)>, u256,bool)>,  gas_price:u256, cur_gas_per_action:u32) -> Array<bool>;
 
     // super
 
