@@ -96,7 +96,7 @@ mod ecosystem_trade_component {
                             }
                             assert!(!taker_order.flags.external_funds && !maker_order.flags.external_funds, "WRONG_EXTERNAL_FLAGS");
                             
-                            if (taker_order.constraints.stp != TakerSelfTradePreventionMode::NONE) { // check stp mode, if not None reuqire prevention
+                            if (taker_order.constraints.stp != TakerSelfTradePreventionMode::NONE) { // check stp mode, if not None require prevention
                                 assert!(contract.get_signer(maker_order.maker) != contract.get_signer(taker_order.maker), "STP_VIOLATED");
                             }
                             let (base, quote, px) = self.get_settled_amounts(maker_order, taker_order, maker_fill_info, taker_fill_info, oracle_settled_qty.pop_front().unwrap(), maker_hash);
@@ -149,15 +149,7 @@ mod ecosystem_trade_component {
                 }
             } else {total_amount_matched};
 
-            
-
-            // // TODO bit dumb that it fires exception, how reimburse in that case? cause custom contract can force fails on signature validation
-            // let (mut amount_out, _) = if check_sign(taker_order.maker, taker_hash, signed_taker_order.router_sign) {
-            //                 self._prepare_taker(taker_order, total_amount_matched, exchange, trades, gas_price, cur_gas_per_action)  } 
-            //         else {
-            //             (0,0)
-            // };
-
+            let contract = self.get_contract();
             let failed = expected_amount_spend == 0;
             let (mut accum_base, mut accum_quote) = (0,0);
             loop {
@@ -167,6 +159,11 @@ mod ecosystem_trade_component {
                         // even if external taker fails we must validate makers are correct ones
                         let (maker_order, maker_hash, mut maker_fill_info) = self.do_internal_maker_checks(signed_maker_order, fee_recipient);
                         let (amount_base, amount_quote, settle_px) = self.get_settled_amounts(maker_order, taker_order, maker_fill_info, taker_fill_info,oracle_settle_qty, maker_hash);
+                        
+                        if (!taker_order.flags.external_funds && taker_order.constraints.stp != TakerSelfTradePreventionMode::NONE) {
+                            assert!(contract.get_signer(maker_order.maker) != contract.get_signer(taker_order.maker), "STP_VIOLATED");
+                        }
+                        
                         if taker_order.flags.external_funds && failed {
                             self.punish_router_simple(taker_order.fee.gas_fee, taker_order.fee.router_fee.recipient, 
                                         signed_maker_order.order.maker, taker_order.maker, gas_price, taker_hash, maker_hash);
@@ -176,7 +173,7 @@ mod ecosystem_trade_component {
                                 maker:maker_order.maker, taker:taker_order.maker, ticker:maker_order.ticker, is_failed:true, 
                                 is_ecosystem_book:maker_order.flags.to_ecosystem_book, amount_base, amount_quote, is_sell_side:maker_order.flags.is_sell_side });
                             continue;
-                        } 
+                        }
 
                         self.settle_trade(maker_order, taker_order, amount_base, amount_quote);
 
