@@ -380,7 +380,7 @@ mod ecosystem_trade_component {
             let balance = erc.balanceOf(exchange);
             erc.transfer(maker, amount);
             balancer.burn(maker, amount, token);
-            assert!(balance - erc.balanceOf(exchange) >= amount, "OUT_TFER_ERROR {} {} {}", token, maker, amount); // ensure token contract not drains any extra
+            assert!(balance - erc.balanceOf(exchange) <= amount, "OUT_TFER_ERROR {} {} {}", token, maker, amount); // ensure token contract not drains any extra
         }
 
         fn trasfer_in(ref self:ComponentState<TContractState>, exchange:ContractAddress, token:ContractAddress, maker:ContractAddress, amount:u256) {
