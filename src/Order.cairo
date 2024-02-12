@@ -119,11 +119,16 @@ fn get_available_base_qty(settle_px:u256, qty:Quantity, fill_info: OrderTradeInf
     // eg ETH/USDC
     // buy order -> buy base asset in return for quote asset
     // sell order -> buy quote asset in return for base asset
-    let quote_qty_by_quote_asset = qty.base_asset * (qty.quote_qty - fill_info.filled_quote_amount)  / settle_px;
-    let quote_qty_by_base_asset  = qty.base_qty - fill_info.filled_base_amount;
-    if (qty.base_qty == 0)  { return  quote_qty_by_quote_asset; }
+    let quote_qty_by_quote_asset = if qty.quote_qty > 0 {
+        assert!(qty.quote_qty >= fill_info.filled_quote_amount, "Order already filled by quote quote {} filled {}",
+                qty.quote_qty, fill_info.filled_quote_amount);
+        qty.base_asset * (qty.quote_qty - fill_info.filled_quote_amount)  / settle_px } else {0};
+    let quote_qty_by_base_asset  = if qty.base_qty > 0 { 
+        assert!(qty.base_qty >= fill_info.filled_base_amount, "Order already filled by base base {} filled {}",
+                qty.base_qty, fill_info.filled_base_amount);
+        qty.base_qty - fill_info.filled_base_amount} else {0};
+    if (qty.base_qty == 0)  { return quote_qty_by_quote_asset; }
     if (qty.quote_qty == 0) { return quote_qty_by_base_asset; }
-    // TODO maybe specify both doesnot makes sense?
     return min(quote_qty_by_quote_asset, quote_qty_by_base_asset);
 }
 

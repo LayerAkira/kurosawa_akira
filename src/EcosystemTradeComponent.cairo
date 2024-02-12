@@ -311,8 +311,17 @@ mod ecosystem_trade_component {
             if taker_order.flags.is_sell_side { // sell of base asset
                 return get_available_base_qty(taker_order.price, taker_order.qty, taker_fill_info);
             } else { // sell of quote asset
-                let by_quote_asset = taker_order.qty.quote_qty - taker_fill_info.filled_quote_amount;
-                let by_base_asset = taker_order.price * (taker_order.qty.base_qty - taker_fill_info.filled_base_amount) / taker_order.qty.base_asset;
+                
+                let by_quote_asset = if taker_order.qty.quote_qty > 0 {
+                    assert!(taker_order.qty.quote_qty >= taker_fill_info.filled_quote_amount,  "Order already filled by quote quote {} filled {}",
+                                taker_order.qty.quote_qty, taker_fill_info.filled_quote_amount);
+                    taker_order.qty.quote_qty - taker_fill_info.filled_quote_amount} else {0};
+
+                let by_base_asset = if taker_order.qty.base_qty > 0 {
+                    assert!(taker_order.qty.base_qty >= taker_fill_info.filled_base_amount,  "Order already filled by base base {} filled {}",
+                                taker_order.qty.base_qty, taker_fill_info.filled_base_amount);
+                    taker_order.price * (taker_order.qty.base_qty - taker_fill_info.filled_base_amount) / taker_order.qty.base_asset} else {0};
+                
                 if taker_order.qty.base_qty == 0 {return by_quote_asset;}
                 if taker_order.qty.quote_qty == 0 { return by_base_asset;}
                 return min(by_quote_asset, by_base_asset);
