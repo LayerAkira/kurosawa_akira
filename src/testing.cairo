@@ -405,171 +405,6 @@ mod tests_ecosystem_trade {
         stop_prank(CheatTarget::One(akira.contract_address));
     }  
 
-    #[test]
-    #[fork("block_based")]
-    fn test_double_qty_SELL_maker_01() {
-        // Taker buy, full match happens with maker of same px
-        let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
-        
-        let gas_required:u256 = 100 * get_swap_gas_cost().into(); 
-        deposit(tr1, eth_amount, eth, akira); deposit(tr2, usdc_amount, usdc, akira);
-
-
-        let sell_market_flags = get_order_flags(false, false, false, true, true);
-        let sell_order = spawn_double_qty_order(akira, tr1, usdc_amount, eth_amount - gas_required, usdc_amount, sell_market_flags, 2, zero_router());
-
-        let buy_limit_flags = get_order_flags(false, false, true, false, false);
-
-        let buy_order = spawn_order(akira, tr2, usdc_amount, eth_amount, buy_limit_flags, 0,  zero_router());
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-
-        akira.apply_ecosystem_trades(array![(sell_order, false)], array![buy_order], array![(1,false)], array![0], 100, get_swap_gas_cost());
-
-        //0 cause remaining eth was spent on gas
-        assert!(akira.balanceOf(sell_order.order.maker, eth) == 0, "WRONG_MATCH_ETH_SELL");
-        stop_prank(CheatTarget::One(akira.contract_address));
-    }  
-
-    #[test]
-    #[fork("block_based")]
-    fn test_double_qty_SELL_maker_02_match_quote_qty() {
-        // Taker buy, full match happens with maker of same px
-        let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
-
-        let quote_qty = usdc_amount - 1;
-        
-        let gas_required:u256 = 100 * get_swap_gas_cost().into(); 
-        deposit(tr1, eth_amount + gas_required, eth, akira); deposit(tr2, usdc_amount, usdc, akira);
-
-
-        let sell_market_flags = get_order_flags(false, false, false, true, true);
-        let sell_order = spawn_order(akira, tr1, usdc_amount, eth_amount, sell_market_flags, 2, zero_router());
-
-        let buy_limit_flags = get_order_flags(false, false, true, false, false);
-
-        let buy_order = spawn_double_qty_order(akira, tr2, usdc_amount, eth_amount, quote_qty, buy_limit_flags, 0,  zero_router());
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-
-        akira.apply_ecosystem_trades(array![(sell_order, false)], array![buy_order], array![(1,false)], array![0], 100, get_swap_gas_cost());
-
-        //0 cause remaining eth was spent on gas
-        assert!(akira.balanceOf(sell_order.order.maker, eth) == eth_amount / usdc_amount, "WRONG_MATCH_ETH_SELL {}, {}", akira.balanceOf(sell_order.order.maker, eth), eth_amount / usdc_amount);
-        stop_prank(CheatTarget::One(akira.contract_address));
-    }  
-
-
-        #[test]
-    #[fork("block_based")]
-    fn test_double_qty_SELL_maker_03_match_base_qty() {
-        // Taker buy, full match happens with maker of same px
-        let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
-
-        let quote_qty = usdc_amount + 1;
-        
-        let gas_required:u256 = 100 * get_swap_gas_cost().into(); 
-        deposit(tr1, eth_amount + gas_required, eth, akira); deposit(tr2, usdc_amount, usdc, akira);
-
-
-        let sell_market_flags = get_order_flags(false, false, false, true, true);
-        let sell_order = spawn_order(akira, tr1, usdc_amount, eth_amount, sell_market_flags, 2, zero_router());
-
-        let buy_limit_flags = get_order_flags(false, false, true, false, false);
-
-        let buy_order = spawn_double_qty_order(akira, tr2, usdc_amount, eth_amount, quote_qty, buy_limit_flags, 0,  zero_router());
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-
-        akira.apply_ecosystem_trades(array![(sell_order, false)], array![buy_order], array![(1,false)], array![0], 100, get_swap_gas_cost());
-
-        //0 cause remaining eth was spent on gas
-        assert!(akira.balanceOf(sell_order.order.maker, eth) == 0, "WRONG_MATCH_ETH_SELL {}, {}", akira.balanceOf(sell_order.order.maker, eth), 0);
-        stop_prank(CheatTarget::One(akira.contract_address));
-    }  
-
-    #[test]
-    #[fork("block_based")]
-    fn test_double_qty_SELL_maker_04_double() {
-        // Taker buy, full match happens with maker of same px
-        let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
-
-        let quote_qty = usdc_amount + 1;
-        
-        let gas_required:u256 = 100 * get_swap_gas_cost().into(); 
-        deposit(tr1, eth_amount + gas_required, eth, akira); deposit(tr2, usdc_amount, usdc, akira);
-
-
-        let sell_market_flags = get_order_flags(false, false, false, true, true);
-        let sell_order = spawn_double_qty_order(akira, tr1, usdc_amount, eth_amount, usdc_amount - 1, sell_market_flags, 2, zero_router());
-
-        let buy_limit_flags = get_order_flags(false, false, true, false, false);
-
-        let buy_order = spawn_double_qty_order(akira, tr2, usdc_amount, eth_amount, usdc_amount - 2, buy_limit_flags, 0,  zero_router());
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-
-        akira.apply_ecosystem_trades(array![(sell_order, false)], array![buy_order], array![(1,false)], array![0], 100, get_swap_gas_cost());
-
-        //0 cause remaining eth was spent on gas
-        assert!(akira.balanceOf(sell_order.order.maker, eth) == eth_amount / usdc_amount * 2, "WRONG_MATCH_ETH_SELL {}, {}", akira.balanceOf(sell_order.order.maker, eth), 0);
-        assert!(akira.balanceOf(buy_order.order.maker, usdc) == 2, "WRONG_MATCH {}, {}", akira.balanceOf(sell_order.order.maker, eth), 0);
-        stop_prank(CheatTarget::One(akira.contract_address));
-    }  
-
-    #[test]
-    #[fork("block_based")]
-    fn test_double_qty_SELL_maker_05_double() {
-        // Taker buy, full match happens with maker of same px
-        let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
-
-        let quote_qty = usdc_amount + 1;
-        
-        let gas_required:u256 = 100 * get_swap_gas_cost().into(); 
-        deposit(tr1, eth_amount + gas_required, eth, akira); deposit(tr2, usdc_amount, usdc, akira);
-
-
-        let sell_market_flags = get_order_flags(false, false, false, true, true);
-        let sell_order = spawn_double_qty_order(akira, tr1, usdc_amount, eth_amount, usdc_amount - 3, sell_market_flags, 2, zero_router());
-
-        let buy_limit_flags = get_order_flags(false, false, true, false, false);
-
-        let buy_order = spawn_double_qty_order(akira, tr2, usdc_amount, eth_amount, usdc_amount - 2, buy_limit_flags, 0,  zero_router());
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-
-        akira.apply_ecosystem_trades(array![(sell_order, false)], array![buy_order], array![(1,false)], array![0], 100, get_swap_gas_cost());
-
-        //0 cause remaining eth was spent on gas
-        assert!(akira.balanceOf(sell_order.order.maker, eth) == eth_amount / usdc_amount * 3, "WRONG_MATCH_ETH_SELL {}, {}", akira.balanceOf(sell_order.order.maker, eth), 0);
-        assert!(akira.balanceOf(buy_order.order.maker, usdc) == 3, "WRONG_MATCH {}, {}", akira.balanceOf(sell_order.order.maker, eth), 0);
-        stop_prank(CheatTarget::One(akira.contract_address));
-    }  
-
-    #[test]
-    #[fork("block_based")]
-    fn test_double_qty_BUY_maker_01_match_quote_qty() {
-        // Taker buy, full match happens with maker of same px
-        let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
-
-        let quote_qty = usdc_amount - 1;
-        
-        let gas_required:u256 = 100 * get_swap_gas_cost().into(); 
-        assert(akira.balanceOf(tr1, eth) == 0, 'failed balance check');
-        deposit(tr2, eth_amount, eth, akira);
-        deposit(tr1, usdc_amount, usdc, akira);
-
-
-        let buy_limit_flags = get_order_flags(false, false, false, false, true);
-        let buy_order = spawn_order(akira, tr1, usdc_amount, eth_amount, buy_limit_flags, 2, zero_router());
-
-        let sell_market_flags = get_order_flags(false, false, true, true, false);
-
-        let sell_order = spawn_double_qty_order(akira, tr2, usdc_amount, eth_amount, quote_qty, sell_market_flags, 0,  zero_router());
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-
-        akira.apply_ecosystem_trades(array![(buy_order, false)], array![sell_order], array![(1,false)], array![0], 100, get_swap_gas_cost());
-
-        //0 cause remaining eth was spent on gas
-        assert!(akira.balanceOf(buy_order.order.maker, usdc) == 1, "WRONG_MATCH");
-        stop_prank(CheatTarget::One(akira.contract_address));
-    }  
-
 
     #[test]
     #[fork("block_based")]
@@ -862,400 +697,132 @@ mod tests_router_trade {
         assert(router_b - akira.balance_of_router(router, eth) == charge, 'WRONG_RECEIVED');
     }  
 
-
-    #[test]
-    #[fork("block_based")]
-    fn test_roter_trade_double_qty_semantic_BUY_maker_01() {
-        let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
-
-        let router: ContractAddress = 1.try_into().unwrap();
-        let (signer, signer_pk) = get_trader_signer_and_pk_2();
-        let signer: ContractAddress = signer.try_into().unwrap();
-        register_router(akira, tr1, signer, router);
-        
-        deposit(tr1, usdc_amount, usdc, akira);
-        let gas_fee = 100 * get_swap_gas_cost().into();
-        
-        grant_allowances(akira, tr2, eth, gas_fee + eth_amount+10000000);
-
-        let price = 2000_000_000; // 2000 usdc
-        let base_qty = 1_000_000_000_000_000_000; // 1 eth
-        let quote_qty = price;
-        
-        let mut sell_order = spawn_double_qty_order(akira, tr2, price, base_qty, quote_qty, 
-                get_order_flags(false, false, false, true, true), 1, signer);
-        sell_order.router_sign = sign(sell_order.order.get_poseidon_hash(), signer.into(), signer_pk);
-
-
-        let buy_order = spawn_order(akira, tr1, price, base_qty, 
-                get_order_flags(false, false, true, false, false), 0, zero_router());
-
-
-        let eth_erc = IERC20Dispatcher{contract_address:eth};
-        let usdc_erc = IERC20Dispatcher{contract_address:usdc};
-        let taker = sell_order.order.maker;
-        let (eth_b, usdc_b, router_b) = (eth_erc.balanceOf(taker), usdc_erc.balanceOf(taker), akira.balance_of_router(router, usdc));
-
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        assert(akira.apply_single_execution_step(sell_order, array![(buy_order,0)],  base_qty, 100, get_swap_gas_cost(), false), 'FAILED_MATCH');
-        stop_prank(CheatTarget::One(akira.contract_address));
-         
-        assert(akira.balanceOf(sell_order.order.maker, eth) == 0, 'WRONG_ROUTER_T_BALANCE_ETH');
-        assert(akira.balanceOf(sell_order.order.maker, usdc) == 0, 'WRONG_ROUTER_T_BALANCE_USDC');
-        let taker_fee = get_feeable_qty(sell_order.order.fee.trade_fee, price, false);
-        let router_fee = get_feeable_qty(sell_order.order.fee.router_fee, price, false);
-        assert(akira.balance_of_router(router, usdc) - router_b == router_fee, 'WRONG_ROUTER_RECEIVED');
-
-        let maker_fee = get_feeable_qty(buy_order.order.fee.trade_fee, base_qty, true);
-        assert(akira.balanceOf(buy_order.order.maker, eth) == base_qty - maker_fee, 'WRONG_MATCH_RECIEVE_ETH');
-        assert(akira.balanceOf(buy_order.order.maker, usdc) == 0, 'WRONG_SEND_USDC');
-
-
-        start_prank(CheatTarget::One(akira.contract_address), router);
-        akira.router_withdraw(usdc, router_fee, router);
-        assert(usdc_erc.balanceOf(router) == router_fee, 'WRONG_ROUTER_WITHDRAW');
-        stop_prank(CheatTarget::One(akira.contract_address));
-    }  
-
-    #[test]
-    #[fork("block_based")]
-    fn test_roter_trade_double_qty_semantic_BUY_maker_02_match_quote_qty() {
-        let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
-
-        let router: ContractAddress = 1.try_into().unwrap();
-        let (signer, signer_pk) = get_trader_signer_and_pk_2();
-        let signer: ContractAddress = signer.try_into().unwrap();
-        register_router(akira, tr1, signer, router);
-        
-        deposit(tr1, usdc_amount, usdc, akira);
-        let gas_fee = 100 * get_swap_gas_cost().into();
-        
-        grant_allowances(akira, tr2, eth, gas_fee + eth_amount+10000000);
-
-        let price = 2000_000_000; // 2000 usdc
-        let base_qty = 1_000_000_000_000_000_000; // 1 eth
-        let quote_qty = price - 1;
-        
-        let mut sell_order = spawn_double_qty_order(akira, tr2, price, base_qty, quote_qty, 
-                get_order_flags(false, false, false, true, true), 1, signer);
-        sell_order.router_sign = sign(sell_order.order.get_poseidon_hash(), signer.into(), signer_pk);
-
-
-        let buy_order = spawn_order(akira, tr1, price, base_qty, 
-                get_order_flags(false, false, true, false, false), 0, zero_router());
-
-
-        let eth_erc = IERC20Dispatcher{contract_address:eth};
-        let usdc_erc = IERC20Dispatcher{contract_address:usdc};
-        let taker = sell_order.order.maker;
-        let (eth_b, usdc_b, router_b) = (eth_erc.balanceOf(taker), usdc_erc.balanceOf(taker), akira.balance_of_router(router, usdc));
-
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        assert(akira.apply_single_execution_step(sell_order, array![(buy_order,0)],  base_qty - base_qty / price, 100, get_swap_gas_cost(), false), 'FAILED_MATCH');
-        stop_prank(CheatTarget::One(akira.contract_address));
-         
-        assert(akira.balanceOf(sell_order.order.maker, eth) == 0, 'WRONG_ROUTER_T_BALANCE_ETH');
-        assert(akira.balanceOf(sell_order.order.maker, usdc) == 0, 'WRONG_ROUTER_T_BALANCE_USDC');
-        let taker_fee = get_feeable_qty(sell_order.order.fee.trade_fee, price, false);
-        let router_fee = get_feeable_qty(sell_order.order.fee.router_fee, price, false);
-        assert(akira.balance_of_router(router, usdc) - router_b == router_fee, 'WRONG_ROUTER_RECEIVED');
-
-        let maker_fee = get_feeable_qty(buy_order.order.fee.trade_fee, base_qty - base_qty / price, true);
-        assert(akira.balanceOf(buy_order.order.maker, eth) == base_qty - base_qty / price - maker_fee, 'WRONG_MATCH_RECIEVE_ETH');
-        assert(akira.balanceOf(buy_order.order.maker, usdc) == 1, 'WRONG_SEND_USDC');
-
-
-        start_prank(CheatTarget::One(akira.contract_address), router);
-        akira.router_withdraw(usdc, router_fee, router);
-        assert(usdc_erc.balanceOf(router) == router_fee, 'WRONG_ROUTER_WITHDRAW');
-        stop_prank(CheatTarget::One(akira.contract_address));
-    }  
-
-     #[test]
-    #[fork("block_based")]
-    fn test_roter_trade_double_qty_semantic_BUY_maker_03_match_base_qty() {
-        let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
-
-        let router: ContractAddress = 1.try_into().unwrap();
-        let (signer, signer_pk) = get_trader_signer_and_pk_2();
-        let signer: ContractAddress = signer.try_into().unwrap();
-        register_router(akira, tr1, signer, router);
-        
-        deposit(tr1, usdc_amount, usdc, akira);
-        let gas_fee = 100 * get_swap_gas_cost().into();
-        
-        grant_allowances(akira, tr2, eth, gas_fee + eth_amount+10000000);
-
-        let price = 2000_000_000; // 2000 usdc
-        let base_qty = 1_000_000_000_000_000_000; // 1 eth
-        let quote_qty = price + 1;
-        
-        let mut sell_order = spawn_double_qty_order(akira, tr2, price, base_qty, quote_qty, 
-                get_order_flags(false, false, false, true, true), 1, signer);
-        sell_order.router_sign = sign(sell_order.order.get_poseidon_hash(), signer.into(), signer_pk);
-
-
-        let buy_order = spawn_order(akira, tr1, price, base_qty, 
-                get_order_flags(false, false, true, false, false), 0, zero_router());
-
-
-        let eth_erc = IERC20Dispatcher{contract_address:eth};
-        let usdc_erc = IERC20Dispatcher{contract_address:usdc};
-        let taker = sell_order.order.maker;
-        let (eth_b, usdc_b, router_b) = (eth_erc.balanceOf(taker), usdc_erc.balanceOf(taker), akira.balance_of_router(router, usdc));
-
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        assert(akira.apply_single_execution_step(sell_order, array![(buy_order,0)],  base_qty, 100, get_swap_gas_cost(), false), 'FAILED_MATCH');
-        stop_prank(CheatTarget::One(akira.contract_address));
-         
-        assert(akira.balanceOf(sell_order.order.maker, eth) == 0, 'WRONG_ROUTER_T_BALANCE_ETH');
-        assert(akira.balanceOf(sell_order.order.maker, usdc) == 0, 'WRONG_ROUTER_T_BALANCE_USDC');
-        let taker_fee = get_feeable_qty(sell_order.order.fee.trade_fee, price, false);
-        let router_fee = get_feeable_qty(sell_order.order.fee.router_fee, price, false);
-        assert(akira.balance_of_router(router, usdc) - router_b == router_fee, 'WRONG_ROUTER_RECEIVED');
-
-        let maker_fee = get_feeable_qty(buy_order.order.fee.trade_fee, base_qty, true);
-        assert(akira.balanceOf(buy_order.order.maker, eth) == base_qty - maker_fee, 'WRONG_MATCH_RECIEVE_ETH');
-        assert(akira.balanceOf(buy_order.order.maker, usdc) == 0, 'WRONG_SEND_USDC');
-
-
-        start_prank(CheatTarget::One(akira.contract_address), router);
-        akira.router_withdraw(usdc, router_fee, router);
-        assert(usdc_erc.balanceOf(router) == router_fee, 'WRONG_ROUTER_WITHDRAW');
-        stop_prank(CheatTarget::One(akira.contract_address));
-    }  
-
-    #[test]
-    #[fork("block_based")]
-    fn test_roter_trade_double_qty_semantic_SELL_maker_01() {
-        let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
-
-        let router: ContractAddress = 1.try_into().unwrap();
-        let (signer, signer_pk) = get_trader_signer_and_pk_2();
-        let signer: ContractAddress = signer.try_into().unwrap();
-        register_router(akira, tr1, signer, router);
-        
-        deposit(tr1, eth_amount, eth, akira);
-        let gas_fee = 100 * get_swap_gas_cost().into();
-        grant_allowances(akira, tr2, eth, gas_fee +10000000);
-        grant_allowances(akira, tr2, usdc, usdc_amount+10000000);
-
-        let price = 2000_000_000; // 2000 usdc
-        let base_qty = 1_000_000_000_000_000_000; // 1 eth
-        let quote_qty = price;
-        let expected_qty = price;
-        
-        let mut buy_order_ = spawn_double_qty_order(akira, tr2, price, base_qty, quote_qty, 
-                get_order_flags(false, false, false, false, true), 1, signer);
-        buy_order_.router_sign = sign(buy_order_.order.get_poseidon_hash(), signer.into(), signer_pk);
-
-
-        let sell_order = spawn_order(akira, tr1, price, base_qty, 
-                get_order_flags(false, false, true, true, false), 0, zero_router());
-
-
-        let eth_erc = IERC20Dispatcher{contract_address:eth};
-        let usdc_erc = IERC20Dispatcher{contract_address:usdc};
-        let taker = buy_order_.order.maker;
-        let (eth_b, usdc_b, router_b) = (eth_erc.balanceOf(taker), usdc_erc.balanceOf(taker), akira.balance_of_router(router, eth));
-
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        assert(akira.apply_single_execution_step(buy_order_, array![(sell_order,0)],  expected_qty, 100, get_swap_gas_cost(), false), 'FAILED_MATCH');
-        stop_prank(CheatTarget::One(akira.contract_address));
-         
-        assert(akira.balanceOf(buy_order_.order.maker, eth) == 0, 'WRONG_ROUTER_T_BALANCE_ETH');
-        assert(akira.balanceOf(buy_order_.order.maker, usdc) == 0, 'WRONG_ROUTER_T_BALANCE_USDC');
-        let taker_fee = get_feeable_qty(buy_order_.order.fee.trade_fee, base_qty, false);
-        let router_fee = get_feeable_qty(buy_order_.order.fee.router_fee, base_qty, false);
-        assert!(akira.balance_of_router(router, eth) - router_b == router_fee, "WRONG_ROUTER_RECEIVED: {}, {}", akira.balance_of_router(router, eth) - router_b, router_fee);
-
-        let maker_fee = get_feeable_qty(sell_order.order.fee.trade_fee, expected_qty, true);
-        assert(akira.balanceOf(sell_order.order.maker, usdc) == expected_qty - maker_fee, 'WRONG_MATCH_RECIEVE_ETH');
-        assert(akira.balanceOf(sell_order.order.maker, eth) == 0, 'WRONG_SEND_USDC');
-
-
-        start_prank(CheatTarget::One(akira.contract_address), router);
-        let r_b = eth_erc.balanceOf(router);
-        akira.router_withdraw(eth, router_fee, router);
-        assert(eth_erc.balanceOf(router) == r_b + router_fee, 'WRONG_ROUTER_WITHDRAW');
-        stop_prank(CheatTarget::One(akira.contract_address));
-    }  
-
-    #[test]
-    #[fork("block_based")]
-    fn test_roter_trade_double_qty_semantic_SELL_maker_02_match_quote_qty() {
-        let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
-
-        let router: ContractAddress = 1.try_into().unwrap();
-        let (signer, signer_pk) = get_trader_signer_and_pk_2();
-        let signer: ContractAddress = signer.try_into().unwrap();
-        register_router(akira, tr1, signer, router);
-        
-        deposit(tr1, eth_amount, eth, akira);
-        let gas_fee = 100 * get_swap_gas_cost().into();
-        grant_allowances(akira, tr2, eth, gas_fee +10000000);
-        grant_allowances(akira, tr2, usdc, usdc_amount+10000000);
-
-        let price = 2000_000_000; // 2000 usdc
-        let base_qty = 1_000_000_000_000_000_000; // 1 eth
-        let quote_qty = price - 1;
-        let expected_qty = quote_qty;
-        
-        let mut buy_order_ = spawn_double_qty_order(akira, tr2, price, base_qty, quote_qty, 
-                get_order_flags(false, false, false, false, true), 1, signer);
-        buy_order_.router_sign = sign(buy_order_.order.get_poseidon_hash(), signer.into(), signer_pk);
-
-
-        let sell_order = spawn_order(akira, tr1, price, base_qty, 
-                get_order_flags(false, false, true, true, false), 0, zero_router());
-
-
-        let eth_erc = IERC20Dispatcher{contract_address:eth};
-        let usdc_erc = IERC20Dispatcher{contract_address:usdc};
-        let taker = buy_order_.order.maker;
-        let (eth_b, usdc_b, router_b) = (eth_erc.balanceOf(taker), usdc_erc.balanceOf(taker), akira.balance_of_router(router, eth));
-
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        assert(akira.apply_single_execution_step(buy_order_, array![(sell_order,0)],  expected_qty, 100, get_swap_gas_cost(), false), 'FAILED_MATCH');
-        stop_prank(CheatTarget::One(akira.contract_address));
-         
-        assert(akira.balanceOf(buy_order_.order.maker, eth) == 0, 'WRONG_ROUTER_T_BALANCE_ETH');
-        assert(akira.balanceOf(buy_order_.order.maker, usdc) == 0, 'WRONG_ROUTER_T_BALANCE_USDC');
-        let taker_fee = get_feeable_qty(buy_order_.order.fee.trade_fee, base_qty - base_qty / price, false);
-        let router_fee = get_feeable_qty(buy_order_.order.fee.router_fee, base_qty - base_qty / price, false);
-        assert!(akira.balance_of_router(router, eth) - router_b == router_fee, "WRONG_ROUTER_RECEIVED: {}, {}", akira.balance_of_router(router, eth) - router_b, router_fee);
-
-        let maker_fee = get_feeable_qty(sell_order.order.fee.trade_fee, expected_qty, true);
-        assert(akira.balanceOf(sell_order.order.maker, usdc) == expected_qty - maker_fee, 'WRONG_MATCH_RECIEVE_ETH');
-        assert(akira.balanceOf(sell_order.order.maker, eth) == base_qty / price, 'WRONG_SEND_USDC');
-
-
-        start_prank(CheatTarget::One(akira.contract_address), router);
-        let r_b = eth_erc.balanceOf(router);
-        akira.router_withdraw(eth, router_fee, router);
-        assert(eth_erc.balanceOf(router) == r_b + router_fee, 'WRONG_ROUTER_WITHDRAW');
-        stop_prank(CheatTarget::One(akira.contract_address));
-    }  
-
-
-    #[test]
-    #[fork("block_based")]
-    fn test_roter_trade_double_qty_semantic_SELL_maker_03_match_base_qty() {
-        let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
-
-        let router: ContractAddress = 1.try_into().unwrap();
-        let (signer, signer_pk) = get_trader_signer_and_pk_2();
-        let signer: ContractAddress = signer.try_into().unwrap();
-        register_router(akira, tr1, signer, router);
-        
-        deposit(tr1, eth_amount, eth, akira);
-        let gas_fee = 100 * get_swap_gas_cost().into();
-        grant_allowances(akira, tr2, eth, gas_fee +10000000);
-        grant_allowances(akira, tr2, usdc, usdc_amount+10000000);
-
-        let price = 2000_000_000; // 2000 usdc
-        let base_qty = 1_000_000_000_000_000_000; // 1 eth
-        let quote_qty = price + 1;
-        let expected_qty = price;
-        
-        let mut buy_order_ = spawn_double_qty_order(akira, tr2, price, base_qty, quote_qty, 
-                get_order_flags(false, false, false, false, true), 1, signer);
-        buy_order_.router_sign = sign(buy_order_.order.get_poseidon_hash(), signer.into(), signer_pk);
-
-
-        let sell_order = spawn_order(akira, tr1, price, base_qty, 
-                get_order_flags(false, false, true, true, false), 0, zero_router());
-
-
-        let eth_erc = IERC20Dispatcher{contract_address:eth};
-        let usdc_erc = IERC20Dispatcher{contract_address:usdc};
-        let taker = buy_order_.order.maker;
-        let (eth_b, usdc_b, router_b) = (eth_erc.balanceOf(taker), usdc_erc.balanceOf(taker), akira.balance_of_router(router, eth));
-
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        assert(akira.apply_single_execution_step(buy_order_, array![(sell_order,0)],  expected_qty, 100, get_swap_gas_cost(), false), 'FAILED_MATCH');
-        stop_prank(CheatTarget::One(akira.contract_address));
-         
-        assert(akira.balanceOf(buy_order_.order.maker, eth) == 0, 'WRONG_ROUTER_T_BALANCE_ETH');
-        assert(akira.balanceOf(buy_order_.order.maker, usdc) == 0, 'WRONG_ROUTER_T_BALANCE_USDC');
-        let taker_fee = get_feeable_qty(buy_order_.order.fee.trade_fee, base_qty, false);
-        let router_fee = get_feeable_qty(buy_order_.order.fee.router_fee, base_qty, false);
-        assert!(akira.balance_of_router(router, eth) - router_b == router_fee, "WRONG_ROUTER_RECEIVED: {}, {}", akira.balance_of_router(router, eth) - router_b, router_fee);
-
-        let maker_fee = get_feeable_qty(sell_order.order.fee.trade_fee, expected_qty, true);
-        assert(akira.balanceOf(sell_order.order.maker, usdc) == expected_qty - maker_fee, 'WRONG_MATCH_RECIEVE_ETH');
-        assert(akira.balanceOf(sell_order.order.maker, eth) == 0, 'WRONG_SEND_USDC');
-
-
-        start_prank(CheatTarget::One(akira.contract_address), router);
-        let r_b = eth_erc.balanceOf(router);
-        akira.router_withdraw(eth, router_fee, router);
-        assert(eth_erc.balanceOf(router) == r_b + router_fee, 'WRONG_ROUTER_WITHDRAW');
-        stop_prank(CheatTarget::One(akira.contract_address));
-    }  
-    
-     #[test]
-    #[fork("block_based")]
-    fn test_roter_trade_double_qty_semantic_SELL_maker_04_double() {
-        let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
-
-        let router: ContractAddress = 1.try_into().unwrap();
-        let (signer, signer_pk) = get_trader_signer_and_pk_2();
-        let signer: ContractAddress = signer.try_into().unwrap();
-        register_router(akira, tr1, signer, router);
-        
-        deposit(tr1, eth_amount, eth, akira);
-        let gas_fee = 100 * get_swap_gas_cost().into();
-        grant_allowances(akira, tr2, eth, gas_fee +10000000);
-        grant_allowances(akira, tr2, usdc, usdc_amount+10000000);
-
-        let price = 2000_000_000; // 2000 usdc
-        let base_qty = 1_000_000_000_000_000_000; // 1 eth
-        let quote_qty = price - 1;
-        let expected_qty = quote_qty - 1;
-        
-        let mut buy_order_ = spawn_double_qty_order(akira, tr2, price, base_qty, quote_qty, 
-                get_order_flags(false, false, false, false, true), 1, signer);
-        buy_order_.router_sign = sign(buy_order_.order.get_poseidon_hash(), signer.into(), signer_pk);
-
-
-        let sell_order = spawn_double_qty_order(akira, tr1, price, base_qty, quote_qty - 1,
-                get_order_flags(false, false, true, true, false), 0, zero_router());
-
-
-        let eth_erc = IERC20Dispatcher{contract_address:eth};
-        let usdc_erc = IERC20Dispatcher{contract_address:usdc};
-        let taker = buy_order_.order.maker;
-        let (eth_b, usdc_b, router_b) = (eth_erc.balanceOf(taker), usdc_erc.balanceOf(taker), akira.balance_of_router(router, eth));
-
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        assert(akira.apply_single_execution_step(buy_order_, array![(sell_order,0)],  expected_qty, 100, get_swap_gas_cost(), false), 'FAILED_MATCH');
-        stop_prank(CheatTarget::One(akira.contract_address));
-
-         
-        assert(akira.balanceOf(buy_order_.order.maker, eth) == 0, 'WRONG_ROUTER_T_BALANCE_ETH');
-        assert(akira.balanceOf(buy_order_.order.maker, usdc) == 0, 'WRONG_ROUTER_T_BALANCE_USDC');
-        let taker_fee = get_feeable_qty(buy_order_.order.fee.trade_fee, base_qty - base_qty / price * 2, false);
-        let router_fee = get_feeable_qty(buy_order_.order.fee.router_fee, base_qty - base_qty / price * 2, false);
-        assert!(akira.balance_of_router(router, eth) - router_b == router_fee, "WRONG_ROUTER_RECEIVED: {}, {}", akira.balance_of_router(router, eth) - router_b, router_fee);
-
-        let maker_fee = get_feeable_qty(sell_order.order.fee.trade_fee, expected_qty, true);
-        assert(akira.balanceOf(sell_order.order.maker, usdc) == expected_qty - maker_fee, 'WRONG_MATCH_RECIEVE_ETH');
-        assert(akira.balanceOf(sell_order.order.maker, eth) == base_qty / price * 2, 'WRONG_SEND_USDC');
-
-
-        start_prank(CheatTarget::One(akira.contract_address), router);
-        let r_b = eth_erc.balanceOf(router);
-        akira.router_withdraw(eth, router_fee, router);
-        assert(eth_erc.balanceOf(router) == r_b + router_fee, 'WRONG_ROUTER_WITHDRAW');
-        stop_prank(CheatTarget::One(akira.contract_address));
-    }  
-
-
 }
 
 #[cfg(test)]
-mod tests_quote_qty_ecosystem_trade {
+mod tests_quote_qty_ecosystem_trade_01 {
+    use core::clone::Clone;
+    use kurosawa_akira::test_utils::test_common::{deposit,get_eth_addr,tfer_eth_funds_to,get_fee_recipient_exchange,get_slow_mode, 
+    get_trader_address_1,get_trader_address_2,get_trader_signer_and_pk_1,get_usdc_addr,tfer_usdc_funds_to,
+    get_withdraw_action_cost,spawn_exchange, prepare_double_gas_fee_native, sign, get_trader_signer_and_pk_2};
+    use kurosawa_akira::FundsTraits::PoseidonHash;
+    use core::{traits::Into,array::ArrayTrait,option::OptionTrait,traits::TryInto,result::ResultTrait};
+    use starknet::{ContractAddress,info::get_block_number,get_caller_address};
+    use debug::PrintTrait;
+    use snforge_std::{CheatTarget,start_prank,start_warp,stop_warp,stop_prank,declare,ContractClassTrait, start_roll, stop_roll};
+    use core::dict::{Felt252Dict, Felt252DictTrait, SquashedFelt252Dict};
+    use kurosawa_akira::LayerAkira::LayerAkira;
+    use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait,IERC20Dispatcher};
+    use kurosawa_akira::ILayerAkira::{ILayerAkiraDispatcher, ILayerAkiraDispatcherTrait};
+    use kurosawa_akira::Order::GasFee;
+    use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
+    use serde::Serde;
+    use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
+    use kurosawa_akira::FundsTraits::check_sign;
+    use kurosawa_akira::Order::{SignedOrder, Order, FixedFee,OrderFee,OrderFlags, get_feeable_qty};
+
+
+    use super::test_common_trade:: {prepare,get_maker_taker_fees,get_swap_gas_cost,spawn_order, spawn_double_qty_order, get_zero_router_fee,zero_router};
+
+
+
+    fn get_order_flags(full_fill_only:bool,best_level_only:bool,post_only:bool,is_sell_side:bool,is_market_order:bool,) -> OrderFlags{
+        return OrderFlags{full_fill_only, best_level_only, post_only, is_sell_side, is_market_order, to_ecosystem_book: true, external_funds:false};
+    }
+
+    fn test_quote_qty_draft(quote_qty_01: u256, quote_qty_02: u256, actual_qty: u256) {
+        // Taker buy, full match happens with maker of same px
+        let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
+        
+        let gas_required:u256 = 100 * get_swap_gas_cost().into(); 
+        deposit(tr1, eth_amount + gas_required, eth, akira); deposit(tr2, usdc_amount, usdc, akira);
+
+
+        let sell_market_flags = get_order_flags(false, false, false, true, true);
+        let sell_order = spawn_double_qty_order(akira, tr1, usdc_amount, eth_amount, quote_qty_01, sell_market_flags, 2, zero_router());
+
+        let buy_limit_flags = get_order_flags(false, false, true, false, false);
+
+        let buy_order = spawn_double_qty_order(akira, tr2, usdc_amount, eth_amount, quote_qty_02, buy_limit_flags, 0,  zero_router());
+        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
+
+        akira.apply_ecosystem_trades(array![(sell_order, false)], array![buy_order], array![(1,false)], array![0], 100, get_swap_gas_cost());
+
+        //0 cause remaining eth was spent on gas
+        assert!(akira.balanceOf(sell_order.order.maker, eth) == (usdc_amount - actual_qty) * (eth_amount / usdc_amount), "WRONG_MATCH_ETH_SELL {}, {}", akira.balanceOf(sell_order.order.maker, eth), (usdc_amount - actual_qty) * (eth_amount / usdc_amount));
+        stop_prank(CheatTarget::One(akira.contract_address));
+    }  
+
+
+
+    #[test]
+    #[fork("block_based")]
+    fn test_double_qty_SELL_maker_01() {
+        let quote_qty = 2000_000_000;
+        test_quote_qty_draft(quote_qty, 0, quote_qty);
+    }  
+
+    #[test]
+    #[fork("block_based")]
+    fn test_double_qty_SELL_maker_02_match_quote_qty() {
+        let quote_qty = 2000_000_000 - 1;
+        test_quote_qty_draft(quote_qty, 0, quote_qty);
+    }  
+
+
+    #[test]
+    #[fork("block_based")]
+    fn test_double_qty_SELL_maker_03_match_base_qty() {
+        let quote_qty = 2000_000_000 + 1;
+        test_quote_qty_draft(quote_qty, 0, quote_qty - 1);
+    }  
+
+    #[test]
+    #[fork("block_based")]
+    fn test_double_qty_SELL_maker_04_double() {
+        let quote_qty = 2000_000_000;
+        test_quote_qty_draft(quote_qty - 2, quote_qty - 3, quote_qty - 3);
+    }  
+
+    #[test]
+    #[fork("block_based")]
+    fn test_double_qty_SELL_maker_05_double() {
+        let quote_qty = 2000_000_000;
+        test_quote_qty_draft(quote_qty - 3, quote_qty - 2, quote_qty - 3);
+    }  
+
+    #[test]
+    #[fork("block_based")]
+    fn test_double_qty_BUY_maker_01_match_quote_qty() {
+        // Taker buy, full match happens with maker of same px
+        let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
+
+        let quote_qty = usdc_amount - 1;
+        
+        let gas_required:u256 = 100 * get_swap_gas_cost().into(); 
+        assert(akira.balanceOf(tr1, eth) == 0, 'failed balance check');
+        deposit(tr2, eth_amount, eth, akira);
+        deposit(tr1, usdc_amount, usdc, akira);
+
+
+        let buy_limit_flags = get_order_flags(false, false, false, false, true);
+        let buy_order = spawn_order(akira, tr1, usdc_amount, eth_amount, buy_limit_flags, 2, zero_router());
+
+        let sell_market_flags = get_order_flags(false, false, true, true, false);
+
+        let sell_order = spawn_double_qty_order(akira, tr2, usdc_amount, eth_amount, quote_qty, sell_market_flags, 0,  zero_router());
+        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
+
+        akira.apply_ecosystem_trades(array![(buy_order, false)], array![sell_order], array![(1,false)], array![0], 100, get_swap_gas_cost());
+
+        //0 cause remaining eth was spent on gas
+        assert!(akira.balanceOf(buy_order.order.maker, usdc) == 1, "WRONG_MATCH");
+        stop_prank(CheatTarget::One(akira.contract_address));
+    }  
+}
+
+#[cfg(test)]
+mod tests_quote_qty_ecosystem_trade_02 {
     use core::clone::Clone;
     use kurosawa_akira::test_utils::test_common::{deposit,get_eth_addr,tfer_eth_funds_to, get_fee_recipient_exchange, get_slow_mode, 
     get_trader_address_1,get_trader_address_2,get_trader_signer_and_pk_1,get_usdc_addr,tfer_usdc_funds_to,
@@ -1353,9 +920,175 @@ mod tests_quote_qty_ecosystem_trade {
     }  
 }
 
+#[cfg(test)]
+mod tests_quote_qty_router_trade_01 {
+    use core::clone::Clone;
+    use kurosawa_akira::test_utils::test_common::{deposit,get_eth_addr,tfer_eth_funds_to, get_fee_recipient_exchange, get_slow_mode, 
+    get_trader_address_1,get_trader_address_2,get_trader_signer_and_pk_1,get_usdc_addr,tfer_usdc_funds_to,
+    get_withdraw_action_cost,spawn_exchange,prepare_double_gas_fee_native,sign,get_trader_signer_and_pk_2};
+    use kurosawa_akira::FundsTraits::PoseidonHash;
+    use core::{traits::Into,array::ArrayTrait,option::OptionTrait,traits::TryInto,result::ResultTrait};
+    use starknet::{ContractAddress,info::get_block_number,get_caller_address};
+    use debug::PrintTrait;
+    use snforge_std::{CheatTarget,start_prank,start_warp,stop_warp,stop_prank,declare,ContractClassTrait, start_roll, stop_roll};
+    use core::dict::{Felt252Dict, Felt252DictTrait, SquashedFelt252Dict};
+    use kurosawa_akira::LayerAkira::LayerAkira;
+    use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait,IERC20Dispatcher};
+    use kurosawa_akira::ILayerAkira::{ILayerAkiraDispatcher, ILayerAkiraDispatcherTrait};
+    use kurosawa_akira::Order::GasFee;
+    use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
+    use serde::Serde;
+    use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
+    use kurosawa_akira::FundsTraits::check_sign;
+    use kurosawa_akira::Order::{SignedOrder, Order, FixedFee,OrderFee,OrderFlags, get_feeable_qty};
+
+
+    use super::test_common_trade:: {prepare, get_maker_taker_fees, get_swap_gas_cost,spawn_order, spawn_double_qty_order, get_zero_router_fee, zero_router,register_router};
+    
+    fn grant_allowances(akira:ILayerAkiraDispatcher, trader:ContractAddress, token:ContractAddress, amount:u256) {
+        start_prank(CheatTarget::One(token), trader);
+        IERC20Dispatcher{contract_address:token}.increaseAllowance(akira.contract_address,amount);
+        stop_prank(CheatTarget::One(token));
+    }
+
+    // router ones
+    fn get_order_flags(full_fill_only:bool, best_level_only:bool, post_only:bool, is_sell_side:bool, is_market_order:bool) -> OrderFlags{
+        return OrderFlags{full_fill_only, best_level_only, post_only, is_sell_side, is_market_order, to_ecosystem_book: false, external_funds: is_market_order};
+    }
+
+    fn test_roter_trade_double_qty_semantic_BUY_maker_draft(change_side: bool, price: u256, base_qty: u256, quote_qty: u256, expected_qty: u256) {
+        let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
+
+        let router: ContractAddress = 1.try_into().unwrap();
+        let (signer, signer_pk) = get_trader_signer_and_pk_2();
+        let signer: ContractAddress = signer.try_into().unwrap();
+        register_router(akira, tr1, signer, router);
+        
+        if ! change_side {deposit(tr1, usdc_amount, usdc, akira);} else {deposit(tr1, eth_amount, eth, akira);}
+        let gas_fee = 100 * get_swap_gas_cost().into();
+        
+        grant_allowances(akira, tr2, eth, gas_fee + eth_amount+10000000);
+        grant_allowances(akira, tr2, usdc, usdc_amount+10000000);
+        
+        let mut taker_order = spawn_double_qty_order(akira, tr2, price, base_qty, quote_qty, 
+                get_order_flags(false, false, false, !change_side, true), 1, signer);
+        taker_order.router_sign = sign(taker_order.order.get_poseidon_hash(), signer.into(), signer_pk);
+
+
+        let maker_order = spawn_order(akira, tr1, price, base_qty, 
+                get_order_flags(false, false, true, change_side, false), 0, zero_router());
+
+
+        let eth_erc = IERC20Dispatcher{contract_address:eth};
+        let usdc_erc = IERC20Dispatcher{contract_address:usdc};
+        let taker = taker_order.order.maker;
+        let (eth_b, usdc_b) = (eth_erc.balanceOf(taker), usdc_erc.balanceOf(taker));
+        let router_b = if !change_side{akira.balance_of_router(router, usdc)} else {akira.balance_of_router(router, eth)};
+
+        let actual_matched_qty = if !change_side {(base_qty / price) * expected_qty} else {expected_qty * 1};
+
+        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
+        assert(akira.apply_single_execution_step(taker_order, array![(maker_order,0)],  actual_matched_qty, 100, get_swap_gas_cost(), false), 'FAILED_MATCH');
+        stop_prank(CheatTarget::One(akira.contract_address));
+         
+        assert(akira.balanceOf(taker_order.order.maker, eth) == 0, 'WRONG_ROUTER_T_BALANCE_ETH');
+        assert(akira.balanceOf(taker_order.order.maker, usdc) == 0, 'WRONG_ROUTER_T_BALANCE_USDC');
+        let mut router_fee = 0;
+        if !change_side{
+            router_fee = get_feeable_qty(taker_order.order.fee.router_fee, expected_qty, false);
+            assert(akira.balance_of_router(router, usdc) - router_b == router_fee, 'WRONG_ROUTER_RECEIVED');
+        }
+        else {
+            router_fee = get_feeable_qty(taker_order.order.fee.router_fee, (base_qty / price) * expected_qty, false);
+            assert!(akira.balance_of_router(router, eth) - router_b == router_fee, "WRONG_ROUTER_RECEIVED: {}, {}", akira.balance_of_router(router, eth) - router_b, router_fee);
+        }
+
+
+        let maker_fee = get_feeable_qty(maker_order.order.fee.trade_fee, actual_matched_qty, true);
+        if !change_side{
+            assert(akira.balanceOf(maker_order.order.maker, eth) == actual_matched_qty - maker_fee, 'WRONG_MATCH_RECIEVE_ETH');
+            assert(akira.balanceOf(maker_order.order.maker, usdc) == price - expected_qty, 'WRONG_SEND_USDC');
+        }
+        else {
+            assert(akira.balanceOf(maker_order.order.maker, eth) == (price - expected_qty) * base_qty / price, 'WRONG_MATCH_RECIEVE_ETH');
+            assert(akira.balanceOf(maker_order.order.maker, usdc) == expected_qty - maker_fee, 'WRONG_SEND_USDC');
+        }
+
+
+        start_prank(CheatTarget::One(akira.contract_address), router);
+        if !change_side{
+            let r_b = usdc_erc.balanceOf(router);
+            akira.router_withdraw(usdc, router_fee, router);
+            assert(usdc_erc.balanceOf(router) == r_b + router_fee, 'WRONG_ROUTER_WITHDRAW');
+        }
+        else {
+            let r_b = eth_erc.balanceOf(router);
+            akira.router_withdraw(eth, router_fee, router);
+            assert(eth_erc.balanceOf(router) == r_b + router_fee, 'WRONG_ROUTER_WITHDRAW');
+        }
+        stop_prank(CheatTarget::One(akira.contract_address));
+    }  
+
+    #[test]
+    #[fork("block_based")]
+    fn test_roter_trade_double_qty_semantic_BUY_maker_01() {
+
+        let price = 2000_000_000; // 2000 usdc
+        let base_qty = 1_000_000_000_000_000_000; // 1 eth
+        let quote_qty = price;
+        test_roter_trade_double_qty_semantic_BUY_maker_draft(false, price, base_qty, quote_qty, quote_qty);
+    }  
+
+    #[test]
+    #[fork("block_based")]
+    fn test_roter_trade_double_qty_semantic_BUY_maker_02_match_quote_qty() {
+        let price = 2000_000_000; // 2000 usdc
+        let base_qty = 1_000_000_000_000_000_000; // 1 eth
+        let quote_qty = price - 1;
+        test_roter_trade_double_qty_semantic_BUY_maker_draft(false, price, base_qty, quote_qty, quote_qty);
+    }  
+
+     #[test]
+    #[fork("block_based")]
+    fn test_roter_trade_double_qty_semantic_BUY_maker_03_match_base_qty() {
+        let price = 2000_000_000; // 2000 usdc
+        let base_qty = 1_000_000_000_000_000_000; // 1 eth
+        let quote_qty = price + 1;
+        test_roter_trade_double_qty_semantic_BUY_maker_draft(false, price, base_qty, quote_qty, quote_qty - 1);
+    }  
+
+    #[test]
+    #[fork("block_based")]
+    fn test_roter_trade_double_qty_semantic_SELL_maker_01() {
+        let price = 2000_000_000; // 2000 usdc
+        let base_qty = 1_000_000_000_000_000_000; // 1 eth
+        let quote_qty = price;
+        test_roter_trade_double_qty_semantic_BUY_maker_draft(true, price, base_qty, quote_qty, quote_qty);
+    }  
+
+    #[test]
+    #[fork("block_based")]
+    fn test_roter_trade_double_qty_semantic_SELL_maker_02_match_quote_qty() {
+        let price = 2000_000_000; // 2000 usdc
+        let base_qty = 1_000_000_000_000_000_000; // 1 eth
+        let quote_qty = price - 1;
+        test_roter_trade_double_qty_semantic_BUY_maker_draft(true, price, base_qty, quote_qty, quote_qty);
+    }  
+
+
+    #[test]
+    #[fork("block_based")]
+    fn test_roter_trade_double_qty_semantic_SELL_maker_03_match_base_qty() {
+        let price = 2000_000_000; // 2000 usdc
+        let base_qty = 1_000_000_000_000_000_000; // 1 eth
+        let quote_qty = price + 1;
+        test_roter_trade_double_qty_semantic_BUY_maker_draft(true, price, base_qty, quote_qty, quote_qty - 1);
+    }  
+}
+
 
 #[cfg(test)]
-mod tests_quote_qty_router_trade {
+mod tests_quote_qty_router_trade_02 {
     use core::clone::Clone;
     use kurosawa_akira::test_utils::test_common::{deposit,get_eth_addr,tfer_eth_funds_to, get_fee_recipient_exchange, get_slow_mode, 
     get_trader_address_1,get_trader_address_2,get_trader_signer_and_pk_1,get_usdc_addr,tfer_usdc_funds_to,
