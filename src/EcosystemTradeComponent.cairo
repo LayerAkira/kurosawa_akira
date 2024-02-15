@@ -299,7 +299,7 @@ mod ecosystem_trade_component {
             //Validate router, job of exchange because of this assert
             assert!(router.validate_router(taker_hash, signed_taker_order.router_sign, taker_order.constraints.router_signer, taker_order.fee.router_fee.recipient), "WRONG_ROUTER_SIGN");
             // nonce here so router cant on purpose send old orders of user
-            super::generic_taker_check(taker_order, taker_fill_info, contract.get_nonce(taker_order.maker), swaps, taker_hash, version, fee_recipient);
+            super::generic_taker_check(taker_order, taker_fill_info, taker_order.constraints.nonce, swaps, taker_hash, version, fee_recipient);
             assert!(taker_order.flags.is_market_order, "WRONG_MARKET_TYPE_EXTERNAL"); // external ones cant become passive orders
             let remaining_taker_amount =  self._infer_upper_bound_required(taker_order, taker_fill_info);
             assert!(remaining_taker_amount > 0, "WRONG_TAKER_AMOUNT");
@@ -331,12 +331,16 @@ mod ecosystem_trade_component {
         fn _prepare_router_taker(ref self:ComponentState<TContractState>, taker_order:Order, mut out_amount:u256, exchange:ContractAddress, swaps:u8,
                             gas_price:u256, cur_gas_per_action:u32) -> bool {
             // Prepare taker context for the trade when it have external funds mode
-            // 1) Checks if user granted necesssary permissions and have enough balance
+            // 1) Checks if user granted necessary permissions and have enough balance, and nonce of order is correct
             // 2) Tfer necessary amount for the trade and mint tokens on exchange for the user
             // 3) returns total out amount wrt to gas if same token
             // In case of failure returns 0 signalizing that issue due router's bad job
             let (base, quote) = (taker_order.ticker);
             let mut balancer = self.get_balancer_mut();
+            let contract = self.get_contract();
+
+            if taker_order.constraints.nonce < contract.get_nonce(taker_order.maker) { return false;}
+            
 
             let (erc20_base, erc20_quote) = (IERC20Dispatcher{contract_address:base}, IERC20Dispatcher{contract_address:quote});
             let (spent_gas, gas_token) = super::get_gas_fee_and_coin(taker_order.fee.gas_fee, gas_price, balancer.wrapped_native_token.read(), cur_gas_per_action);
