@@ -166,10 +166,18 @@ mod router_component {
             let router = get_caller_address();
             let balance:u256 = self.token_to_user.read((coin,router)); 
             assert!(balance >= amount, "FEW_COINS: failed balance ({}) >= amount ({})", balance, amount);
-            assert!(self.registered.read(router) || balance - amount >= 2 * self.min_to_route.read(), "FEW_FOR_ROUTE: need to keep at least {} router balance", 2 * self.min_to_route.read());
+            if self.native_base_token.read() ==  coin {
+                assert!(!self.registered.read(router) || balance - amount >= 2 * self.min_to_route.read(), "FEW_FOR_ROUTE: need to keep at least {} router balance", 2 * self.min_to_route.read());
+            }
             self.burn(router, coin, amount);
+            
             let erc20 = IERC20Dispatcher{contract_address: coin};
-            erc20.transfer(receiver,amount);
+            let balance_before = erc20.balanceOf(get_contract_address());
+
+            erc20.transfer(receiver, amount);
+
+            let transferred = balance_before - erc20.balanceOf(get_contract_address());
+            assert!(transferred <= amount, "WRONG_TRANSFER_AMOUNT expected {} actual {}",  amount, transferred);
             self.emit(Withdraw{router:router, token:coin, amount:amount, receiver:receiver});
         }
 
