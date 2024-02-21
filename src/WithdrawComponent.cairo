@@ -80,7 +80,7 @@ mod withdraw_component {
         receiver: ContractAddress,
         salt: felt252,
         amount: u256,
-        gas_price: u32,
+        gas_price: u256,
         gas_fee: GasFee,
         direct: bool
     }
@@ -173,7 +173,7 @@ mod withdraw_component {
         // Exchange can execute offchain withdrawal by makers if siganture is correct
         // or if there is ongoing pending withdrawal, exchange can process, 
         // in this case no need for signature verifaction because user already scheduled withdrawal onchain
-        fn apply_withdraw(ref self: ComponentState<TContractState>, signed_withdraw: SignedWithdraw, gas_price:u32, cur_gas_per_action:u32) {
+        fn apply_withdraw(ref self: ComponentState<TContractState>, signed_withdraw: SignedWithdraw, gas_price:u256, cur_gas_per_action:u32) {
             let hash = signed_withdraw.withdraw.get_poseidon_hash();
             let (delay, w_req):(SlowModeDelay, Withdraw) = self.pending_reqs.read((signed_withdraw.withdraw.token, signed_withdraw.withdraw.maker));
             assert!(!self.completed_reqs.read(hash), "ALREADY_COMPLETED: withdraw (hash = {})", hash);
@@ -198,13 +198,13 @@ mod withdraw_component {
             let gas_steps = self.gas_steps.read().into();
             assert!(gas_fee.gas_per_action == gas_steps, "WRONG_GAS_PER_ACTION: expected {} got {}", gas_steps, gas_fee.gas_per_action);
             assert!(gas_fee.fee_token == balancer.wrapped_native_token.read(), "WRONG_GAS_FEE_TOKEN: expected {} got {}", balancer.wrapped_native_token.read(), gas_fee.fee_token);
-            let required_gas: u256 = gas_fee.max_gas_price.into() * gas_fee.gas_per_action.into();
+            let required_gas = gas_fee.max_gas_price * gas_fee.gas_per_action.into();
             assert!(balance >= amount , "FEW_BALANCE: need at least {}, but have only {}", amount, balance);
             assert!(!(gas_fee.fee_token == token) || amount >= required_gas, "GAS_MORE_THAN_REQUESTED: failed amount ({}) >= required_gas ({})", amount, required_gas);
             assert!(gas_fee.fee_token == token || balancer.balanceOf(maker, gas_fee.fee_token) >= required_gas, "FEW_BALANCE_GAS: failed maker_balance ({}) >= required_gas ({}) -- gas token {}", balancer.balanceOf(maker, gas_fee.fee_token), required_gas, gas_fee.fee_token);
         }
 
-        fn _transfer(ref self: ComponentState<TContractState>, w_req:Withdraw, w_hash:felt252, tfer_amount:u256, gas_price:u32, direct:bool) {
+        fn _transfer(ref self: ComponentState<TContractState>, w_req:Withdraw, w_hash:felt252, tfer_amount:u256, gas_price:u256, direct:bool) {
             // burn tokens on exchange
             // tfer them to recipient via erc20 interface, validate that tfer was correct i.e exhancge didnt spend more then burnt
             let mut contract = self.get_balancer_mut();
