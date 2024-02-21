@@ -58,7 +58,7 @@ mod ecosystem_trade_component {
 
         // exposed only in contract user apply ecosystem trades
         fn apply_ecosystem_trades(ref self: ComponentState<TContractState>, mut taker_orders:Array<(SignedOrder, bool)>, mut maker_orders:Array<SignedOrder>, mut iters:Array<(u8, bool)>,
-                    mut oracle_settled_qty:Array<u256>, gas_price:u256,cur_gas_per_action:u32, version:u16) {
+                    mut oracle_settled_qty:Array<u256>, gas_price:u32,cur_gas_per_action:u32, version:u16) {
             let mut maker_order = *maker_orders.at(0).order;
             let mut maker_hash: felt252  = 0.try_into().unwrap();  
             let mut maker_fill_info = self.orders_trade_info.read(maker_hash);
@@ -126,7 +126,7 @@ mod ecosystem_trade_component {
         }
 
         fn apply_single_taker(ref self: ComponentState<TContractState>, signed_taker_order:SignedOrder, mut signed_maker_orders:Array<(SignedOrder,u256)>,
-                    total_amount_matched:u256, gas_price:u256,  cur_gas_per_action:u32, as_taker_completed:bool, version:u16)  -> bool{
+                    total_amount_matched:u256, gas_price:u32,  cur_gas_per_action:u32, as_taker_completed:bool, version:u16)  -> bool{
             
             let (exchange, trades): (ContractAddress, u8) = (get_contract_address(), signed_maker_orders.len().try_into().unwrap());
             let mut balancer = self.get_balancer_mut();
@@ -268,7 +268,7 @@ mod ecosystem_trade_component {
 
         }   
         
-        fn apply_taker_fee_and_gas(ref self: ComponentState<TContractState>, taker_order:Order, base_amount:u256, quote_amount:u256, gas_price:u256, trades:u8, cur_gas_per_action:u32) -> (ContractAddress, u256, u256) {
+        fn apply_taker_fee_and_gas(ref self: ComponentState<TContractState>, taker_order:Order, base_amount:u256, quote_amount:u256, gas_price:u32, trades:u8, cur_gas_per_action:u32) -> (ContractAddress, u256, u256) {
             let mut balancer = self.get_balancer_mut();
             let (fee_token, fee_amount, exchange_fee) = self.apply_fixed_fees(taker_order,base_amount, quote_amount, false);
             balancer.validate_and_apply_gas_fee_internal(taker_order.maker, taker_order.fee.gas_fee, gas_price, trades, cur_gas_per_action);
@@ -329,7 +329,7 @@ mod ecosystem_trade_component {
         }
 
         fn _prepare_router_taker(ref self:ComponentState<TContractState>, taker_order:Order, mut out_amount:u256, exchange:ContractAddress, swaps:u8,
-                            gas_price:u256, cur_gas_per_action:u32) -> bool {
+                            gas_price:u32, cur_gas_per_action:u32) -> bool {
             // Prepare taker context for the trade when it have external funds mode
             // 1) Checks if user granted necesssary permissions and have enough balance
             // 2) Tfer necessary amount for the trade and mint tokens on exchange for the user
@@ -354,7 +354,7 @@ mod ecosystem_trade_component {
             return true;
         }
 
-        fn finalize_router_taker(ref self:ComponentState<TContractState>, taker_order:Order, taker_hash:felt252, received_amount:u256, unspent_amount:u256, exchange:ContractAddress, gas_price:u256, trades:u8, cur_gas_per_action:u32) {
+        fn finalize_router_taker(ref self:ComponentState<TContractState>, taker_order:Order, taker_hash:felt252, received_amount:u256, unspent_amount:u256, exchange:ContractAddress, gas_price:u32, trades:u8, cur_gas_per_action:u32) {
             // Finalize router taker
             // 1) pay for gas, trade, router fee
             // 2) transfer user erc20 tokens that he received + unspent amount of tokens he was selling
@@ -370,10 +370,10 @@ mod ecosystem_trade_component {
         }
       
         fn punish_router_simple(ref self: ComponentState<TContractState>, gas_fee:super::GasFee,router_addr:ContractAddress, 
-                    maker:ContractAddress, taker:ContractAddress, gas_px:u256,taker_hash:felt252,maker_hash:felt252) {
+                    maker:ContractAddress, taker:ContractAddress, gas_px:u32,taker_hash:felt252,maker_hash:felt252) {
             let (mut balancer, mut router) = (self.get_balancer_mut(), self.get_router_mut());
             let native_base_token = balancer.get_wrapped_native_token();
-            let charged_fee = gas_fee.gas_per_action.into() * gas_px * router.get_punishment_factor_bips().into() / 10000;
+            let charged_fee: u256 = gas_fee.gas_per_action.into() * gas_px.into() * router.get_punishment_factor_bips().into() / 10000;
             if charged_fee == 0 {return;}
             router.burn(router_addr, native_base_token, 2 * charged_fee); // punish
             balancer.mint(balancer.fee_recipient.read(), charged_fee, native_base_token); // reimburse

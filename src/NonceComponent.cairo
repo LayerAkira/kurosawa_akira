@@ -75,7 +75,7 @@ mod nonce_component {
      #[generate_trait]
     impl InternalWithdrawableImpl<TContractState, +HasComponent<TContractState>,
     +balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of InternalNonceable<TContractState> {
-        fn apply_increase_nonce(ref self: ComponentState<TContractState>, signed_nonce_increase: super::SignedIncreaseNonce, gas_price:u256, cur_gas_per_action:u32) {
+        fn apply_increase_nonce(ref self: ComponentState<TContractState>, signed_nonce_increase: super::SignedIncreaseNonce, gas_price:u32, cur_gas_per_action:u32) {
             let nonce_increase = signed_nonce_increase.increase_nonce;
             let key = nonce_increase.get_poseidon_hash();
             let (r,s) = signed_nonce_increase.sign;

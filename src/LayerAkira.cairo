@@ -158,7 +158,7 @@ mod LayerAkira {
     }
 
     #[external(v0)]
-    fn apply_increase_nonce(ref self: ContractState, signed_nonce: SignedIncreaseNonce, gas_price:u256, cur_gas_per_action:u32) {
+    fn apply_increase_nonce(ref self: ContractState, signed_nonce: SignedIncreaseNonce, gas_price:u32, cur_gas_per_action:u32) {
         assert_whitelisted_invokers(@self);
         self.nonce_s.apply_increase_nonce(signed_nonce, gas_price, cur_gas_per_action);
         self.balancer_s.latest_gas.write(gas_price);
@@ -166,7 +166,7 @@ mod LayerAkira {
 
 
     #[external(v0)]
-    fn apply_increase_nonces(ref self: ContractState, mut signed_nonces: Array<SignedIncreaseNonce>, gas_price:u256, cur_gas_per_action:u32) {
+    fn apply_increase_nonces(ref self: ContractState, mut signed_nonces: Array<SignedIncreaseNonce>, gas_price:u32, cur_gas_per_action:u32) {
         assert_whitelisted_invokers(@self);
         loop {
             match signed_nonces.pop_front(){
@@ -178,7 +178,7 @@ mod LayerAkira {
     }
 
     #[external(v0)]
-    fn apply_withdraw(ref self: ContractState, signed_withdraw: SignedWithdraw, gas_price:u256, cur_gas_per_action:u32) {
+    fn apply_withdraw(ref self: ContractState, signed_withdraw: SignedWithdraw, gas_price:u32, cur_gas_per_action:u32) {
         assert_whitelisted_invokers(@self);
         self.withdraw_s.apply_withdraw(signed_withdraw, gas_price, cur_gas_per_action);
         self.balancer_s.latest_gas.write(gas_price);
@@ -186,7 +186,7 @@ mod LayerAkira {
     }
 
     #[external(v0)]
-    fn apply_withdraws(ref self: ContractState, mut signed_withdraws: Array<SignedWithdraw>, gas_price:u256, cur_gas_per_action:u32) {
+    fn apply_withdraws(ref self: ContractState, mut signed_withdraws: Array<SignedWithdraw>, gas_price:u32, cur_gas_per_action:u32) {
         assert_whitelisted_invokers(@self);
         loop {
             match signed_withdraws.pop_front(){
@@ -199,14 +199,14 @@ mod LayerAkira {
     }
 
     #[external(v0)]
-    fn apply_ecosystem_trades(ref self: ContractState, taker_orders:Array<(SignedOrder,bool)>, maker_orders: Array<SignedOrder>, iters:Array<(u8, bool)>, oracle_settled_qty:Array<u256>, gas_price:u256, cur_gas_per_action:u32) {
+    fn apply_ecosystem_trades(ref self: ContractState, taker_orders:Array<(SignedOrder,bool)>, maker_orders: Array<SignedOrder>, iters:Array<(u8, bool)>, oracle_settled_qty:Array<u256>, gas_price:u32, cur_gas_per_action:u32) {
         assert_whitelisted_invokers(@self);
         self.ecosystem_trade_s.apply_ecosystem_trades(taker_orders, maker_orders, iters, oracle_settled_qty, gas_price, cur_gas_per_action, self.exchange_version.read());
         self.balancer_s.latest_gas.write(gas_price);
     }
 
     #[external(v0)]
-    fn apply_single_execution_step(ref self: ContractState, taker_order:SignedOrder, maker_orders: Array<(SignedOrder,u256)>, total_amount_matched:u256, gas_price:u256, cur_gas_per_action:u32,as_taker_completed:bool, ) -> bool {
+    fn apply_single_execution_step(ref self: ContractState, taker_order:SignedOrder, maker_orders: Array<(SignedOrder,u256)>, total_amount_matched:u256, gas_price:u32, cur_gas_per_action:u32,as_taker_completed:bool, ) -> bool {
         assert_whitelisted_invokers(@self);
         let res = self.ecosystem_trade_s.apply_single_taker(taker_order, maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed, self.exchange_version.read());
         self.balancer_s.latest_gas.write(gas_price);
@@ -214,7 +214,7 @@ mod LayerAkira {
     }
 
     #[external(v0)]
-    fn apply_execution_steps(ref self: ContractState,  mut bulk:Array<(SignedOrder, Array<(SignedOrder,u256)>, u256, bool)>,  gas_price:u256,  cur_gas_per_action:u32 ) -> Array<bool> {
+    fn apply_execution_steps(ref self: ContractState,  mut bulk:Array<(SignedOrder, Array<(SignedOrder,u256)>, u256, bool)>,  gas_price:u32,  cur_gas_per_action:u32 ) -> Array<bool> {
         assert_whitelisted_invokers(@self);
         let mut res: Array<bool> = ArrayTrait::new();
             

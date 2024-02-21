@@ -19,13 +19,13 @@ trait ILayerAkira<TContractState> {
 
     fn get_wrapped_native_token(self: @TContractState) -> ContractAddress;
 
-    fn get_latest_gas_price(self: @TContractState)->u256;
+    fn get_latest_gas_price(self: @TContractState)->u32;
 
     fn get_fee_recipient(self: @TContractState) -> ContractAddress;
 
     fn get_nonce(self: @TContractState, maker: ContractAddress) -> u32;
     fn get_nonces(self: @TContractState, makers: Span<ContractAddress>)-> Array<u32>;
-    fn apply_increase_nonces(ref self: TContractState, signed_nonces: Array<SignedIncreaseNonce>, gas_price:u256);
+    fn apply_increase_nonces(ref self: TContractState, signed_nonces: Array<SignedIncreaseNonce>, gas_price:u32);
 
 
 
@@ -116,17 +116,17 @@ trait ILayerAkira<TContractState> {
 
     // layer akira
 
-    fn apply_increase_nonce(ref self: TContractState, signed_nonce: SignedIncreaseNonce, gas_price:u256, cur_gas_per_action:u32);
+    fn apply_increase_nonce(ref self: TContractState, signed_nonce: SignedIncreaseNonce, gas_price:u32, cur_gas_per_action:u32);
 
-    fn apply_withdraw(ref self: TContractState, signed_withdraw: SignedWithdraw, gas_price:u256, cur_gas_per_action:u32);
+    fn apply_withdraw(ref self: TContractState, signed_withdraw: SignedWithdraw, gas_price:u32, cur_gas_per_action:u32);
 
-    fn apply_withdraws(ref self: TContractState, signed_withdraws: Array<SignedWithdraw>, gas_price:u256, cur_gas_per_action:u32);
+    fn apply_withdraws(ref self: TContractState, signed_withdraws: Array<SignedWithdraw>, gas_price:u32, cur_gas_per_action:u32);
 
-    fn apply_ecosystem_trades(ref self: TContractState, taker_orders:Array<(SignedOrder,bool)>, maker_orders: Array<SignedOrder>, iters:Array<(u8,bool)>, oracle_settled_qty:Array<u256>, gas_price:u256, cur_gas_per_action:u32);
+    fn apply_ecosystem_trades(ref self: TContractState, taker_orders:Array<(SignedOrder,bool)>, maker_orders: Array<SignedOrder>, iters:Array<(u8,bool)>, oracle_settled_qty:Array<u256>, gas_price:u32, cur_gas_per_action:u32);
     
-    fn apply_single_execution_step(ref self: TContractState, taker_order:SignedOrder, maker_orders: Array<(SignedOrder,u256)>, total_amount_matched:u256,  gas_price:u256, cur_gas_per_action:u32, as_taker_completed:bool) -> bool;
+    fn apply_single_execution_step(ref self: TContractState, taker_order:SignedOrder, maker_orders: Array<(SignedOrder,u256)>, total_amount_matched:u256,  gas_price:u32, cur_gas_per_action:u32, as_taker_completed:bool) -> bool;
     
-    fn apply_execution_steps(ref self: TContractState, bulk:Array<(SignedOrder, Array<(SignedOrder,u256)>, u256,bool)>,  gas_price:u256, cur_gas_per_action:u32) -> Array<bool>;
+    fn apply_execution_steps(ref self: TContractState, bulk:Array<(SignedOrder, Array<(SignedOrder,u256)>, u256,bool)>,  gas_price:u32, cur_gas_per_action:u32) -> Array<bool>;
 
     // super
 
