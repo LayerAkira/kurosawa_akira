@@ -57,7 +57,7 @@ mod ecosystem_trade_component {
     +balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of InternalEcosystemTradable<TContractState> {
 
         // exposed only in contract user apply ecosystem trades
-        fn apply_ecosystem_trades(ref self: ComponentState<TContractState>, mut taker_orders:Array<(SignedOrder, bool)>, mut maker_orders:Array<SignedOrder>, mut iters:Array<(u8, bool)>,
+        fn apply_ecosystem_trades(ref self: ComponentState<TContractState>, mut taker_orders:Array<(SignedOrder, bool)>, mut maker_orders:Array<SignedOrder>, mut iters:Array<(u16, bool)>,
                     mut oracle_settled_qty:Array<u256>, gas_price:u256,cur_gas_per_action:u32, version:u16) {
             let mut maker_order = *maker_orders.at(0).order;
             let mut maker_hash: felt252  = 0.try_into().unwrap();  
@@ -128,7 +128,7 @@ mod ecosystem_trade_component {
         fn apply_single_taker(ref self: ComponentState<TContractState>, signed_taker_order:SignedOrder, mut signed_maker_orders:Array<(SignedOrder,u256)>,
                     total_amount_matched:u256, gas_price:u256,  cur_gas_per_action:u32, as_taker_completed:bool, version:u16)  -> bool{
             
-            let (exchange, trades): (ContractAddress, u8) = (get_contract_address(), signed_maker_orders.len().try_into().unwrap());
+            let (exchange, trades): (ContractAddress, u16) = (get_contract_address(), signed_maker_orders.len().try_into().unwrap());
             let mut balancer = self.get_balancer_mut();
             let fee_recipient = balancer.fee_recipient.read();
             let (taker_order, taker_hash, mut taker_fill_info) =  if !signed_taker_order.order.flags.external_funds {
@@ -227,7 +227,7 @@ mod ecosystem_trade_component {
         }
 
 
-        fn part_safe_validate_taker(self: @ComponentState<TContractState>, taker_signed_order:SignedOrder, swaps:u8, version:u16, fee_recipient:ContractAddress) -> (Order,felt252,OrderTradeInfo) {
+        fn part_safe_validate_taker(self: @ComponentState<TContractState>, taker_signed_order:SignedOrder, swaps:u16, version:u16, fee_recipient:ContractAddress) -> (Order,felt252,OrderTradeInfo) {
             let (contract, taker_order,(r, s)) = (self.get_contract(), taker_signed_order.order, taker_signed_order.sign);
             let taker_order_hash = taker_order.get_poseidon_hash();
             let taker_fill_info = self.orders_trade_info.read(taker_order_hash);
@@ -268,7 +268,7 @@ mod ecosystem_trade_component {
 
         }   
         
-        fn apply_taker_fee_and_gas(ref self: ComponentState<TContractState>, taker_order:Order, base_amount:u256, quote_amount:u256, gas_price:u256, trades:u8, cur_gas_per_action:u32) -> (ContractAddress, u256, u256) {
+        fn apply_taker_fee_and_gas(ref self: ComponentState<TContractState>, taker_order:Order, base_amount:u256, quote_amount:u256, gas_price:u256, trades:u16, cur_gas_per_action:u32) -> (ContractAddress, u256, u256) {
             let mut balancer = self.get_balancer_mut();
             let (fee_token, fee_amount, exchange_fee) = self.apply_fixed_fees(taker_order,base_amount, quote_amount, false);
             balancer.validate_and_apply_gas_fee_internal(taker_order.maker, taker_order.fee.gas_fee, gas_price, trades, cur_gas_per_action);
@@ -290,7 +290,7 @@ mod ecosystem_trade_component {
             return (fee_token, fee_amount, exchange_fee);
         }
 
-        fn _do_part_external_taker_validate(self:@ComponentState<TContractState>, signed_taker_order:SignedOrder, swaps:u8, version: u16, fee_recipient:ContractAddress) -> (Order,felt252,OrderTradeInfo, u256) {
+        fn _do_part_external_taker_validate(self:@ComponentState<TContractState>, signed_taker_order:SignedOrder, swaps:u16, version: u16, fee_recipient:ContractAddress) -> (Order,felt252,OrderTradeInfo, u256) {
             //Returns max user can actually spend
             let (router, taker_order, contract) = (self.get_router(), signed_taker_order.order,self.get_contract());
             let taker_hash = taker_order.get_poseidon_hash();
@@ -328,7 +328,7 @@ mod ecosystem_trade_component {
             }     
         }
 
-        fn _prepare_router_taker(ref self:ComponentState<TContractState>, taker_order:Order, mut out_amount:u256, exchange:ContractAddress, swaps:u8,
+        fn _prepare_router_taker(ref self:ComponentState<TContractState>, taker_order:Order, mut out_amount:u256, exchange:ContractAddress, swaps:u16,
                             gas_price:u256, cur_gas_per_action:u32) -> bool {
             // Prepare taker context for the trade when it have external funds mode
             // 1) Checks if user granted necesssary permissions and have enough balance
@@ -354,7 +354,7 @@ mod ecosystem_trade_component {
             return true;
         }
 
-        fn finalize_router_taker(ref self:ComponentState<TContractState>, taker_order:Order, taker_hash:felt252, received_amount:u256, unspent_amount:u256, exchange:ContractAddress, gas_price:u256, trades:u8, cur_gas_per_action:u32) {
+        fn finalize_router_taker(ref self:ComponentState<TContractState>, taker_order:Order, taker_hash:felt252, received_amount:u256, unspent_amount:u256, exchange:ContractAddress, gas_price:u256, trades:u16, cur_gas_per_action:u32) {
             // Finalize router taker
             // 1) pay for gas, trade, router fee
             // 2) transfer user erc20 tokens that he received + unspent amount of tokens he was selling

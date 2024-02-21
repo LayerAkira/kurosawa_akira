@@ -252,13 +252,13 @@ mod test_common_trade {
 
     fn spawn_order(akira:ILayerAkiraDispatcher, maker:ContractAddress, price:u256, base_qty:u256,
             flags:OrderFlags,
-            num_swaps_allowed:u8, router_signer:ContractAddress) ->SignedOrder {
+            num_swaps_allowed:u16, router_signer:ContractAddress) ->SignedOrder {
         spawn_double_qty_order(akira, maker, price, base_qty, 0, flags, num_swaps_allowed, router_signer)
     }
 
     fn spawn_double_qty_order(akira:ILayerAkiraDispatcher, maker:ContractAddress, price:u256, base_qty:u256, quote_qty:u256,
             flags:OrderFlags,
-            num_swaps_allowed:u8, router_signer:ContractAddress) ->SignedOrder {
+            num_swaps_allowed:u16, router_signer:ContractAddress) ->SignedOrder {
         let zero_addr:ContractAddress = 0.try_into().unwrap();
         let ticker =(get_eth_addr(), get_usdc_addr()); 
         let salt = num_swaps_allowed.into();

@@ -61,7 +61,7 @@ struct Quantity {
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
 struct Constraints {
-    number_of_swaps_allowed: u8, // if order is taker, one can limit maximum number of trades can happens with this taker order (necesasry becase taker order incur gas fees)
+    number_of_swaps_allowed: u16, // if order is taker, one can limit maximum number of trades can happens with this taker order (necesasry becase taker order incur gas fees)
     duration_valid: u32, // epoch tine in seconds, time when order becomes invalid
     created_at: u32, // epoch time in seconds, time when order was created by user
     stp: TakerSelfTradePreventionMode,
@@ -95,7 +95,7 @@ struct OrderTradeInfo {
     filled_base_amount: u256, // filled amount in base asset
     filled_quote_amount: u256, // filled amount in quote qty
     last_traded_px: u256,
-    num_trades_happened: u8,
+    num_trades_happened: u16,
     as_taker_completed: bool
 }
 
@@ -167,7 +167,7 @@ fn do_maker_checks(maker_order:Order, maker_fill_info:OrderTradeInfo, nonce:u32,
 }
 
 
-fn generic_taker_check(taker_order:Order, taker_fill_info:OrderTradeInfo, nonce:u32, swaps:u8, taker_order_hash:felt252, version:u16, fee_recipient:ContractAddress) {
+fn generic_taker_check(taker_order:Order, taker_fill_info:OrderTradeInfo, nonce:u32, swaps:u16, taker_order_hash:felt252, version:u16, fee_recipient:ContractAddress) {
     assert!(taker_order.fee.trade_fee.recipient == fee_recipient, "WRONG_TAKER_FEE_RECIPIENT: expected {} got {}", fee_recipient, taker_order.fee.trade_fee.recipient);
     assert!(taker_order.version == version, "WRONG_TAKER_VERSION");
     assert!(taker_order.constraints.number_of_swaps_allowed >= taker_fill_info.num_trades_happened + swaps, "HIT_SWAPS_ALLOWED");
