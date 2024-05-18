@@ -1,6 +1,7 @@
 use kurosawa_akira::Order::{SignedOrder,Order,get_gas_fee_and_coin, OrderTradeInfo, OrderFee, FixedFee,GasFee,
             get_feeable_qty,get_limit_px, do_taker_price_checks, do_maker_checks, get_available_base_qty, generic_taker_check,generic_common_check,TakerSelfTradePreventionMode};
 
+
 #[starknet::interface]
 trait IEcosystemTradeLogic<TContractState> {
     fn get_ecosystem_trade_info(self: @TContractState, order_hash: felt252) -> OrderTradeInfo;
@@ -17,13 +18,15 @@ mod ecosystem_trade_component {
     use kurosawa_akira::RouterComponent::router_component as router_component;
     use router_component::{InternalRoutable, RoutableImpl};    
     use core::{traits::TryInto,option::OptionTrait, array::ArrayTrait, traits::Destruct, traits::Into};
-    use kurosawa_akira::FundsTraits::{PoseidonHash,PoseidonHashImpl, check_sign};
+    use kurosawa_akira::FundsTraits::{check_sign};
     use kurosawa_akira::{NonceComponent::INonceLogic, SignerComponent::ISignerLogic};
     use starknet::{get_contract_address, ContractAddress, get_block_timestamp};
     use super::{do_taker_price_checks,do_maker_checks,get_available_base_qty, get_feeable_qty, get_limit_px, SignedOrder,Order, TakerSelfTradePreventionMode, OrderTradeInfo, OrderFee, FixedFee};
     use kurosawa_akira::utils::common::{DisplayContractAddress, min};
 
     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait, IERC20Dispatcher};
+    use kurosawa_akira::signature::V0OffchainMessage::{OffchainMessageHashImpl};
+    use kurosawa_akira::signature::AkiraV0OffchainMessage::{OrderHashImpl, SNIP12MetadataImpl};
 
 
     #[storage]
@@ -219,7 +222,7 @@ mod ecosystem_trade_component {
 
         fn do_internal_maker_checks(self: @ComponentState<TContractState>, signed_order:SignedOrder, fee_recipient:ContractAddress) -> (Order,felt252, OrderTradeInfo) {
             let (contract, order, (r, s)) = (self.get_contract(), signed_order.order, signed_order.sign);
-            let maker_hash =  order.get_poseidon_hash();
+            let maker_hash =  order.get_message_hash(order.maker);
             let maker_fill_info = self.orders_trade_info.read(maker_hash);
             do_maker_checks(order, maker_fill_info, contract.get_nonce(order.maker), fee_recipient);            
             assert!(contract.check_sign(signed_order.order.maker, maker_hash, r, s), "WRONG_SIGN_MAKER: (maker_hash, r, s) : ({}, {} ,{})", maker_hash, r, s);
@@ -229,7 +232,7 @@ mod ecosystem_trade_component {
 
         fn part_safe_validate_taker(self: @ComponentState<TContractState>, taker_signed_order:SignedOrder, swaps:u16, version:u16, fee_recipient:ContractAddress) -> (Order,felt252,OrderTradeInfo) {
             let (contract, taker_order,(r, s)) = (self.get_contract(), taker_signed_order.order, taker_signed_order.sign);
-            let taker_order_hash = taker_order.get_poseidon_hash();
+            let taker_order_hash = taker_order.get_message_hash(taker_order.maker);
             let taker_fill_info = self.orders_trade_info.read(taker_order_hash);
             
             assert(!taker_order.flags.external_funds, 'ECOSYSTEM_TAKER_NOT_EXTERNAL');
@@ -293,7 +296,7 @@ mod ecosystem_trade_component {
         fn _do_part_external_taker_validate(self:@ComponentState<TContractState>, signed_taker_order:SignedOrder, swaps:u16, version: u16, fee_recipient:ContractAddress) -> (Order,felt252,OrderTradeInfo, u256) {
             //Returns max user can actually spend
             let (router, taker_order, contract) = (self.get_router(), signed_taker_order.order,self.get_contract());
-            let taker_hash = taker_order.get_poseidon_hash();
+            let taker_hash = taker_order.get_message_hash(taker_order.maker);
             let taker_fill_info = self.orders_trade_info.read(taker_hash);
             
             //Validate router, job of exchange because of this assert

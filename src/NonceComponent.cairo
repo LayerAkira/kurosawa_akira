@@ -1,13 +1,21 @@
 use kurosawa_akira::Order::GasFee;
 use starknet::ContractAddress;
 
-#[derive(Copy, Drop, Serde, PartialEq)]
+use pedersen::PedersenTrait;
+use hash::{HashStateTrait, HashStateExTrait};
+
+use kurosawa_akira::signature::V0OffchainMessage::{OffchainMessageHashImpl};
+use kurosawa_akira::signature::AkiraV0OffchainMessage::{IncreaseNonceHashImpl, SNIP12MetadataImpl};
+
+
+#[derive(Copy, Drop, Serde, PartialEq, Hash)]
 struct IncreaseNonce {
     maker: ContractAddress,
     new_nonce: u32,
     gas_fee: GasFee,
     salt: felt252,
 }
+
 
 #[derive(Copy, Drop, Serde)]
 struct SignedIncreaseNonce {
@@ -25,13 +33,13 @@ trait INonceLogic<TContractState> {
 
 #[starknet::component]
 mod nonce_component {
+    use kurosawa_akira::signature::IOffchainMessage::IOffchainMessageHash;
     use kurosawa_akira::ExchangeBalanceComponent::INewExchangeBalance;
     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as balance_component;
     use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
     use super::{GasFee,ContractAddress};
     use kurosawa_akira::SignerComponent::{ISignerLogic};
-    use kurosawa_akira::FundsTraits::PoseidonHashImpl;
-
+    
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
@@ -77,7 +85,7 @@ mod nonce_component {
     +balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of InternalNonceable<TContractState> {
         fn apply_increase_nonce(ref self: ComponentState<TContractState>, signed_nonce_increase: super::SignedIncreaseNonce, gas_price:u256, cur_gas_per_action:u32) {
             let nonce_increase = signed_nonce_increase.increase_nonce;
-            let key = nonce_increase.get_poseidon_hash();
+            let key = nonce_increase.get_message_hash(nonce_increase.maker);
             let (r,s) = signed_nonce_increase.sign;
             assert!(self.get_contract().check_sign(nonce_increase.maker, key, r, s), "Failed maker signature check (key, r, s) = ({}, {}, {})", key, r, s);
             assert!(nonce_increase.new_nonce > self.nonces.read(nonce_increase.maker), "Wrong nonce (Failed new_nonce ({}) > prev_nonce ({}))", nonce_increase.new_nonce, self.nonces.read(nonce_increase.maker));

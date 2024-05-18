@@ -7,7 +7,7 @@ use array::SpanTrait;
 use starknet::{get_block_timestamp};
 use kurosawa_akira::utils::common::{min,DisplayContractAddress};
 
-#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Hash)]
 struct GasFee {
     gas_per_action: u32,
     fee_token: ContractAddress,
@@ -15,7 +15,7 @@ struct GasFee {
     conversion_rate: (u256, u256),
 }
 
-#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq,Hash)]
 struct FixedFee {
     recipient: ContractAddress,
     maker_pbips: u32,
@@ -23,7 +23,7 @@ struct FixedFee {
 }
 
 
-#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq,Hash)]
 struct OrderFee {
     trade_fee: FixedFee,
     router_fee: FixedFee,
@@ -31,7 +31,7 @@ struct OrderFee {
 }
 
 
-#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq,Hash)]
 struct OrderFlags {
     full_fill_only: bool, 
     best_level_only: bool,
@@ -43,7 +43,7 @@ struct OrderFlags {
 }
 
 
-#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq,Hash)]
 enum TakerSelfTradePreventionMode {
     NONE, // allow self trading
     EXPIRE_TAKER, // on contract side wont allow orders to match if they have same order signer, on exchange expiring remaining qty of taker
@@ -52,14 +52,14 @@ enum TakerSelfTradePreventionMode {
 } // semantic take place only depending on takers' order mode
 
 
-#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq,Hash)]
 struct Quantity {
     base_qty: u256, // qunatity in base asset raw amount
     quote_qty: u256, // quantity in quote asset raw amount
     base_asset: u256 // raw amount of base asset representing 1, eg 1 eth is 10**18
 }
 
-#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq,Hash)]
 struct Constraints {
     number_of_swaps_allowed: u16, // if order is taker, one can limit maximum number of trades can happens with this taker order (necesasry becase taker order incur gas fees)
     duration_valid: u32, // epoch tine in seconds, time when order becomes invalid
@@ -70,7 +70,7 @@ struct Constraints {
     router_signer: ContractAddress, // if taker order is router aka trader outside of our ecosystem then this is router that router this trader to us
 }
 
-#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq,Hash)]
 struct Order {
     maker: ContractAddress, // trading account that created order
     price: u256, // price in quote asset raw amount, for taker order serves as protection price, for passive order execution price, might be zero

@@ -5,7 +5,6 @@
 mod LayerAkira {
     use core::starknet::event::EventEmitter;
     use kurosawa_akira::NonceComponent::nonce_component::InternalNonceable;
-    use kurosawa_akira::FundsTraits::PoseidonHash;
     use starknet::{ContractAddress, get_caller_address};
 
     use kurosawa_akira::WithdrawComponent::withdraw_component::InternalWithdrawable;
@@ -156,6 +155,17 @@ mod LayerAkira {
     fn assert_whitelisted_invokers(self: @ContractState) {
         assert!(self.exchange_invokers.read(get_caller_address()), "Access denied: Only whitelisted invokers");
     }
+
+    // #[external(v0)]
+    // fn get_order_hash(self: @Order) {
+    //     pass
+    // }
+
+    // #[external(v0)]
+    // fn get_withdraw_hash(self: @Withdraw) { pass}
+    // #[external(v0)]
+    // fn get_increase_nonce_hash(self: @IncreaseNonce) {pass}
+
 
     #[external(v0)]
     fn apply_increase_nonce(ref self: ContractState, signed_nonce: SignedIncreaseNonce, gas_price:u256, cur_gas_per_action:u32) {

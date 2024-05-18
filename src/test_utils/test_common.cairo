@@ -1,5 +1,4 @@
 
-    use kurosawa_akira::FundsTraits::PoseidonHash;
     use core::{traits::Into,array::ArrayTrait,option::OptionTrait,traits::TryInto,result::ResultTrait};
     use starknet::{ContractAddress,info::get_block_number,get_caller_address};
     use debug::PrintTrait;
@@ -16,17 +15,17 @@
     use snforge_std::signature::stark_curve::{ StarkCurveKeyPairImpl, StarkCurveSignerImpl, StarkCurveVerifierImpl};
     fn get_eth_addr() -> ContractAddress {0x049D36570D4e46f48e99674bd3fcc84644DdD6b96F7C741B1562B82f9e004dC7.try_into().unwrap()}
 
-    fn get_usdc_addr() ->ContractAddress {0x05a643907b9a4bc6a55e9069c4fd5fd1f5c79a22470690f75556c4736e34426.try_into().unwrap()}
+    fn get_usdc_addr() ->ContractAddress {0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8.try_into().unwrap()}
         
     fn tfer_eth_funds_to(receiver: ContractAddress, amount: u256) {
-        let caller_who_have_funds: ContractAddress = 0x00121108c052bbd5b273223043ad58a7e51c55ef454f3e02b0a0b4c559a925d4.try_into().unwrap();
+        let caller_who_have_funds: ContractAddress = 0x071e5405ace1afd64c682e65b08360b573c00370f4e3ad6e4f2cd800ec7d93d2.try_into().unwrap();
         let ETH = IERC20Dispatcher { contract_address: get_eth_addr() };
         start_prank(CheatTarget::One(ETH.contract_address), caller_who_have_funds);
         ETH.transfer(receiver, amount);
         stop_prank(CheatTarget::One(ETH.contract_address));
     }
     fn tfer_usdc_funds_to(receiver: ContractAddress, amount: u256) {
-        let caller_who_have_funds: ContractAddress = 0x0711c27004518b375e5c3521223a87704d4b72367d353d797665aa0d1edc5f52.try_into().unwrap();
+        let caller_who_have_funds: ContractAddress = 0x071e5405ace1afd64c682e65b08360b573c00370f4e3ad6e4f2cd800ec7d93d2.try_into().unwrap();
         let USDC = IERC20Dispatcher { contract_address: get_usdc_addr() };
         start_prank(CheatTarget::One(USDC.contract_address), caller_who_have_funds);
         USDC.transfer(receiver, amount);

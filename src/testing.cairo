@@ -1,8 +1,10 @@
+
+
+
 #[cfg(test)]
 mod tests_deposit_and_withdrawal_and_nonce {
     use kurosawa_akira::test_utils::test_common::{deposit,get_eth_addr,tfer_eth_funds_to,get_fee_recipient_exchange,get_slow_mode,get_trader_address_1,
     get_withdraw_action_cost,spawn_exchange,prepare_double_gas_fee_native,get_trader_signer_and_pk_1,sign};
-    use kurosawa_akira::FundsTraits::PoseidonHash;
     use core::{traits::Into,array::ArrayTrait,option::OptionTrait,traits::TryInto,result::ResultTrait};
     use starknet::{ContractAddress,info::get_block_number,get_caller_address};
     use debug::PrintTrait;
@@ -18,6 +20,9 @@ mod tests_deposit_and_withdrawal_and_nonce {
     use kurosawa_akira::FundsTraits::check_sign;
     use kurosawa_akira::NonceComponent::{IncreaseNonce,SignedIncreaseNonce};
     use core::string::StringLiteral;
+    use kurosawa_akira::signature::V0OffchainMessage::{OffchainMessageHashImpl};
+    use kurosawa_akira::signature::AkiraV0OffchainMessage::{OrderHashImpl,SNIP12MetadataImpl,IncreaseNonceHashImpl,WithdrawHashImpl};
+
     
     #[test]
     #[fork("block_based")]
@@ -56,7 +61,7 @@ mod tests_deposit_and_withdrawal_and_nonce {
             start_roll(CheatTarget::One(akira.contract_address), delay.block + req_time.block); 
             start_warp(CheatTarget::One(akira.contract_address), req_time.ts + delay.ts);
         }
-        start_prank(CheatTarget::One(akira.contract_address), trader); akira.apply_onchain_withdraw(token, w.get_poseidon_hash()); stop_prank(CheatTarget::One(akira.contract_address));
+        start_prank(CheatTarget::One(akira.contract_address), trader); akira.apply_onchain_withdraw(token, w.get_message_hash(w.maker)); stop_prank(CheatTarget::One(akira.contract_address));
         if use_delay {
              stop_roll(CheatTarget::One(akira.contract_address));
              stop_warp(CheatTarget::One(akira.contract_address));
@@ -135,7 +140,7 @@ mod tests_deposit_and_withdrawal_and_nonce {
         start_prank(CheatTarget::One(akira.contract_address), trader); akira.bind_to_signer(pub.try_into().unwrap()); stop_prank(CheatTarget::One(akira.contract_address));
        
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        akira.apply_withdraw(SignedWithdraw{withdraw:w, sign: sign(w.get_poseidon_hash(), pub, priv)}, 100,w.gas_fee.gas_per_action);
+        akira.apply_withdraw(SignedWithdraw{withdraw:w, sign: sign(w.get_message_hash(w.maker), pub, priv)}, 100,w.gas_fee.gas_per_action);
         stop_prank(CheatTarget::One(akira.contract_address));
     }    
 
@@ -154,7 +159,7 @@ mod tests_deposit_and_withdrawal_and_nonce {
         start_prank(CheatTarget::One(akira.contract_address), trader); akira.bind_to_signer(pub.try_into().unwrap()); stop_prank(CheatTarget::One(akira.contract_address));
 
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        let sign = sign(w.get_poseidon_hash(), pub, priv);
+        let sign = sign(w.get_message_hash(w.maker), pub, priv);
         akira.apply_withdraw(SignedWithdraw{withdraw:w, sign}, 100, w.gas_fee.gas_per_action);
         akira.apply_withdraw(SignedWithdraw{withdraw:w, sign}, 100, w.gas_fee.gas_per_action);
         
@@ -172,7 +177,7 @@ mod tests_deposit_and_withdrawal_and_nonce {
         start_prank(CheatTarget::One(akira.contract_address), trader); akira.bind_to_signer(pub.try_into().unwrap()); stop_prank(CheatTarget::One(akira.contract_address));
 
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        let sign = sign(nonce.get_poseidon_hash(), pub, priv);
+        let sign = sign(nonce.get_message_hash(nonce.maker), pub, priv);
         akira.apply_increase_nonce(SignedIncreaseNonce{increase_nonce:nonce, sign}, 100, nonce.gas_fee.gas_per_action);        
         stop_prank(CheatTarget::One(akira.contract_address));
     } 
@@ -197,7 +202,7 @@ mod tests_deposit_and_withdrawal_and_nonce {
         let mut serialized: Array<felt252> = ArrayTrait::new();
         Serde::<Withdraw>::serialize(@w, ref serialized);
         // serialized.print();
-        w.get_poseidon_hash().print();
+        w.get_message_hash(w.maker).print();
     }
 
 }
@@ -208,7 +213,6 @@ mod test_common_trade {
     use kurosawa_akira::test_utils::test_common::{deposit,get_eth_addr,tfer_eth_funds_to,get_fee_recipient_exchange,get_slow_mode, 
     get_trader_address_1,get_trader_address_2,get_trader_signer_and_pk_1,get_usdc_addr,tfer_usdc_funds_to,
     get_withdraw_action_cost,spawn_exchange,prepare_double_gas_fee_native,sign,get_trader_signer_and_pk_2};
-    use kurosawa_akira::FundsTraits::PoseidonHash;
     use core::{traits::Into,array::ArrayTrait,option::OptionTrait,traits::TryInto,result::ResultTrait};
     use starknet::{ContractAddress,info::get_block_number,get_caller_address};
     use debug::PrintTrait;
@@ -223,7 +227,9 @@ mod test_common_trade {
     use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
     use kurosawa_akira::FundsTraits::check_sign;
     use kurosawa_akira::Order::{SignedOrder, Order,Constraints,Quantity,TakerSelfTradePreventionMode, FixedFee,OrderFee,OrderFlags, get_feeable_qty};
-
+    use kurosawa_akira::signature::V0OffchainMessage::{OffchainMessageHashImpl};
+    use kurosawa_akira::signature::AkiraV0OffchainMessage::{OrderHashImpl,SNIP12MetadataImpl,IncreaseNonceHashImpl,WithdrawHashImpl};
+    
 
     fn prepare() ->(ILayerAkiraDispatcher, ContractAddress, ContractAddress, ContractAddress, ContractAddress, u256, u256) {
         let akira = ILayerAkiraDispatcher{contract_address:spawn_exchange()};
@@ -288,7 +294,7 @@ mod test_common_trade {
             flags,
             version:0
         };
-        let hash = order.get_poseidon_hash();
+        let hash = order.get_message_hash(order.maker);
         let (pub, pk) = if maker == get_trader_address_1() {
             get_trader_signer_and_pk_1()
         } else  { get_trader_signer_and_pk_2()};
@@ -325,7 +331,6 @@ mod tests_ecosystem_trade {
     use kurosawa_akira::test_utils::test_common::{deposit,get_eth_addr,tfer_eth_funds_to,get_fee_recipient_exchange,get_slow_mode, 
     get_trader_address_1,get_trader_address_2,get_trader_signer_and_pk_1,get_usdc_addr,tfer_usdc_funds_to,
     get_withdraw_action_cost,spawn_exchange, prepare_double_gas_fee_native, sign, get_trader_signer_and_pk_2};
-    use kurosawa_akira::FundsTraits::PoseidonHash;
     use core::{traits::Into,array::ArrayTrait,option::OptionTrait,traits::TryInto,result::ResultTrait};
     use starknet::{ContractAddress,info::get_block_number,get_caller_address};
     use debug::PrintTrait;
@@ -340,7 +345,9 @@ mod tests_ecosystem_trade {
     use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
     use kurosawa_akira::FundsTraits::check_sign;
     use kurosawa_akira::Order::{SignedOrder, Order, FixedFee,OrderFee,OrderFlags, get_feeable_qty};
+    use kurosawa_akira::signature::AkiraV0OffchainMessage::{OrderHashImpl,SNIP12MetadataImpl,IncreaseNonceHashImpl,WithdrawHashImpl};
 
+    use kurosawa_akira::signature::V0OffchainMessage::{OffchainMessageHashImpl};
 
     use super::test_common_trade:: {prepare,get_maker_taker_fees,get_swap_gas_cost,spawn_order, spawn_double_qty_order, get_zero_router_fee,zero_router};
 
@@ -491,7 +498,6 @@ mod tests_router_trade {
     use kurosawa_akira::test_utils::test_common::{deposit,get_eth_addr,tfer_eth_funds_to, get_fee_recipient_exchange, get_slow_mode, 
     get_trader_address_1,get_trader_address_2,get_trader_signer_and_pk_1,get_usdc_addr,tfer_usdc_funds_to,
     get_withdraw_action_cost,spawn_exchange,prepare_double_gas_fee_native,sign,get_trader_signer_and_pk_2};
-    use kurosawa_akira::FundsTraits::PoseidonHash;
     use core::{traits::Into,array::ArrayTrait,option::OptionTrait,traits::TryInto,result::ResultTrait};
     use starknet::{ContractAddress,info::get_block_number,get_caller_address};
     use debug::PrintTrait;
@@ -506,6 +512,8 @@ mod tests_router_trade {
     use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
     use kurosawa_akira::FundsTraits::check_sign;
     use kurosawa_akira::Order::{SignedOrder, Order, FixedFee,OrderFee,OrderFlags, get_feeable_qty};
+    use kurosawa_akira::signature::AkiraV0OffchainMessage::{OrderHashImpl,SNIP12MetadataImpl,IncreaseNonceHashImpl,WithdrawHashImpl};
+    use kurosawa_akira::signature::V0OffchainMessage::{OffchainMessageHashImpl};
 
 
     use super::test_common_trade:: {prepare, get_maker_taker_fees, get_swap_gas_cost,spawn_order, spawn_double_qty_order, get_zero_router_fee, zero_router,register_router};
@@ -563,7 +571,7 @@ mod tests_router_trade {
         let mut buy_order = spawn_order(akira, tr2, usdc_amount, eth_amount, 
                 get_order_flags(false, false, false, false, true), 2, signer);
 
-        buy_order.router_sign = sign(buy_order.order.get_poseidon_hash(), signer.into(), signer_pk);
+        buy_order.router_sign = sign(buy_order.order.get_message_hash(buy_order.order.maker), signer.into(), signer_pk);
 
         let sell_order = spawn_order(akira, tr1, usdc_amount, eth_amount, 
                 get_order_flags(false, false, true, true, false), 0, zero_router());
@@ -621,7 +629,7 @@ mod tests_router_trade {
         
         let mut sell_order = spawn_order(akira, tr2, usdc_amount, eth_amount, 
                 get_order_flags(false, false, false, true, true), 1, signer);
-        sell_order.router_sign = sign(sell_order.order.get_poseidon_hash(), signer.into(), signer_pk);
+        sell_order.router_sign = sign(sell_order.order.get_message_hash(sell_order.order.maker), signer.into(), signer_pk);
 
 
         let buy_order = spawn_order(akira, tr1, usdc_amount, eth_amount, 
@@ -682,7 +690,7 @@ mod tests_router_trade {
         let mut buy_order = spawn_order(akira, tr2, usdc_amount, eth_amount, 
                 get_order_flags(false, false, false, false, true), 2, signer);
 
-        buy_order.router_sign = sign(buy_order.order.get_poseidon_hash(), signer.into(), signer_pk);
+        buy_order.router_sign = sign(buy_order.order.get_message_hash(buy_order.order.maker), signer.into(), signer_pk);
 
         let sell_order = spawn_order(akira, tr1, usdc_amount, eth_amount, 
                 get_order_flags(false, false, true, true, false), 0, zero_router());
@@ -705,7 +713,6 @@ mod tests_quote_qty_ecosystem_trade_01 {
     use kurosawa_akira::test_utils::test_common::{deposit,get_eth_addr,tfer_eth_funds_to,get_fee_recipient_exchange,get_slow_mode, 
     get_trader_address_1,get_trader_address_2,get_trader_signer_and_pk_1,get_usdc_addr,tfer_usdc_funds_to,
     get_withdraw_action_cost,spawn_exchange, prepare_double_gas_fee_native, sign, get_trader_signer_and_pk_2};
-    use kurosawa_akira::FundsTraits::PoseidonHash;
     use core::{traits::Into,array::ArrayTrait,option::OptionTrait,traits::TryInto,result::ResultTrait};
     use starknet::{ContractAddress,info::get_block_number,get_caller_address};
     use debug::PrintTrait;
@@ -720,6 +727,8 @@ mod tests_quote_qty_ecosystem_trade_01 {
     use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
     use kurosawa_akira::FundsTraits::check_sign;
     use kurosawa_akira::Order::{SignedOrder, Order, FixedFee,OrderFee,OrderFlags, get_feeable_qty};
+    use kurosawa_akira::signature::AkiraV0OffchainMessage::{OrderHashImpl,SNIP12MetadataImpl,IncreaseNonceHashImpl,WithdrawHashImpl};
+    use kurosawa_akira::signature::V0OffchainMessage::{OffchainMessageHashImpl};
 
 
     use super::test_common_trade:: {prepare,get_maker_taker_fees,get_swap_gas_cost,spawn_order, spawn_double_qty_order, get_zero_router_fee,zero_router};
@@ -827,7 +836,6 @@ mod tests_quote_qty_ecosystem_trade_02 {
     use kurosawa_akira::test_utils::test_common::{deposit,get_eth_addr,tfer_eth_funds_to, get_fee_recipient_exchange, get_slow_mode, 
     get_trader_address_1,get_trader_address_2,get_trader_signer_and_pk_1,get_usdc_addr,tfer_usdc_funds_to,
     get_withdraw_action_cost,spawn_exchange,prepare_double_gas_fee_native,sign,get_trader_signer_and_pk_2};
-    use kurosawa_akira::FundsTraits::PoseidonHash;
     use core::{traits::Into,array::ArrayTrait,option::OptionTrait,traits::TryInto,result::ResultTrait};
     use starknet::{ContractAddress,info::get_block_number,get_caller_address};
     use debug::PrintTrait;
@@ -842,7 +850,9 @@ mod tests_quote_qty_ecosystem_trade_02 {
     use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
     use kurosawa_akira::FundsTraits::check_sign;
     use kurosawa_akira::Order::{SignedOrder, Order, FixedFee,OrderFee,OrderFlags, get_feeable_qty};
+    use kurosawa_akira::signature::AkiraV0OffchainMessage::{OrderHashImpl,SNIP12MetadataImpl,IncreaseNonceHashImpl,WithdrawHashImpl};
 
+    use kurosawa_akira::signature::V0OffchainMessage::{OffchainMessageHashImpl};
 
     use super::test_common_trade:: {prepare, get_maker_taker_fees, get_swap_gas_cost,spawn_order, spawn_double_qty_order, get_zero_router_fee, zero_router,register_router};
     
@@ -926,7 +936,6 @@ mod tests_quote_qty_router_trade_01 {
     use kurosawa_akira::test_utils::test_common::{deposit,get_eth_addr,tfer_eth_funds_to, get_fee_recipient_exchange, get_slow_mode, 
     get_trader_address_1,get_trader_address_2,get_trader_signer_and_pk_1,get_usdc_addr,tfer_usdc_funds_to,
     get_withdraw_action_cost,spawn_exchange,prepare_double_gas_fee_native,sign,get_trader_signer_and_pk_2};
-    use kurosawa_akira::FundsTraits::PoseidonHash;
     use core::{traits::Into,array::ArrayTrait,option::OptionTrait,traits::TryInto,result::ResultTrait};
     use starknet::{ContractAddress,info::get_block_number,get_caller_address};
     use debug::PrintTrait;
@@ -941,6 +950,8 @@ mod tests_quote_qty_router_trade_01 {
     use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
     use kurosawa_akira::FundsTraits::check_sign;
     use kurosawa_akira::Order::{SignedOrder, Order, FixedFee,OrderFee,OrderFlags, get_feeable_qty};
+    use kurosawa_akira::signature::AkiraV0OffchainMessage::{OrderHashImpl,SNIP12MetadataImpl,IncreaseNonceHashImpl,WithdrawHashImpl};
+    use kurosawa_akira::signature::V0OffchainMessage::{OffchainMessageHashImpl};
 
 
     use super::test_common_trade:: {prepare, get_maker_taker_fees, get_swap_gas_cost,spawn_order, spawn_double_qty_order, get_zero_router_fee, zero_router,register_router};
@@ -972,7 +983,7 @@ mod tests_quote_qty_router_trade_01 {
         
         let mut taker_order = spawn_double_qty_order(akira, tr2, price, base_qty, quote_qty, 
                 get_order_flags(false, false, false, !change_side, true), 1, signer);
-        taker_order.router_sign = sign(taker_order.order.get_poseidon_hash(), signer.into(), signer_pk);
+        taker_order.router_sign = sign(taker_order.order.get_message_hash(taker_order.order.maker), signer.into(), signer_pk);
 
 
         let maker_order = spawn_order(akira, tr1, price, base_qty, 
@@ -1093,7 +1104,6 @@ mod tests_quote_qty_router_trade_02 {
     use kurosawa_akira::test_utils::test_common::{deposit,get_eth_addr,tfer_eth_funds_to, get_fee_recipient_exchange, get_slow_mode, 
     get_trader_address_1,get_trader_address_2,get_trader_signer_and_pk_1,get_usdc_addr,tfer_usdc_funds_to,
     get_withdraw_action_cost,spawn_exchange,prepare_double_gas_fee_native,sign,get_trader_signer_and_pk_2};
-    use kurosawa_akira::FundsTraits::PoseidonHash;
     use core::{traits::Into,array::ArrayTrait,option::OptionTrait,traits::TryInto,result::ResultTrait};
     use starknet::{ContractAddress,info::get_block_number,get_caller_address};
     use debug::PrintTrait;
@@ -1108,6 +1118,8 @@ mod tests_quote_qty_router_trade_02 {
     use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
     use kurosawa_akira::FundsTraits::check_sign;
     use kurosawa_akira::Order::{SignedOrder, Order, FixedFee,OrderFee,OrderFlags, get_feeable_qty};
+    use kurosawa_akira::signature::AkiraV0OffchainMessage::{OrderHashImpl,SNIP12MetadataImpl,IncreaseNonceHashImpl,WithdrawHashImpl};
+    use kurosawa_akira::signature::V0OffchainMessage::{OffchainMessageHashImpl};
 
 
     use super::test_common_trade:: {prepare, get_maker_taker_fees, get_swap_gas_cost,spawn_order, spawn_double_qty_order, get_zero_router_fee, zero_router,register_router};
@@ -1145,10 +1157,10 @@ mod tests_quote_qty_router_trade_02 {
         
         let mut sell_order_01 = spawn_double_qty_order(akira, tr2, price, sell_order_01_base_qty, sell_order_01_quote_qty, 
                 get_order_router_flags(false, false, false, true, true), 1, signer);
-        sell_order_01.router_sign = sign(sell_order_01.order.get_poseidon_hash(), signer.into(), signer_pk);
+        sell_order_01.router_sign = sign(sell_order_01.order.get_message_hash(sell_order_01.order.maker), signer.into(), signer_pk);
         let mut sell_order_02 = spawn_double_qty_order(akira, tr2, price, sell_order_02_base_qty, sell_order_02_quote_qty, 
                 get_order_router_flags(false, false, false, true, true), 2, signer);
-        sell_order_02.router_sign = sign(sell_order_02.order.get_poseidon_hash(), signer.into(), signer_pk);
+        sell_order_02.router_sign = sign(sell_order_02.order.get_message_hash(sell_order_02.order.maker), signer.into(), signer_pk);
 
 
         let buy_order = spawn_order(akira, tr1, price, base_qty, 

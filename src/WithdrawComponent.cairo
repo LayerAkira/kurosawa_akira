@@ -4,7 +4,7 @@ use kurosawa_akira::Order::GasFee;
 use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
 use kurosawa_akira::Order::{get_gas_fee_and_coin};
 
-#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq,Hash)]
 struct Withdraw {
     maker: ContractAddress, // trading account that want to withdraw
     token: ContractAddress, // address of erc20 token of interest, 
@@ -47,7 +47,6 @@ trait IWithdraw<TContractState> {
 mod withdraw_component {
     use core::traits::Into;
     use kurosawa_akira::ExchangeBalanceComponent::INewExchangeBalance;
-    use kurosawa_akira::FundsTraits::{PoseidonHash,PoseidonHashImpl};
     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as balance_component;
     use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
     use super::{Withdraw, SignedWithdraw, SlowModeDelay, IWithdraw, GasFee};
@@ -56,6 +55,9 @@ mod withdraw_component {
     use starknet::{get_caller_address, get_contract_address, get_block_timestamp, ContractAddress};
     use starknet::info::get_block_number;
     use kurosawa_akira::utils::common::DisplayContractAddress;
+    use kurosawa_akira::signature::V0OffchainMessage::{OffchainMessageHashImpl};
+    use kurosawa_akira::signature::AkiraV0OffchainMessage::{WithdrawHashImpl, SNIP12MetadataImpl};
+
 
 
     #[event]
@@ -130,10 +132,10 @@ mod withdraw_component {
             assert!(withdraw.amount > 0, "WITHDRAW_CANT_BE_ZERO");
             let key = (withdraw.token, withdraw.maker);            
             let (pending_ts, w_prev): (SlowModeDelay, Withdraw)  = self.pending_reqs.read(key);
-            let w_hash = withdraw.get_poseidon_hash();
+            let w_hash = withdraw.get_message_hash(withdraw.maker);
 
             assert!(w_prev != withdraw, "ALREADY_REQUESTED: withdraw for this token already requested");
-            assert!(w_prev.amount == 0 || self.completed_reqs.read(w_prev.get_poseidon_hash()), "NOT_YET_COMPLETED_PREV: previous withdraw has not been completed yet");
+            assert!(w_prev.amount == 0 || self.completed_reqs.read(w_prev.get_message_hash(w_prev.maker)), "NOT_YET_COMPLETED_PREV: previous withdraw has not been completed yet");
            
             assert!(!self.completed_reqs.read(w_hash), "ALREADY_COMPLETED: requested withdraw has already been completed");
             self.validate(withdraw.maker, withdraw.token, withdraw.amount, withdraw.gas_fee);
@@ -150,7 +152,7 @@ mod withdraw_component {
             let caller = get_caller_address();
             let (delay, w_req): (SlowModeDelay,Withdraw) = self.pending_reqs.read((token, caller));
             assert!(caller == w_req.maker, "WRONG_MAKER: withdraw maker ({}) should be equal caller ({})", w_req.maker, get_caller_address());
-            assert!(key == w_req.get_poseidon_hash(),"WRONG_WITHDRAW: wrong key ({}) for pending withdraw ({})", key, w_req.get_poseidon_hash());
+            assert!(key == w_req.get_message_hash(w_req.maker),"WRONG_WITHDRAW: wrong key ({}) for pending withdraw ({})", key, w_req.get_message_hash(w_req.maker));
             assert!(!self.completed_reqs.read(key), "ALREADY_COMPLETED: withdraw has been completed already");
             
             let limit:SlowModeDelay = self.delay.read();
@@ -174,7 +176,7 @@ mod withdraw_component {
         // or if there is ongoing pending withdrawal, exchange can process, 
         // in this case no need for signature verifaction because user already scheduled withdrawal onchain
         fn apply_withdraw(ref self: ComponentState<TContractState>, signed_withdraw: SignedWithdraw, gas_price:u256, cur_gas_per_action:u32) {
-            let hash = signed_withdraw.withdraw.get_poseidon_hash();
+            let hash = signed_withdraw.withdraw.get_message_hash(signed_withdraw.withdraw.maker);
             let (delay, w_req):(SlowModeDelay, Withdraw) = self.pending_reqs.read((signed_withdraw.withdraw.token, signed_withdraw.withdraw.maker));
             assert!(!self.completed_reqs.read(hash), "ALREADY_COMPLETED: withdraw (hash = {})", hash);
             
