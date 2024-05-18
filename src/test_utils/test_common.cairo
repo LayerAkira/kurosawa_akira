@@ -15,17 +15,18 @@
     use snforge_std::signature::stark_curve::{ StarkCurveKeyPairImpl, StarkCurveSignerImpl, StarkCurveVerifierImpl};
     fn get_eth_addr() -> ContractAddress {0x049D36570D4e46f48e99674bd3fcc84644DdD6b96F7C741B1562B82f9e004dC7.try_into().unwrap()}
 
-    fn get_usdc_addr() ->ContractAddress {0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8.try_into().unwrap()}
+    // strk
+    fn get_usdc_addr() ->ContractAddress {0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d.try_into().unwrap()}
         
     fn tfer_eth_funds_to(receiver: ContractAddress, amount: u256) {
-        let caller_who_have_funds: ContractAddress = 0x071e5405ace1afd64c682e65b08360b573c00370f4e3ad6e4f2cd800ec7d93d2.try_into().unwrap();
+        let caller_who_have_funds: ContractAddress = 0x07BB3440166aa8867c092b7D8726d58F499e10E0112487814DF7a598C35D9301.try_into().unwrap();
         let ETH = IERC20Dispatcher { contract_address: get_eth_addr() };
         start_prank(CheatTarget::One(ETH.contract_address), caller_who_have_funds);
         ETH.transfer(receiver, amount);
         stop_prank(CheatTarget::One(ETH.contract_address));
     }
     fn tfer_usdc_funds_to(receiver: ContractAddress, amount: u256) {
-        let caller_who_have_funds: ContractAddress = 0x071e5405ace1afd64c682e65b08360b573c00370f4e3ad6e4f2cd800ec7d93d2.try_into().unwrap();
+        let caller_who_have_funds: ContractAddress = 0x07BB3440166aa8867c092b7D8726d58F499e10E0112487814DF7a598C35D9301.try_into().unwrap();
         let USDC = IERC20Dispatcher { contract_address: get_usdc_addr() };
         start_prank(CheatTarget::One(USDC.contract_address), caller_who_have_funds);
         USDC.transfer(receiver, amount);
@@ -40,7 +41,7 @@
     fn get_withdraw_action_cost()->u32 { 100 } 
 
     fn spawn_exchange() -> ContractAddress {
-        let cls = declare('LayerAkira');
+        let cls = declare("LayerAkira").unwrap();
         let mut constructor: Array::<felt252> = ArrayTrait::new();
         constructor.append(get_eth_addr().into());
         constructor.append(get_fee_recipient_exchange().into());
@@ -66,26 +67,25 @@
         // constructor.clone().print();
         // 'STOP'.print();
         
-        let deployed = cls.deploy(@constructor).unwrap();
+        let (deployed, _) = cls.deploy(@constructor).unwrap();
         return deployed;
     }
 
     fn get_trader_address_1()->ContractAddress {
-        return 0x0541cf2823e5d004E9a5278ef8B691B97382FD0c9a6B833a56131E12232A7F0F.try_into().unwrap();
-        // return 0x01d8e01188c4c8984fb19f00156491787e64fd2de1c3ce4eb9571924c540cf3b.try_into().unwrap();
+        return 0x01a5f54cC7F0a1106648807f2aE972b05A6921Ba2e8b56bb2AF3b6e371184d68.try_into().unwrap();
     }
     fn get_trader_address_2() -> ContractAddress {
-        return 0x024e8044680FEcDe3f23d4E270c7b0fA23c487Ae7B31b812ff72aFa7Bc7f6116.try_into().unwrap();
+        return 0x07c14752dBC341cAE4c46D3437818dE0660E252a712cA24eE3110eD8D14205A2.try_into().unwrap();
     }
 
     fn get_trader_signer_and_pk_1()->(felt252,felt252){
-        return (0x6599a0c34699a5c48ae6ff359decc0618ce982be00654f2b12945cae5bb6788,
-                                0x0455e57d60556bf07b184308bc6708caa5b64c7b41178a06092bb8a58057d33b);
+        return (0x61c5ec8851e6e8fcdcc065b6724f75bdf4055857dacf3b6be1ac9f1b3dc6fb2,
+                                0x0295697db67cfcd0e0a04a26ab2e1333ebc6266d9c5c91be8926922ae0f445c4);
     }
 
     fn get_trader_signer_and_pk_2()->(felt252, felt252) {
-        return (0x61c5ec8851e6e8fcdcc065b6724f75bdf4055857dacf3b6be1ac9f1b3dc6fb2,
-                                0x0295697db67cfcd0e0a04a26ab2e1333ebc6266d9c5c91be8926922ae0f445c4);
+        return (0x40e455f20764012307ca1141ac086ac3b578a33450fd2764a689bf796e8dcf7,
+                                0x0461913fd62002100bca4c02e862b2b5160db5c3451d8b9300ff668f91acd27f);
     }
 
     fn deposit(trader:ContractAddress, amount:u256, token:ContractAddress, akira:ILayerAkiraDispatcher) {
@@ -104,7 +104,7 @@
         }
     }
 
-    fn sign(message_hash:felt252,pub:felt252,priv:felt252)->(felt252, felt252) {
+    fn sign(message_hash:felt252,pub_key:felt252,priv:felt252)->(felt252, felt252) {
         let mut signer = KeyPairTrait::<felt252, felt252>::from_secret_key(priv);
 
         return signer.sign(message_hash);

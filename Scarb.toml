@@ -9,10 +9,11 @@ casm-add-pythonic-hints = true
 allowed-libfuncs-list.name = "all"
 
 [dependencies]
-starknet = ">=2.4.4"
-snforge_std = { git = "https://github.com/foundry-rs/starknet-foundry.git", tag = "v0.14.0" }
+starknet = "2.6.3"
+snforge_std = { git = "https://github.com/foundry-rs/starknet-foundry.git", tag = "v0.23.0" }
+
 
 [[tool.snforge.fork]]
 name = "block_based"
-url = "https://starknet-testnet.public.blastapi.io/rpc/v0_6"
-block_id.number = "915484"
+url = "https://rpc.nethermind.io/sepolia-juno?apikey=l6MkRPgfPwdrAS5o7hbnWGUJG52Ol540i24oa6QxyzRnhTBa"
+block_id.number = "67186"

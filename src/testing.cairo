@@ -74,7 +74,7 @@ mod tests_deposit_and_withdrawal_and_nonce {
 
     #[test]
     #[fork("block_based")]
-    #[should_panic(expected: ("FEW_TIME_PASSED: wait at least 915484 block and 1702114566 ts (for now its 0 and 0)",))]
+    #[should_panic(expected: ("FEW_TIME_PASSED: wait at least 67186 block and 1716027804 ts (for now its 0 and 0)",))]
     fn test_withdraw_eth_direct_immediate() {
         let akira = ILayerAkiraDispatcher{contract_address:spawn_exchange()};
         let (trader,eth_addr,amount_deposit) = (get_trader_address_1(), get_eth_addr(),1_000_000);
@@ -83,6 +83,11 @@ mod tests_deposit_and_withdrawal_and_nonce {
         request_onchain_withdraw(trader, amount_deposit, eth_addr, akira, 0);
         withdraw_direct(trader,eth_addr,akira,false);
     }
+
+    // Failure data:
+    // Incorrect panic data
+    // Actual:     (, , FEW_TIME_PASSED: wait at least , 67186 block and 1716027804 ts (, for now its 0 and 0), )
+    // Expected:  [1997209042069643135709344952807065910992472029923670688473712229447419591075, 2, 124157870587116589809572849905489050861556589536883664145575828278905893920, 77963588382890035563278993479845890735047611822669186366049693698084598899, 788485465482797490682227907733662976304670684936652468265, 24] (, , FEW_TIME_PASSED: wait at least , , 67186 block and 1716027804 ts,  (, for now its 0 and 0), )
 
     #[test]
     #[fork("block_based")]
@@ -131,35 +136,35 @@ mod tests_deposit_and_withdrawal_and_nonce {
     fn test_withdraw_eth_indirect() {
         let akira = ILayerAkiraDispatcher{contract_address:spawn_exchange()};
         let (trader, eth_addr, amount_deposit) = (get_trader_address_1(), get_eth_addr(),1_000_000);
-        let (pub,priv) = get_trader_signer_and_pk_1();
+        let (pub_addr,priv) = get_trader_signer_and_pk_1();
         
         tfer_eth_funds_to(trader, amount_deposit); deposit(trader, amount_deposit, eth_addr, akira); 
         
         let w = get_withdraw(trader, amount_deposit, eth_addr, akira, 0);
 
-        start_prank(CheatTarget::One(akira.contract_address), trader); akira.bind_to_signer(pub.try_into().unwrap()); stop_prank(CheatTarget::One(akira.contract_address));
+        start_prank(CheatTarget::One(akira.contract_address), trader); akira.bind_to_signer(pub_addr.try_into().unwrap()); stop_prank(CheatTarget::One(akira.contract_address));
        
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        akira.apply_withdraw(SignedWithdraw{withdraw:w, sign: sign(w.get_message_hash(w.maker), pub, priv)}, 100,w.gas_fee.gas_per_action);
+        akira.apply_withdraw(SignedWithdraw{withdraw:w, sign: sign(w.get_message_hash(w.maker), pub_addr, priv)}, 100,w.gas_fee.gas_per_action);
         stop_prank(CheatTarget::One(akira.contract_address));
     }    
 
     #[test]
     #[fork("block_based")]
-    #[should_panic(expected: ("ALREADY_COMPLETED: withdraw (hash = 145530779622766435564951937819183289966524278531640966956212381983041765687)",))]
+    #[should_panic(expected: ("ALREADY_COMPLETED: withdraw (hash = 735861519797621119801356248221602934209919578766885443499731178344076520098)",))]
     fn test_withdraw_eth_indirect_twice() {
         let akira = ILayerAkiraDispatcher{contract_address:spawn_exchange()};
         let (trader, eth_addr, amount_deposit) = (get_trader_address_1(), get_eth_addr(),1_000_000);
-        let (pub,priv) = get_trader_signer_and_pk_1();
+        let (pub_addr,priv) = get_trader_signer_and_pk_1();
         
         tfer_eth_funds_to(trader, amount_deposit); deposit(trader, amount_deposit, eth_addr, akira); 
         
         let w = get_withdraw(trader, amount_deposit, eth_addr, akira, 0);
         
-        start_prank(CheatTarget::One(akira.contract_address), trader); akira.bind_to_signer(pub.try_into().unwrap()); stop_prank(CheatTarget::One(akira.contract_address));
+        start_prank(CheatTarget::One(akira.contract_address), trader); akira.bind_to_signer(pub_addr.try_into().unwrap()); stop_prank(CheatTarget::One(akira.contract_address));
 
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        let sign = sign(w.get_message_hash(w.maker), pub, priv);
+        let sign = sign(w.get_message_hash(w.maker), pub_addr, priv);
         akira.apply_withdraw(SignedWithdraw{withdraw:w, sign}, 100, w.gas_fee.gas_per_action);
         akira.apply_withdraw(SignedWithdraw{withdraw:w, sign}, 100, w.gas_fee.gas_per_action);
         
@@ -170,14 +175,14 @@ mod tests_deposit_and_withdrawal_and_nonce {
     fn test_increase_nonce() {
         let akira = ILayerAkiraDispatcher{contract_address:spawn_exchange()};
         let (trader, eth_addr, amount_deposit) = (get_trader_address_1(), get_eth_addr(),1_000_000);
-        let (pub, priv) = get_trader_signer_and_pk_1();
+        let (pub_addr, priv) = get_trader_signer_and_pk_1();
         tfer_eth_funds_to(trader, amount_deposit); deposit(trader, amount_deposit, eth_addr, akira); 
         let nonce = IncreaseNonce{maker:trader ,new_nonce:1, gas_fee:prepare_double_gas_fee_native(akira,100), salt:0};
 
-        start_prank(CheatTarget::One(akira.contract_address), trader); akira.bind_to_signer(pub.try_into().unwrap()); stop_prank(CheatTarget::One(akira.contract_address));
+        start_prank(CheatTarget::One(akira.contract_address), trader); akira.bind_to_signer(pub_addr.try_into().unwrap()); stop_prank(CheatTarget::One(akira.contract_address));
 
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        let sign = sign(nonce.get_message_hash(nonce.maker), pub, priv);
+        let sign = sign(nonce.get_message_hash(nonce.maker), pub_addr, priv);
         akira.apply_increase_nonce(SignedIncreaseNonce{increase_nonce:nonce, sign}, 100, nonce.gas_fee.gas_per_action);        
         stop_prank(CheatTarget::One(akira.contract_address));
     } 
@@ -233,14 +238,14 @@ mod test_common_trade {
 
     fn prepare() ->(ILayerAkiraDispatcher, ContractAddress, ContractAddress, ContractAddress, ContractAddress, u256, u256) {
         let akira = ILayerAkiraDispatcher{contract_address:spawn_exchange()};
-        let (tr1,tr2, (pub1, pk1), (pub2, pk2)) = (get_trader_address_1(), get_trader_address_2(), get_trader_signer_and_pk_1(), get_trader_signer_and_pk_2());
+        let (tr1,tr2, (pub_addr1, pk1), (pub_addr2, pk2)) = (get_trader_address_1(), get_trader_address_2(), get_trader_signer_and_pk_1(), get_trader_signer_and_pk_2());
         let (eth, usdc) = (get_eth_addr(), get_usdc_addr());
         let (eth_amount, usdc_amount) = (1_000_000_000_000_000_000, 2000_000_000); //1eth and 2k usdc 
         tfer_eth_funds_to(tr1, 2 * eth_amount); tfer_eth_funds_to(tr2, 2 * eth_amount);
         tfer_usdc_funds_to(tr1, 2 *  usdc_amount); tfer_usdc_funds_to(tr2, 2 * usdc_amount);
 
-        start_prank(CheatTarget::One(akira.contract_address), tr1); akira.bind_to_signer(pub1.try_into().unwrap()); stop_prank(CheatTarget::One(akira.contract_address));
-        start_prank(CheatTarget::One(akira.contract_address), tr2); akira.bind_to_signer(pub2.try_into().unwrap()); stop_prank(CheatTarget::One(akira.contract_address));
+        start_prank(CheatTarget::One(akira.contract_address), tr1); akira.bind_to_signer(pub_addr1.try_into().unwrap()); stop_prank(CheatTarget::One(akira.contract_address));
+        start_prank(CheatTarget::One(akira.contract_address), tr2); akira.bind_to_signer(pub_addr2.try_into().unwrap()); stop_prank(CheatTarget::One(akira.contract_address));
         
         return (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount);
     }
@@ -295,11 +300,11 @@ mod test_common_trade {
             version:0
         };
         let hash = order.get_message_hash(order.maker);
-        let (pub, pk) = if maker == get_trader_address_1() {
+        let (pub_addr, pk) = if maker == get_trader_address_1() {
             get_trader_signer_and_pk_1()
         } else  { get_trader_signer_and_pk_2()};
   
-        return SignedOrder{order, sign:sign(hash, pub, pk), router_sign:(0,0)};
+        return SignedOrder{order, sign:sign(hash, pub_addr, pk), router_sign:(0,0)};
     }
 
     fn register_router(akira:ILayerAkiraDispatcher, funds_account:ContractAddress, signer:ContractAddress, router_address:ContractAddress) {
@@ -553,7 +558,7 @@ mod tests_router_trade {
     fn test_execute_with_buy_taker_succ() {
         // Taker buy, full match happens with maker of same px
         let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
-        let router:ContractAddress = 1.try_into().unwrap();
+        let router:ContractAddress = 5.try_into().unwrap();
         let (signer, signer_pk) = get_trader_signer_and_pk_2();
         let signer:ContractAddress = signer.try_into().unwrap();
         
@@ -617,7 +622,7 @@ mod tests_router_trade {
     fn test_execute_with_sell_taker_succ() {
         // Taker buy, full match happens with maker of same px
         let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
-        let router: ContractAddress = 1.try_into().unwrap();
+        let router: ContractAddress = 5.try_into().unwrap();
         let (signer, signer_pk) = get_trader_signer_and_pk_2();
         let signer: ContractAddress = signer.try_into().unwrap();
         register_router(akira, tr1, signer, router);
@@ -677,7 +682,7 @@ mod tests_router_trade {
     fn test_punish_router() {
         // Taker buy, full match happens with maker of same px
         let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
-        let router:ContractAddress = 1.try_into().unwrap();
+        let router:ContractAddress = 5.try_into().unwrap();
         let (signer, signer_pk) = get_trader_signer_and_pk_2();
         let signer:ContractAddress = signer.try_into().unwrap();
         
@@ -970,7 +975,7 @@ mod tests_quote_qty_router_trade_01 {
     fn test_roter_trade_double_qty_semantic_BUY_maker_draft(change_side: bool, price: u256, base_qty: u256, quote_qty: u256, expected_qty: u256) {
         let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
 
-        let router: ContractAddress = 1.try_into().unwrap();
+        let router: ContractAddress = 5.try_into().unwrap();
         let (signer, signer_pk) = get_trader_signer_and_pk_2();
         let signer: ContractAddress = signer.try_into().unwrap();
         register_router(akira, tr1, signer, router);
@@ -1142,7 +1147,7 @@ mod tests_quote_qty_router_trade_02 {
     fn test_draft(sell_order_01_base_qty: u256, sell_order_01_quote_qty: u256, sell_order_02_base_qty: u256, sell_order_02_quote_qty: u256) {
         let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
 
-        let router: ContractAddress = 1.try_into().unwrap();
+        let router: ContractAddress = 5.try_into().unwrap();
         let (signer, signer_pk) = get_trader_signer_and_pk_2();
         let signer: ContractAddress = signer.try_into().unwrap();
         register_router(akira, tr1, signer, router);
