@@ -1,6 +1,4 @@
 
-
-
 #[starknet::contract]
 mod LayerAkira {
     use core::starknet::event::EventEmitter;
@@ -19,9 +17,9 @@ mod LayerAkira {
     use kurosawa_akira::RouterComponent::router_component as router_component;
     use kurosawa_akira::EcosystemTradeComponent::ecosystem_trade_component as ecosystem_trade_component;
     use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
-    use kurosawa_akira::WithdrawComponent::SignedWithdraw;
-    use kurosawa_akira::Order::{SignedOrder};
-    use kurosawa_akira::NonceComponent::SignedIncreaseNonce;
+    use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
+    use kurosawa_akira::Order::{SignedOrder, Order};
+    use kurosawa_akira::NonceComponent::{SignedIncreaseNonce, IncreaseNonce};
     
     use kurosawa_akira::EcosystemTradeComponent::ecosystem_trade_component::InternalEcosystemTradable;
     
@@ -52,6 +50,7 @@ mod LayerAkira {
     impl RoutableImpl = router_component::Routable<ContractState>;
     #[abi(embed_v0)]
     impl EcosystemTradableImpl = ecosystem_trade_component::EcosystemTradable<ContractState>;
+    
     
 
     #[storage]
@@ -156,15 +155,17 @@ mod LayerAkira {
         assert!(self.exchange_invokers.read(get_caller_address()), "Access denied: Only whitelisted invokers");
     }
 
-    // #[external(v0)]
-    // fn get_order_hash(self: @Order) {
-    //     pass
-    // }
+    use kurosawa_akira::signature::V0OffchainMessage::{OffchainMessageHashImpl};
+    use kurosawa_akira::signature::AkiraV0OffchainMessage::{OrderHashImpl,SNIP12MetadataImpl,IncreaseNonceHashImpl,WithdrawHashImpl};
 
-    // #[external(v0)]
-    // fn get_withdraw_hash(self: @Withdraw) { pass}
-    // #[external(v0)]
-    // fn get_increase_nonce_hash(self: @IncreaseNonce) {pass}
+    // methods for users to check if they build message hash correctly
+    #[external(v0)]
+    fn get_order_hash(self: @ContractState, order:Order) -> felt252 { order.get_message_hash(order.maker)}
+
+    #[external(v0)]
+    fn get_withdraw_hash(self: @ContractState, withdraw: Withdraw) -> felt252 { withdraw.get_message_hash(withdraw.maker)}
+    #[external(v0)]
+    fn get_increase_nonce_hash(self: @ContractState, increase_nonce:IncreaseNonce) -> felt252 { increase_nonce.get_message_hash(increase_nonce.maker)}
 
 
     #[external(v0)]
@@ -224,7 +225,7 @@ mod LayerAkira {
     }
 
     #[external(v0)]
-    fn apply_execution_steps(ref self: ContractState,  mut bulk:Array<(SignedOrder, Array<(SignedOrder,u256)>, u256, bool)>,  gas_price:u256,  cur_gas_per_action:u32 ) -> Array<bool> {
+    fn apply_execution_steps(ref self: ContractState,  mut bulk:Array<(SignedOrder, Array<(SignedOrder,u256)>, u256, bool)>,  gas_price:u256,  cur_gas_per_action:u32) -> Array<bool> {
         assert_whitelisted_invokers(@self);
         let mut res: Array<bool> = ArrayTrait::new();
             
@@ -241,6 +242,47 @@ mod LayerAkira {
         return res;
     }
 
+
+
+    #[derive(Drop, Serde)]
+    enum Step {
+        BulkExecutionSteps: (Array<(SignedOrder, Array<(SignedOrder,u256)>, u256, bool)>, bool),
+        SingleExecutionStep:((SignedOrder, Array<(SignedOrder,u256)>, u256, bool),bool),
+        EcosystemTrades: (Array<(SignedOrder,bool)>, Array<SignedOrder>, Array<(u16, bool)>, Array<u256>),
+        IncreaseNonceStep:SignedIncreaseNonce,
+        WithdrawStep:SignedWithdraw,
+    }
+
+
+    #[external(v0)]
+    fn apply_steps(ref self: ContractState, mut steps:Array<Step>, nonce_steps: u32, withdraw_steps:u32,router_steps:u32, ecosystem_steps:u32, gas_price:u256) {
+        assert_whitelisted_invokers(@self);
+        loop {
+            match steps.pop_front(){
+                Option::Some(step)=> {
+                    match step {
+                        Step::BulkExecutionSteps((data, is_ecosystem_gas_book)) => {
+                            let gas_steps = if is_ecosystem_gas_book {ecosystem_steps} else {router_steps};
+                            apply_execution_steps(ref self, data, gas_price, gas_steps);  
+                        },    
+                        Step::SingleExecutionStep((data, is_ecosystem_gas_book)) => {
+                            let gas_steps = if is_ecosystem_gas_book {ecosystem_steps} else {router_steps};
+                            let (taker_order, maker_orders, total_amount_matched,as_taker_completed) = data;
+                            apply_single_execution_step(ref self, taker_order, maker_orders, total_amount_matched, gas_price, gas_steps, as_taker_completed);  
+                        },
+                        Step::EcosystemTrades((takers, makers, iters, oracle_settled_qty)) => {
+                            apply_ecosystem_trades(ref self,takers,makers,iters,oracle_settled_qty, gas_price, ecosystem_steps);
+                        },
+                        Step::IncreaseNonceStep(data) => {apply_increase_nonce(ref self,data, gas_price, nonce_steps)},
+                        Step::WithdrawStep(data) => {apply_withdraw(ref self,data, gas_price, nonce_steps)},
+                    };
+                },
+                Option::None(_) => {break;}
+            };
+        };
+        self.balancer_s.latest_gas.write(gas_price);
+    }
+    
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
