@@ -297,7 +297,7 @@ mod test_common_trade {
                 gas_fee: prepare_double_gas_fee_native(akira, get_swap_gas_cost())
             },
             flags,
-            version:0
+            version:0, source: 'layerakira'
         };
         let hash = order.get_message_hash(order.maker);
         let (pub_addr, pk) = if maker == get_trader_address_1() {

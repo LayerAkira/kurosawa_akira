@@ -117,8 +117,8 @@ impl ConstraintsHashImpl of IStructHash<Constraints> {
     }
 }
 
-// const ORDER_TYPE_HASH: felt252 = selector!("Order(maker:felt,price:u256,qty:Quantity,base:felt,quote:felt,fee:OrderFee,constraints:Constraints,salt:felt,flags:OrderFlags,version:felt)Constraints(number_of_swaps_allowed:felt,duration_valid:felt,created_at:felt,stp:felt,nonce:felt,min_receive_amount:u256,router_signer:felt)FixedFee(recipient:felt,maker_pbips:felt,taker_pbips:felt)GasFee(gas_per_action:felt,fee_token:felt,max_gas_price:u256,r0:u256,r1:u256)OrderFee(trade_fee:FixedFee,router_fee:FixedFee,gas_fee:GasFee)OrderFlags(full_fill_only:bool,best_level_only:bool,post_only:bool,is_sell_side:bool,is_market_order:bool,to_ecosystem_book:bool,external_funds:bool)Quantity(base_qty:u256,quote_qty:u256,base_asset:u256)u256(low:felt,high:felt)");
-const ORDER_TYPE_HASH: felt252 =  0x2800a4673144d776806ab7f91fe2fd92dca29df9d3c40b71976bc99b44436b2;
+// const ORDER_TYPE_HASH: felt252 = selector!("Order(maker:felt,price:u256,qty:Quantity,base:felt,quote:felt,fee:OrderFee,constraints:Constraints,salt:felt,flags:OrderFlags,version:felt,source:felt)Constraints(number_of_swaps_allowed:felt,duration_valid:felt,created_at:felt,stp:felt,nonce:felt,min_receive_amount:u256,router_signer:felt)FixedFee(recipient:felt,maker_pbips:felt,taker_pbips:felt)GasFee(gas_per_action:felt,fee_token:felt,max_gas_price:u256,r0:u256,r1:u256)OrderFee(trade_fee:FixedFee,router_fee:FixedFee,gas_fee:GasFee)OrderFlags(full_fill_only:bool,best_level_only:bool,post_only:bool,is_sell_side:bool,is_market_order:bool,to_ecosystem_book:bool,external_funds:bool)Quantity(base_qty:u256,quote_qty:u256,base_asset:u256)u256(low:felt,high:felt)");
+const ORDER_TYPE_HASH: felt252 =  0x1876BC52569FBFDBE93E2163C607A1D9CE9600B2437500FB481DD56841DC6BC;
 impl OrderHashImpl of IStructHash<Order> {
     fn hash_struct(self: @Order) -> felt252 {
         let mut state = PedersenTrait::new(0);
@@ -134,7 +134,8 @@ impl OrderHashImpl of IStructHash<Order> {
         state = state.update_with(*self.salt);
         state = state.update_with(self.flags.hash_struct());
         state = state.update_with(*self.version);
-        state = state.update_with(11);
+        state = state.update_with(*self.source);
+        state = state.update_with(12);
         state.finalize()
     }
 }

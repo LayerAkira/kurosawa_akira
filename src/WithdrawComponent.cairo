@@ -6,6 +6,7 @@ use kurosawa_akira::Order::{get_gas_fee_and_coin};
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq,Hash)]
 struct Withdraw {
+    #[key]
     maker: ContractAddress, // trading account that want to withdraw
     token: ContractAddress, // address of erc20 token of interest, 
     amount: u256, // amount of token, at the end user will receive amount of token diff from gas fee or amount - gas_fee, so user can always withdraw all his balances 
