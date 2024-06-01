@@ -569,7 +569,7 @@ mod tests_router_trade {
 
         let gas_fee = 100 * get_swap_gas_cost().into();
         
-        // grant necesasry allowances 
+        // grant necessary allowances 
         grant_allowances(akira, tr2, eth, gas_fee);
         grant_allowances(akira, tr2, usdc, usdc_amount);
 
@@ -690,7 +690,7 @@ mod tests_router_trade {
         register_router(akira, tr1, signer, router);
         let gas_fee = 100 * get_swap_gas_cost().into();
         
-        //miss  grant of  necesasry allowances 
+        //miss grant of necessary allowances 
 
         let mut buy_order = spawn_order(akira, tr2, usdc_amount, eth_amount, 
                 get_order_flags(false, false, false, false, true), 2, signer);

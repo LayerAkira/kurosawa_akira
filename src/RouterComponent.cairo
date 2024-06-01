@@ -108,7 +108,7 @@ mod router_component {
     struct RouterRegistration {
         #[key]
         router:ContractAddress,
-        status: u8, //0registered, 1scheduled unregister, 2unregsiter
+        status: u8, //0registered, 1scheduled unregister, 2unregister
     }
     #[derive(Drop, starknet::Event)]
     struct Binding {
@@ -199,7 +199,7 @@ mod router_component {
             self.emit(Binding{router,signer,is_added:true});
         }
 
-        // TODO: LATER MAKE IT WITH DELAY TO AVOID ON_PURPOSE_REMOVAL aka MALICOUS ACTIVITIES BY ROUTERS
+        // TODO: LATER MAKE IT WITH DELAY TO AVOID ON_PURPOSE_REMOVAL aka MALICIOUS ACTIVITIES BY ROUTERS
         // fn remove_router_binding(ref self: ComponentState<TContractState>, signer: ContractAddress){
         //     let router = get_caller_address();
         //     assert(self.registered.read(router) ,'NOT_REGISTERED');

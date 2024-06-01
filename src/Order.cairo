@@ -54,14 +54,14 @@ enum TakerSelfTradePreventionMode {
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq,Hash)]
 struct Quantity {
-    base_qty: u256, // qunatity in base asset raw amount
+    base_qty: u256, // quantity in base asset raw amount
     quote_qty: u256, // quantity in quote asset raw amount
     base_asset: u256 // raw amount of base asset representing 1, eg 1 eth is 10**18
 }
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq,Hash)]
 struct Constraints {
-    number_of_swaps_allowed: u16, // if order is taker, one can limit maximum number of trades can happens with this taker order (necesasry becase taker order incur gas fees)
+    number_of_swaps_allowed: u16, // if order is taker, one can limit maximum number of trades can happens with this taker order (necessary because taker order incur gas fees)
     duration_valid: u32, // epoch tine in seconds, time when order becomes invalid
     created_at: u32, // epoch time in seconds, time when order was created by user
     stp: TakerSelfTradePreventionMode,

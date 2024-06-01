@@ -169,7 +169,7 @@ mod exchange_balance_logic_component {
             // Validates that gas_fee correctly specified, calculate how many coins and in what token we tfer from user to exchange  
             if gas_price == 0 || gas_fee.gas_per_action == 0 { return 0;}
             let (spent, coin) = super::get_gas_fee_and_coin(gas_fee, gas_price, self.wrapped_native_token.read(), cur_gas_per_action);
-            let spent = spent * times.into(); // we can do gas_price * times.into() to avoid zero spnet  but prefer this way
+            let spent = spent * times.into(); // we can do gas_price * times.into() to avoid zero spent but prefer this way
             self.internal_transfer(user, self.fee_recipient.read(), spent, coin);
             return spent;
         }

@@ -138,7 +138,7 @@ mod ecosystem_trade_component {
                 self.part_safe_validate_taker(signed_taker_order, trades, version, fee_recipient)
             } else {
                 let (o, hash, info, available) = self._do_part_external_taker_validate(signed_taker_order, trades, version, fee_recipient);
-                // prevent exchange trigger reimbure on purpose else we can send 0 and it will trigger failure on checks and trigger router punishment
+                // prevent exchange trigger reimburse on purpose else we can send 0 and it will trigger failure on checks and trigger router punishment
                 //  we need this oracle because we might dont know beforehand how much taker will spent because px is protection price
                 assert!(total_amount_matched <= available, "WRONG_AMOUNT_MATCHED_ORACLE got {} should be less {}", total_amount_matched, available);
                 (o, hash, info)
@@ -242,7 +242,7 @@ mod ecosystem_trade_component {
         }
 
         fn settle_trade(ref self:ComponentState<TContractState>, maker_order:Order, taker_order:Order, settle_base_amount:u256, settle_quote_amount:u256 ) {
-            // Tfer amount between acount on settled trades and apply maker fees both trade and router fee if specified
+            // Tfer amount between account on settled trades and apply maker fees both trade and router fee if specified
             let mut balancer = self.get_balancer_mut();
             balancer.rebalance_after_trade(maker_order.maker, taker_order.maker, maker_order.ticker, settle_base_amount, settle_quote_amount, maker_order.flags.is_sell_side);
             self.apply_fixed_fees(maker_order, settle_base_amount, settle_quote_amount, true);
@@ -285,7 +285,7 @@ mod ecosystem_trade_component {
 
             if fee_amount > 0 { 
                 let mut router = self.get_router_mut();
-                // explictly separate routers balance from balance on exchnage, separate entities
+                // explicitly separate routers balance from balance on exchange, separate entities
                 router.mint(order.fee.router_fee.recipient, fee_token, fee_amount);
                 balancer.burn(order.fee.router_fee.recipient, fee_amount, fee_token);     
                 balancer.emit(FeeReward{ recipient:order.fee.router_fee.recipient, token:fee_token, amount:fee_amount});
@@ -310,7 +310,7 @@ mod ecosystem_trade_component {
         }
 
         fn _infer_upper_bound_required(self:@ComponentState<TContractState>, taker_order:Order, taker_fill_info:OrderTradeInfo) ->u256 {
-            // Gives approxiation how much user must have tokens that he is willing to spend
+            // Gives approximation how much user must have tokens that he is willing to spend
             if taker_order.flags.is_sell_side { // sell of base asset
                 return get_available_base_qty(taker_order.price, taker_order.qty, taker_fill_info);
             } else { // sell of quote asset

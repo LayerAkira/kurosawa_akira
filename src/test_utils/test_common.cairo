@@ -63,7 +63,7 @@
         constructor.append(0);
 
         constructor.append(get_fee_recipient_exchange().into());
-        // 'STARRT'.print();
+        // 'START'.print();
         // constructor.clone().print();
         // 'STOP'.print();
         

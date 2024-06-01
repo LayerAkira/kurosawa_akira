@@ -29,9 +29,9 @@ trait IWithdraw<TContractState> {
 
     fn get_pending_withdraws(self:@TContractState,reqs:Array<(ContractAddress, ContractAddress)>)-> Array<(SlowModeDelay,Withdraw)>;
     
-    // once user requested onchain withdraw and passed enouhg time user can execute apply_onchain_withdraw and therefore finalizing 2-step delayed withdrawal 
+    // once user requested onchain withdraw and passed enough time user can execute apply_onchain_withdraw and therefore finalizing 2-step delayed withdrawal 
     // after request_onchain_withdraw user must wait some seconds and blocks pass
-    // this is neccesary to not break trading flow other exchange participants
+    // this is necessary to not break trading flow other exchange participants
     fn apply_onchain_withdraw(ref self: TContractState, token:ContractAddress, key:felt252);
 
     // for user to build GasFee for onchain withdrawal he need withdraw_steps and gas_price (get_latest_gas())
@@ -172,9 +172,9 @@ mod withdraw_component {
             self.gas_steps.write(gas_steps_cost);
         }
 
-        // Exchange can execute offchain withdrawal by makers if siganture is correct
+        // Exchange can execute offchain withdrawal by makers if signature is correct
         // or if there is ongoing pending withdrawal, exchange can process, 
-        // in this case no need for signature verifaction because user already scheduled withdrawal onchain
+        // in this case no need for signature verification because user already scheduled withdrawal onchain
         fn apply_withdraw(ref self: ComponentState<TContractState>, signed_withdraw: SignedWithdraw, gas_price:u256, cur_gas_per_action:u32) {
             let hash = signed_withdraw.withdraw.get_message_hash(signed_withdraw.withdraw.maker);
             let (delay, w_req):(SlowModeDelay, Withdraw) = self.pending_reqs.read((signed_withdraw.withdraw.token, signed_withdraw.withdraw.maker));
@@ -208,7 +208,7 @@ mod withdraw_component {
 
         fn _transfer(ref self: ComponentState<TContractState>, w_req:Withdraw, w_hash:felt252, tfer_amount:u256, gas_price:u256, direct:bool) {
             // burn tokens on exchange
-            // tfer them to recipient via erc20 interface, validate that tfer was correct i.e exhancge didnt spend more then burnt
+            // tfer them to recipient via erc20 interface, validate that tfer was correct i.e exchange didn't spend more then burnt
             let mut contract = self.get_balancer_mut();
             contract.burn(w_req.maker, tfer_amount, w_req.token);
             let erc20 = IERC20Dispatcher { contract_address: w_req.token };
