@@ -7,6 +7,7 @@ use array::SpanTrait;
 use starknet::{get_block_timestamp};
 use kurosawa_akira::utils::common::{min,DisplayContractAddress};
 
+
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Hash)]
 struct GasFee {
     gas_per_action: u32,
@@ -80,7 +81,8 @@ struct Order {
     constraints: Constraints,
     salt: felt252, // random salt for security
     flags: OrderFlags, // various order flags of order
-    version: u16, // exchange version
+    version: u16,  // exchange versio
+    source: felt252 // source of liquidity
 }
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]

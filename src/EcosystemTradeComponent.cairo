@@ -103,7 +103,7 @@ mod ecosystem_trade_component {
                                 assert!(contract.get_signer(maker_order.maker) != contract.get_signer(taker_order.maker), "STP_VIOLATED");
                             }
                             let (base, quote, px) = self.get_settled_amounts(maker_order, taker_order, maker_fill_info, taker_fill_info, oracle_settled_qty.pop_front().unwrap(), maker_hash);
-                            self.settle_trade(maker_order, taker_order,base, quote);
+                            self.settle_trade(maker_order, taker_order,base, quote, maker_hash, taker_hash);
                             total_base += base; total_quote += quote;
                             maker_fill_info.filled_base_amount += base; maker_fill_info.filled_quote_amount += quote; maker_fill_info.last_traded_px = px;
                             taker_fill_info.filled_base_amount += base; taker_fill_info.filled_quote_amount += quote; taker_fill_info.last_traded_px = px;
@@ -174,11 +174,11 @@ mod ecosystem_trade_component {
                             balancer.emit(Trade{
                                 router_maker:maker_order.fee.router_fee.recipient, router_taker:taker_order.fee.router_fee.recipient,
                                 maker:maker_order.maker, taker:taker_order.maker, ticker:maker_order.ticker, is_failed:true, 
-                                is_ecosystem_book:maker_order.flags.to_ecosystem_book, amount_base, amount_quote, is_sell_side:maker_order.flags.is_sell_side });
+                                is_ecosystem_book:maker_order.flags.to_ecosystem_book, amount_base, amount_quote, is_sell_side:maker_order.flags.is_sell_side, taker_hash, maker_hash, maker_source: maker_order.source, taker_source:taker_order.source });
                             continue;
                         }
 
-                        self.settle_trade(maker_order, taker_order, amount_base, amount_quote);
+                        self.settle_trade(maker_order, taker_order, amount_base, amount_quote, maker_hash, taker_hash);
 
                         maker_fill_info.filled_base_amount += amount_base; maker_fill_info.filled_quote_amount += amount_quote; maker_fill_info.last_traded_px = settle_px;
                         taker_fill_info.filled_base_amount += amount_base; taker_fill_info.filled_quote_amount += amount_quote; taker_fill_info.last_traded_px = settle_px;
@@ -241,7 +241,7 @@ mod ecosystem_trade_component {
             return (taker_order, taker_order_hash, taker_fill_info);
         }
 
-        fn settle_trade(ref self:ComponentState<TContractState>, maker_order:Order, taker_order:Order, settle_base_amount:u256, settle_quote_amount:u256 ) {
+        fn settle_trade(ref self:ComponentState<TContractState>, maker_order:Order, taker_order:Order, settle_base_amount:u256, settle_quote_amount:u256,maker_hash:felt252,taker_hash:felt252 ) {
             // Tfer amount between acount on settled trades and apply maker fees both trade and router fee if specified
             let mut balancer = self.get_balancer_mut();
             balancer.rebalance_after_trade(maker_order.maker, taker_order.maker, maker_order.ticker, settle_base_amount, settle_quote_amount, maker_order.flags.is_sell_side);
@@ -249,7 +249,7 @@ mod ecosystem_trade_component {
             balancer.emit(Trade{
                 router_maker:maker_order.fee.router_fee.recipient, router_taker:taker_order.fee.router_fee.recipient,
                 maker:maker_order.maker, taker:taker_order.maker, ticker:maker_order.ticker, is_failed:false, 
-                is_ecosystem_book:maker_order.flags.to_ecosystem_book, amount_base:settle_base_amount, amount_quote:settle_quote_amount, is_sell_side:maker_order.flags.is_sell_side });
+                is_ecosystem_book:maker_order.flags.to_ecosystem_book, amount_base:settle_base_amount, amount_quote:settle_quote_amount, is_sell_side:maker_order.flags.is_sell_side,maker_hash,taker_hash,maker_source:maker_order.source,taker_source:taker_order.source });
         }
 
         fn get_settled_amounts(self:@ComponentState<TContractState>, maker_order:Order,taker_order:Order, maker_fill_info:OrderTradeInfo, taker_fill_info:OrderTradeInfo, 

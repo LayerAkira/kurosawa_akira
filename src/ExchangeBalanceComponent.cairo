@@ -79,13 +79,16 @@ mod exchange_balance_logic_component {
 
     #[derive(Drop, starknet::Event)]
     struct Trade {
-        maker:ContractAddress, taker:ContractAddress,
         #[key]
+        maker:ContractAddress, 
+        #[key]
+        taker:ContractAddress,
         ticker:(ContractAddress,ContractAddress),
-        #[key]
         router_maker:ContractAddress, router_taker:ContractAddress,
         amount_base: u256, amount_quote: u256,
-        is_sell_side: bool, is_failed: bool, is_ecosystem_book:bool
+        is_sell_side: bool, is_failed: bool, is_ecosystem_book:bool,
+        maker_hash:felt252, taker_hash:felt252,
+        maker_source:felt252, taker_source:felt252
     }
 
 
