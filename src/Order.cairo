@@ -20,7 +20,8 @@ struct GasFee {
 struct FixedFee {
     recipient: ContractAddress,
     maker_pbips: u32,
-    taker_pbips: u32
+    taker_pbips: u32,
+    apply_to_receipt_amount:bool
 }
 
 
