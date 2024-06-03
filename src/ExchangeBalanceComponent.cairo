@@ -196,7 +196,10 @@ mod exchange_balance_logic_component {
         }
 
         fn apply_fixed_fee(ref self: ComponentState<TContractState>, trader:ContractAddress, fee:FixedFee, is_sell_side:bool, ticker:(ContractAddress,ContractAddress), base_amount:u256, quote_amount:u256, is_maker:bool) -> (ContractAddress, u256) {
-            let (fee_token, fee_amount) = if is_sell_side { let (b, q) = ticker; (q, quote_amount) } else {let (b, q) = ticker; (b, base_amount)};
+            let (b, q) = ticker; 
+            let (fee_token, fee_amount) = if is_sell_side  { 
+                if fee.apply_to_receipt_amount {(q, quote_amount)} else {(b, base_amount)} } 
+                else { if fee.apply_to_receipt_amount {(b, base_amount)} else {(q, quote_amount)} };
             let fee_amount = get_feeable_qty(fee, fee_amount, is_maker);
             if fee_amount > 0 { self.internal_transfer(trader, fee.recipient, fee_amount, fee_token);}
             return (fee_token, fee_amount);

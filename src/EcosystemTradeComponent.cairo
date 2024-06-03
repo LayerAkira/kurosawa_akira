@@ -158,7 +158,6 @@ mod ecosystem_trade_component {
             loop {
                 match signed_maker_orders.pop_front(){
                     Option::Some((signed_maker_order, oracle_settle_qty)) => {
-                        let maker_order = signed_maker_order.order;
                         // even if external taker fails we must validate makers are correct ones
                         let (maker_order, maker_hash, mut maker_fill_info) = self.do_internal_maker_checks(signed_maker_order, fee_recipient);
                         let (amount_base, amount_quote, settle_px) = self.get_settled_amounts(maker_order, taker_order, maker_fill_info, taker_fill_info,oracle_settle_qty, maker_hash);
@@ -254,8 +253,6 @@ mod ecosystem_trade_component {
 
         fn get_settled_amounts(self:@ComponentState<TContractState>, maker_order:Order,taker_order:Order, maker_fill_info:OrderTradeInfo, taker_fill_info:OrderTradeInfo, 
                         oracle_settle_qty:u256, maker_hash:felt252) -> (u256, u256, u256) {
-            let balancer = self.get_balancer();
-            
             let settle_px = get_limit_px(maker_order, maker_fill_info);
             let maker_qty = get_available_base_qty(settle_px, maker_order.qty, maker_fill_info);
             let taker_qty = do_taker_price_checks(taker_order, settle_px, taker_fill_info);
@@ -280,22 +277,22 @@ mod ecosystem_trade_component {
 
         fn apply_fixed_fees(ref self: ComponentState<TContractState>,order:Order,base_amount:u256, quote_amount:u256,is_maker:bool) -> (ContractAddress,u256, u256) {
             let mut balancer = self.get_balancer_mut();
-            let (_, exchange_fee) =  balancer.apply_fixed_fee(order.maker, order.fee.trade_fee, order.flags.is_sell_side, order.ticker, base_amount, quote_amount, is_maker);
-            let (fee_token, fee_amount) = balancer.apply_fixed_fee(order.maker, order.fee.router_fee, order.flags.is_sell_side, order.ticker, base_amount, quote_amount, is_maker);
-
+            let (fee_token_trade, exchange_fee) =  balancer.apply_fixed_fee(order.maker, order.fee.trade_fee, order.flags.is_sell_side, order.ticker, base_amount, quote_amount, is_maker);
+            let (fee_token_router, fee_amount) = balancer.apply_fixed_fee(order.maker, order.fee.router_fee, order.flags.is_sell_side, order.ticker, base_amount, quote_amount, is_maker);
+            assert(fee_token_trade==fee_token_router, 'MOSMATCH fixed fee tokens');
             if fee_amount > 0 { 
                 let mut router = self.get_router_mut();
                 // explictly separate routers balance from balance on exchnage, separate entities
-                router.mint(order.fee.router_fee.recipient, fee_token, fee_amount);
-                balancer.burn(order.fee.router_fee.recipient, fee_amount, fee_token);     
-                balancer.emit(FeeReward{ recipient:order.fee.router_fee.recipient, token:fee_token, amount:fee_amount});
+                router.mint(order.fee.router_fee.recipient, fee_token_trade, fee_amount);
+                balancer.burn(order.fee.router_fee.recipient, fee_amount, fee_token_trade);     
+                balancer.emit(FeeReward{ recipient:order.fee.router_fee.recipient, token:fee_token_trade, amount:fee_amount});
             }
-            return (fee_token, fee_amount, exchange_fee);
+            return (fee_token_trade, fee_amount, exchange_fee);
         }
 
         fn _do_part_external_taker_validate(self:@ComponentState<TContractState>, signed_taker_order:SignedOrder, swaps:u16, version: u16, fee_recipient:ContractAddress) -> (Order,felt252,OrderTradeInfo, u256) {
             //Returns max user can actually spend
-            let (router, taker_order, contract) = (self.get_router(), signed_taker_order.order,self.get_contract());
+            let (router, taker_order) = (self.get_router(), signed_taker_order.order);
             let taker_hash = taker_order.get_message_hash(taker_order.maker);
             let taker_fill_info = self.orders_trade_info.read(taker_hash);
             
@@ -305,8 +302,12 @@ mod ecosystem_trade_component {
             super::generic_taker_check(taker_order, taker_fill_info, taker_order.constraints.nonce, swaps, taker_hash, version, fee_recipient);
             assert!(taker_order.flags.is_market_order, "WRONG_MARKET_TYPE_EXTERNAL"); // external ones cant become passive orders
             let remaining_taker_amount =  self._infer_upper_bound_required(taker_order, taker_fill_info);
-            assert!(remaining_taker_amount > 0, "WRONG_TAKER_AMOUNT");
-            return (taker_order, taker_hash, taker_fill_info, remaining_taker_amount);
+            let mut spend_fees = 0;
+            if !taker_order.fee.trade_fee.apply_to_receipt_amount {spend_fees += get_feeable_qty(taker_order.fee.trade_fee, remaining_taker_amount, false)}
+            if !taker_order.fee.router_fee.apply_to_receipt_amount {spend_fees += get_feeable_qty(taker_order.fee.router_fee, remaining_taker_amount, false)}
+            
+            assert!(remaining_taker_amount + spend_fees > 0, "WRONG_TAKER_AMOUNT");
+            return (taker_order, taker_hash, taker_fill_info, remaining_taker_amount + spend_fees);
         }
 
         fn _infer_upper_bound_required(self:@ComponentState<TContractState>, taker_order:Order, taker_fill_info:OrderTradeInfo) ->u256 {
@@ -336,28 +337,28 @@ mod ecosystem_trade_component {
             // Prepare taker context for the trade when it have external funds mode
             // 1) Checks if user granted necessary permissions and have enough balance, and nonce of order is correct
             // 2) Tfer necessary amount for the trade and mint tokens on exchange for the user
-            // 3) returns total out amount wrt to gas if same token
             // In case of failure returns 0 signalizing that issue due router's bad job
             let (base, quote) = (taker_order.ticker);
             let mut balancer = self.get_balancer_mut();
             let contract = self.get_contract();
 
             if taker_order.constraints.nonce < contract.get_nonce(taker_order.maker) { return false;}
-            
-
-            let (erc20_base, erc20_quote) = (IERC20Dispatcher{contract_address:base}, IERC20Dispatcher{contract_address:quote});
             let (spent_gas, gas_token) = super::get_gas_fee_and_coin(taker_order.fee.gas_fee, gas_price, balancer.wrapped_native_token.read(), cur_gas_per_action);
             let mut spent_gas = spent_gas * swaps.into();
-            let trade_spend_token =  if taker_order.flags.is_sell_side {base} else {quote};
+            let (trade_spend_token, trade_receive_token) =  if taker_order.flags.is_sell_side {(base,quote)} else {(quote,base)};
             if trade_spend_token == gas_token  {
-                out_amount += spent_gas;
-                spent_gas = 0;
-            } 
+                out_amount += spent_gas; spent_gas = 0;
+            }
+            
             if !self.can_tranfer(exchange, trade_spend_token, taker_order.maker, out_amount) {return false;}
-            if !self.can_tranfer(exchange, gas_token, taker_order.maker, spent_gas) {return false;}
+            // if user pay for gas in currency that he receives we omit this step
+            // it is job of exchange to ensure that user recieves enough gas tokens to cover costs of swap
+            if gas_token == trade_receive_token && !self.can_tranfer(exchange, gas_token, taker_order.maker, spent_gas) {return false;}
+            
             self.trasfer_in(exchange, trade_spend_token, taker_order.maker, out_amount);
-            self.trasfer_in(exchange, gas_token, taker_order.maker, spent_gas);
-
+            if gas_token == trade_receive_token {
+                self.trasfer_in(exchange, gas_token, taker_order.maker, spent_gas);
+            }
             return true;
         }
 
@@ -366,14 +367,19 @@ mod ecosystem_trade_component {
             // 1) pay for gas, trade, router fee
             // 2) transfer user erc20 tokens that he received + unspent amount of tokens he was selling
             let (b, q) = if taker_order.flags.is_sell_side { (0, received_amount) } else { (received_amount, 0) };
-            let spending_token = if taker_order.flags.is_sell_side {let (b,q) = taker_order.ticker; b} else {let (b,q) = taker_order.ticker;q};
-            let mut balancer = self.get_balancer_mut();
+            let spending_token = if taker_order.flags.is_sell_side {let (b,_) = taker_order.ticker; b} else {let (_, q) = taker_order.ticker;q};
             
             let (fee_token, router_fee_amount, exchange_fee_amount) =  self.apply_taker_fee_and_gas(taker_order, b, q, gas_price, trades, cur_gas_per_action);
-            
+               
             // tfer trade result
-            self.trasfer_back(exchange, fee_token, taker_order.maker, received_amount - router_fee_amount - exchange_fee_amount);
-            self.trasfer_back(exchange, spending_token, taker_order.maker, unspent_amount); // tfer unspent amount
+            if (spending_token == fee_token) {
+                self.trasfer_back(exchange, fee_token, taker_order.maker, received_amount);
+                self.trasfer_back(exchange, spending_token, taker_order.maker, unspent_amount - router_fee_amount - exchange_fee_amount);
+            } else {
+                self.trasfer_back(exchange, fee_token, taker_order.maker, received_amount - router_fee_amount - exchange_fee_amount);
+                self.trasfer_back(exchange, spending_token, taker_order.maker, unspent_amount); // tfer unspent amount
+            }
+            
         }
       
         fn punish_router_simple(ref self: ComponentState<TContractState>, gas_fee:super::GasFee,router_addr:ContractAddress, 

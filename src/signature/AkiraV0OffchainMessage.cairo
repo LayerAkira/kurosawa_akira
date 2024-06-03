@@ -40,21 +40,21 @@ impl GasFeeHashImpl of IStructHash<GasFee> {
 //  ORDER
 
 
-// const FIXEDFEE_TYPE_HASH: felt252 = selector!("FixedFee(recipient:felt,maker_pbips:felt,taker_pbips:felt)");
-const FIXEDFEE_TYPE_HASH: felt252 = 0x8C6A6C4FC175EE3AC9212E86D8D6DD1326181DC94AC44A14F400B3F37E5A3F;
+// const FIXEDFEE_TYPE_HASH: felt252 = selector!("FixedFee(recipient:felt,maker_pbips:felt,taker_pbips:felt,apply_to_receipt_amount:bool)");
+const FIXEDFEE_TYPE_HASH: felt252 = 0x224AC2D1E75629D974CA4E9C46175C31807D2794D41AD53DF8E07707EF194E6;
 impl FixedFeeHashImpl of IStructHash<FixedFee> {
     fn hash_struct(self: @FixedFee) -> felt252 {
         let mut state = PedersenTrait::new(0);
         state = state.update_with(FIXEDFEE_TYPE_HASH);
         state = state.update_with(*self);
-        state = state.update_with(4);
+        state = state.update_with(5);
         state.finalize()
     }
 }
 
 
-// const ORDERFEE_TYPE_HASH: felt252 = selector!("OrderFee(trade_fee:FixedFee,router_fee:FixedFee,gas_fee:GasFee)FixedFee(recipient:felt,maker_pbips:felt,taker_pbips:felt)GasFee(gas_per_action:felt,fee_token:felt,max_gas_price:u256,r0:u256,r1:u256)u256(low:felt,high:felt)");
-const ORDERFEE_TYPE_HASH: felt252 = 0x2b94b7482e2347fbe1c6c86b9c269ce2f4a56db0da275851870c30dfec964bd;
+// const ORDERFEE_TYPE_HASH: felt252 = selector!("OrderFee(trade_fee:FixedFee,router_fee:FixedFee,gas_fee:GasFee)FixedFee(recipient:felt,maker_pbips:felt,taker_pbips:felt,apply_to_receipt_amount:bool)GasFee(gas_per_action:felt,fee_token:felt,max_gas_price:u256,r0:u256,r1:u256)u256(low:felt,high:felt)");
+const ORDERFEE_TYPE_HASH: felt252 = 0x1F94C7EFA9BAE1115ADFC49506561EEA74C584CC6ECA6B0D2E210E87615A89E;
 impl OrderFeeHashImpl of IStructHash<OrderFee> {
     fn hash_struct(self: @OrderFee) -> felt252 {
         let mut state = PedersenTrait::new(0);
@@ -117,8 +117,8 @@ impl ConstraintsHashImpl of IStructHash<Constraints> {
     }
 }
 
-// const ORDER_TYPE_HASH: felt252 = selector!("Order(maker:felt,price:u256,qty:Quantity,base:felt,quote:felt,fee:OrderFee,constraints:Constraints,salt:felt,flags:OrderFlags,version:felt,source:felt)Constraints(number_of_swaps_allowed:felt,duration_valid:felt,created_at:felt,stp:felt,nonce:felt,min_receive_amount:u256,router_signer:felt)FixedFee(recipient:felt,maker_pbips:felt,taker_pbips:felt)GasFee(gas_per_action:felt,fee_token:felt,max_gas_price:u256,r0:u256,r1:u256)OrderFee(trade_fee:FixedFee,router_fee:FixedFee,gas_fee:GasFee)OrderFlags(full_fill_only:bool,best_level_only:bool,post_only:bool,is_sell_side:bool,is_market_order:bool,to_ecosystem_book:bool,external_funds:bool)Quantity(base_qty:u256,quote_qty:u256,base_asset:u256)u256(low:felt,high:felt)");
-const ORDER_TYPE_HASH: felt252 =  0x1876BC52569FBFDBE93E2163C607A1D9CE9600B2437500FB481DD56841DC6BC;
+// const ORDER_TYPE_HASH: felt252 = selector!("Order(maker:felt,price:u256,qty:Quantity,base:felt,quote:felt,fee:OrderFee,constraints:Constraints,salt:felt,flags:OrderFlags,version:felt,source:felt)Constraints(number_of_swaps_allowed:felt,duration_valid:felt,created_at:felt,stp:felt,nonce:felt,min_receive_amount:u256,router_signer:felt)FixedFee(recipient:felt,maker_pbips:felt,taker_pbips:felt,apply_to_receipt_amount:bool)GasFee(gas_per_action:felt,fee_token:felt,max_gas_price:u256,r0:u256,r1:u256)OrderFee(trade_fee:FixedFee,router_fee:FixedFee,gas_fee:GasFee)OrderFlags(full_fill_only:bool,best_level_only:bool,post_only:bool,is_sell_side:bool,is_market_order:bool,to_ecosystem_book:bool,external_funds:bool)Quantity(base_qty:u256,quote_qty:u256,base_asset:u256)u256(low:felt,high:felt)");
+const ORDER_TYPE_HASH: felt252 =  0x3F942C5097267BC629D7A1693D720D71DB1242B5B5BE29DB565CB83A9435906;
 impl OrderHashImpl of IStructHash<Order> {
     fn hash_struct(self: @Order) -> felt252 {
         let mut state = PedersenTrait::new(0);

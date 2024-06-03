@@ -255,7 +255,7 @@ mod test_common_trade {
     fn get_swap_gas_cost()->u32 {100}
 
     fn get_zero_router_fee() -> FixedFee {
-        FixedFee{recipient:0.try_into().unwrap(), maker_pbips:0, taker_pbips: 0}
+        FixedFee{recipient:0.try_into().unwrap(), maker_pbips:0, taker_pbips: 0,apply_to_receipt_amount:true}
     }
 
     fn zero_router() -> ContractAddress { 0.try_into().unwrap()}
@@ -276,8 +276,8 @@ mod test_common_trade {
         let (maker_pbips,taker_pbips) = get_maker_taker_fees();
         let fee_recipient = akira.get_fee_recipient();
         let router_fee =  if router_signer != zero_addr { 
-            FixedFee{recipient:akira.get_router(router_signer), maker_pbips, taker_pbips}
-        } else { FixedFee{recipient: zero_addr, maker_pbips:0, taker_pbips:0}
+            FixedFee{recipient:akira.get_router(router_signer), maker_pbips, taker_pbips,apply_to_receipt_amount:true}
+        } else { FixedFee{recipient: zero_addr, maker_pbips:0, taker_pbips:0,apply_to_receipt_amount:true}
         };
         let mut order = Order {
             qty:Quantity{base_qty, quote_qty, base_asset: 1_000_000_000_000_000_000},
@@ -292,7 +292,7 @@ mod test_common_trade {
             },
             maker, price, ticker,  salt,
             fee: OrderFee {
-                trade_fee:  FixedFee{recipient:fee_recipient, maker_pbips, taker_pbips},
+                trade_fee:  FixedFee{recipient:fee_recipient, maker_pbips, taker_pbips, apply_to_receipt_amount:true},
                 router_fee: router_fee,
                 gas_fee: prepare_double_gas_fee_native(akira, get_swap_gas_cost())
             },
