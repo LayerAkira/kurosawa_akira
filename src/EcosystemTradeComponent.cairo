@@ -201,15 +201,15 @@ mod ecosystem_trade_component {
 
             if taker_order.flags.external_funds && failed { return false;}
             if taker_order.flags.external_funds {
-                let (taker_received, unspent) = if taker_order.flags.is_sell_side {
+                let (taker_received, unspent, spent) = if taker_order.flags.is_sell_side {
                     assert(expected_amount_spend - accum_base  >= 0, 'FINALIZE_BASE_OVERFLOW');                    
-                    (accum_quote, expected_amount_spend - accum_base)
+                    (accum_quote, expected_amount_spend - accum_base, accum_base)
                 } else {
                     assert(expected_amount_spend - accum_quote  >= 0, 'FINALIZE_BASE_OVERFLOW');                    
-                    (accum_base, expected_amount_spend - accum_quote)
+                    (accum_base, expected_amount_spend - accum_quote, accum_quote)
                 };
                 // do the reward and pay for the gas, we accumulate all and consume at once, avoiding repetitive actions
-                self.finalize_router_taker(taker_order, taker_hash, taker_received, unspent, exchange, gas_price, trades, cur_gas_per_action);  
+                self.finalize_router_taker(taker_order, taker_hash, taker_received, unspent, exchange, gas_price, trades, cur_gas_per_action, spent);  
             } else  {
                 self.apply_taker_fee_and_gas(taker_order, accum_base, accum_quote, gas_price, trades, cur_gas_per_action);    
             }
@@ -362,11 +362,12 @@ mod ecosystem_trade_component {
             return true;
         }
 
-        fn finalize_router_taker(ref self:ComponentState<TContractState>, taker_order:Order, taker_hash:felt252, received_amount:u256, unspent_amount:u256, exchange:ContractAddress, gas_price:u256, trades:u16, cur_gas_per_action:u32) {
+        fn finalize_router_taker(ref self:ComponentState<TContractState>, taker_order:Order, taker_hash:felt252, received_amount:u256, unspent_amount:u256, exchange:ContractAddress, gas_price:u256, trades:u16, cur_gas_per_action:u32,
+                    spent_amount:u256) {
             // Finalize router taker
             // 1) pay for gas, trade, router fee
             // 2) transfer user erc20 tokens that he received + unspent amount of tokens he was selling
-            let (b, q) = if taker_order.flags.is_sell_side { (0, received_amount) } else { (received_amount, 0) };
+            let (b, q) = if taker_order.flags.is_sell_side { (spent_amount, received_amount) } else { (received_amount, spent_amount) };
             let spending_token = if taker_order.flags.is_sell_side {let (b,_) = taker_order.ticker; b} else {let (_, q) = taker_order.ticker;q};
             
             let (fee_token, router_fee_amount, exchange_fee_amount) =  self.apply_taker_fee_and_gas(taker_order, b, q, gas_price, trades, cur_gas_per_action);
