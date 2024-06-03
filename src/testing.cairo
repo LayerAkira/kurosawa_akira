@@ -264,20 +264,20 @@ mod test_common_trade {
     fn spawn_order(akira:ILayerAkiraDispatcher, maker:ContractAddress, price:u256, base_qty:u256,
             flags:OrderFlags,
             num_swaps_allowed:u16, router_signer:ContractAddress) ->SignedOrder {
-        spawn_double_qty_order(akira, maker, price, base_qty, 0, flags, num_swaps_allowed, router_signer)
+        spawn_double_qty_order(akira, maker, price, base_qty, 0, flags, num_swaps_allowed, router_signer, true)
     }
 
     fn spawn_double_qty_order(akira:ILayerAkiraDispatcher, maker:ContractAddress, price:u256, base_qty:u256, quote_qty:u256,
             flags:OrderFlags,
-            num_swaps_allowed:u16, router_signer:ContractAddress) ->SignedOrder {
+            num_swaps_allowed:u16, router_signer:ContractAddress, apply_to_receipt_amount:bool ) ->SignedOrder {
         let zero_addr:ContractAddress = 0.try_into().unwrap();
         let ticker =(get_eth_addr(), get_usdc_addr()); 
         let salt = num_swaps_allowed.into();
         let (maker_pbips,taker_pbips) = get_maker_taker_fees();
         let fee_recipient = akira.get_fee_recipient();
         let router_fee =  if router_signer != zero_addr { 
-            FixedFee{recipient:akira.get_router(router_signer), maker_pbips, taker_pbips,apply_to_receipt_amount:true}
-        } else { FixedFee{recipient: zero_addr, maker_pbips:0, taker_pbips:0,apply_to_receipt_amount:true}
+            FixedFee{recipient:akira.get_router(router_signer), maker_pbips, taker_pbips,apply_to_receipt_amount}
+        } else { FixedFee{recipient: zero_addr, maker_pbips:0, taker_pbips:0,apply_to_receipt_amount}
         };
         let mut order = Order {
             qty:Quantity{base_qty, quote_qty, base_asset: 1_000_000_000_000_000_000},
@@ -292,7 +292,7 @@ mod test_common_trade {
             },
             maker, price, ticker,  salt,
             fee: OrderFee {
-                trade_fee:  FixedFee{recipient:fee_recipient, maker_pbips, taker_pbips, apply_to_receipt_amount:true},
+                trade_fee:  FixedFee{recipient:fee_recipient, maker_pbips, taker_pbips, apply_to_receipt_amount},
                 router_fee: router_fee,
                 gas_fee: prepare_double_gas_fee_native(akira, get_swap_gas_cost())
             },
@@ -481,7 +481,7 @@ mod tests_ecosystem_trade {
 
 
         let sell_market_flags = get_order_flags(false, false, false, true, true);
-        let sell_order = spawn_double_qty_order(akira, tr1, usdc_amount, eth_amount - gas_required, usdc_amount, sell_market_flags, 2, zero_router());
+        let sell_order = spawn_double_qty_order(akira, tr1, usdc_amount, eth_amount - gas_required, usdc_amount, sell_market_flags, 2, zero_router(), true);
 
         let buy_limit_flags = get_order_flags(false, false, true, false, false);
 
@@ -532,6 +532,12 @@ mod tests_router_trade {
     // router ones
     fn get_order_flags(full_fill_only:bool, best_level_only:bool, post_only:bool, is_sell_side:bool, is_market_order:bool) -> OrderFlags{
         return OrderFlags{full_fill_only, best_level_only, post_only, is_sell_side, is_market_order, to_ecosystem_book: false, external_funds: is_market_order};
+    }
+
+     fn spawn_order_fee_spent(akira:ILayerAkiraDispatcher, maker:ContractAddress, price:u256, base_qty:u256,
+            flags:OrderFlags,
+            num_swaps_allowed:u16, router_signer:ContractAddress) ->SignedOrder {
+        spawn_double_qty_order(akira, maker, price, base_qty, 0, flags, num_swaps_allowed, router_signer, false)
     }
 
     #[test]
@@ -676,6 +682,69 @@ mod tests_router_trade {
         
     }  
 
+        #[test]
+    #[fork("block_based")]
+    fn test_execute_with_buy_taker_succ_spent_side_fee_for_both_parties() {
+        // Taker buy, full match happens with maker of same px
+        let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
+        let router:ContractAddress = 5.try_into().unwrap();
+        let (signer, signer_pk) = get_trader_signer_and_pk_2();
+        let signer:ContractAddress = signer.try_into().unwrap();
+        
+        register_router(akira, tr1, signer, router);
+
+        let gas_fee = 100 * get_swap_gas_cost().into();
+        
+
+        let mut buy_order = spawn_order_fee_spent(akira, tr2, usdc_amount, eth_amount, 
+                get_order_flags(false, false, false, false, true), 2, signer);
+
+        buy_order.router_sign = sign(buy_order.order.get_message_hash(buy_order.order.maker), signer.into(), signer_pk);
+
+        let sell_order = spawn_order_fee_spent(akira, tr1, usdc_amount, eth_amount, 
+                get_order_flags(false, false, true, true, false), 0, zero_router());
+        
+
+        let eth_erc = IERC20Dispatcher{contract_address:eth};
+        let usdc_erc = IERC20Dispatcher{contract_address:usdc};
+        let taker = buy_order.order.maker;
+
+
+        
+        // grant necesasry allowances 
+        // grant_allowances(akira, tr2, eth, gas_fee);
+        let maker_fee = get_feeable_qty(sell_order.order.fee.trade_fee, eth_amount, true);
+        let taker_fee = get_feeable_qty(buy_order.order.fee.trade_fee, usdc_amount, false);
+        let router_fee = get_feeable_qty(buy_order.order.fee.router_fee, usdc_amount, false);
+        deposit(tr1, eth_amount + maker_fee, eth, akira);
+        grant_allowances(akira, tr2, usdc, usdc_amount + taker_fee + router_fee);
+
+
+
+        let (eth_b, usdc_b, router_b) = (eth_erc.balanceOf(taker), usdc_erc.balanceOf(taker), akira.balance_of_router(router, usdc));
+
+
+        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
+        assert(akira.apply_single_execution_step(buy_order, array![(sell_order, 0)],  usdc_amount  + taker_fee + router_fee, 100, get_swap_gas_cost(), false), 'FAILED_MATCH');
+        stop_prank(CheatTarget::One(akira.contract_address));
+
+
+        
+        assert(akira.balanceOf(sell_order.order.maker, usdc) == usdc_amount, 'WRONG_MATCH_RECIEVE_USDC');
+        assert(akira.balanceOf(buy_order.order.maker, usdc) == 0,'WRONG_MATCH_SEND_USDC');
+                
+        assert(akira.balanceOf(sell_order.order.maker, eth) == 0, 'WRONG_MATCH_SEND_ETH');
+       
+        assert(akira.balanceOf(buy_order.order.maker, eth) == 0, 'WRONG_ROUTER_T_BALANCE_ETH');
+        assert(akira.balanceOf(buy_order.order.maker, usdc) == 0, 'WRONG_ROUTER_T_BALANCE_USDC');
+
+        let (eth_b, usdc_b) = (eth_erc.balanceOf(taker) - eth_b, usdc_b - usdc_erc.balanceOf(taker));
+        assert(usdc_b == usdc_amount + taker_fee + router_fee, 'DEDUCTED_AS_EXPECTED');
+        assert(eth_b + gas_fee  == eth_amount, 'RECEIVED_AS_EXPECTED');
+        assert(akira.balance_of_router(router, usdc) - router_b == router_fee, 'WRONG_ROUTER_RECEIVED');
+        
+    } 
+
 
     #[test]
     #[fork("block_based")]
@@ -753,11 +822,11 @@ mod tests_quote_qty_ecosystem_trade_01 {
 
 
         let sell_market_flags = get_order_flags(false, false, false, true, true);
-        let sell_order = spawn_double_qty_order(akira, tr1, usdc_amount, eth_amount, quote_qty_01, sell_market_flags, 2, zero_router());
+        let sell_order = spawn_double_qty_order(akira, tr1, usdc_amount, eth_amount, quote_qty_01, sell_market_flags, 2, zero_router(), true);
 
         let buy_limit_flags = get_order_flags(false, false, true, false, false);
 
-        let buy_order = spawn_double_qty_order(akira, tr2, usdc_amount, eth_amount, quote_qty_02, buy_limit_flags, 0,  zero_router());
+        let buy_order = spawn_double_qty_order(akira, tr2, usdc_amount, eth_amount, quote_qty_02, buy_limit_flags, 0,  zero_router(), true);
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
 
         akira.apply_ecosystem_trades(array![(sell_order, false)], array![buy_order], array![(1,false)], array![0], 100, get_swap_gas_cost());
@@ -824,7 +893,7 @@ mod tests_quote_qty_ecosystem_trade_01 {
 
         let sell_market_flags = get_order_flags(false, false, true, true, false);
 
-        let sell_order = spawn_double_qty_order(akira, tr2, usdc_amount, eth_amount, quote_qty, sell_market_flags, 0,  zero_router());
+        let sell_order = spawn_double_qty_order(akira, tr2, usdc_amount, eth_amount, quote_qty, sell_market_flags, 0,  zero_router(), true);
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
 
         akira.apply_ecosystem_trades(array![(buy_order, false)], array![sell_order], array![(1,false)], array![0], 100, get_swap_gas_cost());
@@ -885,12 +954,12 @@ mod tests_quote_qty_ecosystem_trade_02 {
 
 
         let sell_market_flags = get_order_ecosystem_flags(false, false, false, true, true);
-        let sell_order_01 = spawn_double_qty_order(akira, tr1, usdc_amount, sell_order_01_base_qty, sell_order_01_quote_qty, sell_market_flags, 2, zero_router());
-        let sell_order_02 = spawn_double_qty_order(akira, tr1, usdc_amount, sell_order_02_base_qty, sell_order_02_quote_qty, sell_market_flags, 4, zero_router());
+        let sell_order_01 = spawn_double_qty_order(akira, tr1, usdc_amount, sell_order_01_base_qty, sell_order_01_quote_qty, sell_market_flags, 2, zero_router(),  true);
+        let sell_order_02 = spawn_double_qty_order(akira, tr1, usdc_amount, sell_order_02_base_qty, sell_order_02_quote_qty, sell_market_flags, 4, zero_router(), true);
 
         let buy_limit_flags = get_order_ecosystem_flags(false, false, true, false, false);
 
-        let buy_order = spawn_double_qty_order(akira, tr2, usdc_amount, eth_amount, 0, buy_limit_flags, 0,  zero_router());
+        let buy_order = spawn_double_qty_order(akira, tr2, usdc_amount, eth_amount, 0, buy_limit_flags, 0,  zero_router(), true);
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
 
         akira.apply_ecosystem_trades(array![(sell_order_01, false), (sell_order_02, false)], array![buy_order], array![(1,false), (1,true)], array![0, 0], 100, get_swap_gas_cost());
@@ -987,7 +1056,7 @@ mod tests_quote_qty_router_trade_01 {
         grant_allowances(akira, tr2, usdc, usdc_amount+10000000);
         
         let mut taker_order = spawn_double_qty_order(akira, tr2, price, base_qty, quote_qty, 
-                get_order_flags(false, false, false, !change_side, true), 1, signer);
+                get_order_flags(false, false, false, !change_side, true), 1, signer, true);
         taker_order.router_sign = sign(taker_order.order.get_message_hash(taker_order.order.maker), signer.into(), signer_pk);
 
 
@@ -1144,7 +1213,7 @@ mod tests_quote_qty_router_trade_02 {
         return OrderFlags{full_fill_only, best_level_only, post_only, is_sell_side, is_market_order, to_ecosystem_book: true, external_funds:false};
     }
 
-    fn test_draft(sell_order_01_base_qty: u256, sell_order_01_quote_qty: u256, sell_order_02_base_qty: u256, sell_order_02_quote_qty: u256) {
+    fn test_draft(sell_order_01_base_qty: u256, sell_order_01_quote_qty: u256, sell_order_02_base_qty: u256, sell_order_02_quote_qty: u256, apply_fee_to_receipt:bool) {
         let (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount) = prepare();
 
         let router: ContractAddress = 5.try_into().unwrap();
@@ -1161,10 +1230,10 @@ mod tests_quote_qty_router_trade_02 {
         let base_qty = 1_000_000_000_000_000_000; // 1 eth
         
         let mut sell_order_01 = spawn_double_qty_order(akira, tr2, price, sell_order_01_base_qty, sell_order_01_quote_qty, 
-                get_order_router_flags(false, false, false, true, true), 1, signer);
+                get_order_router_flags(false, false, false, true, true), 1, signer, true);
         sell_order_01.router_sign = sign(sell_order_01.order.get_message_hash(sell_order_01.order.maker), signer.into(), signer_pk);
         let mut sell_order_02 = spawn_double_qty_order(akira, tr2, price, sell_order_02_base_qty, sell_order_02_quote_qty, 
-                get_order_router_flags(false, false, false, true, true), 2, signer);
+                get_order_router_flags(false, false, false, true, true), 2, signer, true);
         sell_order_02.router_sign = sign(sell_order_02.order.get_message_hash(sell_order_02.order.maker), signer.into(), signer_pk);
 
 
@@ -1204,7 +1273,7 @@ mod tests_quote_qty_router_trade_02 {
     fn test_quote_qty_only_base() {
         let base_qty = 1_000_000_000_000_000_000;
         let quote_qty = 2000_000_000;
-        test_draft(base_qty / 2, 0, base_qty / 2, 0);
+        test_draft(base_qty / 2, 0, base_qty / 2, 0, true);
     }  
 
         #[test]
@@ -1212,7 +1281,7 @@ mod tests_quote_qty_router_trade_02 {
     fn test_quote_qty_only_quote() {
         let base_qty = 1_000_000_000_000_000_000;
         let quote_qty = 2000_000_000;
-        test_draft(0, quote_qty / 2, 0, quote_qty / 2);
+        test_draft(0, quote_qty / 2, 0, quote_qty / 2, true);
     }  
 
             #[test]
@@ -1220,7 +1289,7 @@ mod tests_quote_qty_router_trade_02 {
     fn test_quote_qty_both() {
         let base_qty = 1_000_000_000_000_000_000;
         let quote_qty = 2000_000_000;
-        test_draft(0, quote_qty / 2, base_qty / 2, 0);
+        test_draft(0, quote_qty / 2, base_qty / 2, 0, true);
     }  
 
     #[test]
@@ -1228,7 +1297,7 @@ mod tests_quote_qty_router_trade_02 {
     fn test_quote_qty_both_02() {
         let base_qty = 1_000_000_000_000_000_000;
         let quote_qty = 2000_000_000;
-        test_draft(base_qty / 2, 0, 0, quote_qty / 2);
+        test_draft(base_qty / 2, 0, 0, quote_qty / 2, true);
     }  
 }
 

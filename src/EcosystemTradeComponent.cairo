@@ -268,11 +268,11 @@ mod ecosystem_trade_component {
 
         }   
         
-        fn apply_taker_fee_and_gas(ref self: ComponentState<TContractState>, taker_order:Order, base_amount:u256, quote_amount:u256, gas_price:u256, trades:u16, cur_gas_per_action:u32) -> (ContractAddress, u256, u256) {
+        fn apply_taker_fee_and_gas(ref self: ComponentState<TContractState>, taker_order:Order, base_amount:u256, quote_amount:u256, gas_price:u256, trades:u16, cur_gas_per_action:u32) -> (ContractAddress, u256, u256, u256) {
             let mut balancer = self.get_balancer_mut();
             let (fee_token, fee_amount, exchange_fee) = self.apply_fixed_fees(taker_order,base_amount, quote_amount, false);
-            balancer.validate_and_apply_gas_fee_internal(taker_order.maker, taker_order.fee.gas_fee, gas_price, trades, cur_gas_per_action);
-            return (fee_token, fee_amount, exchange_fee);
+            let spent_gas = balancer.validate_and_apply_gas_fee_internal(taker_order.maker, taker_order.fee.gas_fee, gas_price, trades, cur_gas_per_action);
+            return (fee_token, fee_amount, exchange_fee, spent_gas);
         }
 
         fn apply_fixed_fees(ref self: ComponentState<TContractState>,order:Order,base_amount:u256, quote_amount:u256,is_maker:bool) -> (ContractAddress,u256, u256) {
@@ -305,7 +305,6 @@ mod ecosystem_trade_component {
             let mut spend_fees = 0;
             if !taker_order.fee.trade_fee.apply_to_receipt_amount {spend_fees += get_feeable_qty(taker_order.fee.trade_fee, remaining_taker_amount, false)}
             if !taker_order.fee.router_fee.apply_to_receipt_amount {spend_fees += get_feeable_qty(taker_order.fee.router_fee, remaining_taker_amount, false)}
-            
             assert!(remaining_taker_amount + spend_fees > 0, "WRONG_TAKER_AMOUNT");
             return (taker_order, taker_hash, taker_fill_info, remaining_taker_amount + spend_fees);
         }
@@ -353,34 +352,34 @@ mod ecosystem_trade_component {
             if !self.can_tranfer(exchange, trade_spend_token, taker_order.maker, out_amount) {return false;}
             // if user pay for gas in currency that he receives we omit this step
             // it is job of exchange to ensure that user recieves enough gas tokens to cover costs of swap
-            if gas_token == trade_receive_token && !self.can_tranfer(exchange, gas_token, taker_order.maker, spent_gas) {return false;}
-            
+            if gas_token != trade_receive_token && !self.can_tranfer(exchange, gas_token, taker_order.maker, spent_gas) {return false;}
             self.trasfer_in(exchange, trade_spend_token, taker_order.maker, out_amount);
-            if gas_token == trade_receive_token {
+            
+            if gas_token != trade_receive_token {
                 self.trasfer_in(exchange, gas_token, taker_order.maker, spent_gas);
             }
             return true;
         }
 
-        fn finalize_router_taker(ref self:ComponentState<TContractState>, taker_order:Order, taker_hash:felt252, received_amount:u256, unspent_amount:u256, exchange:ContractAddress, gas_price:u256, trades:u16, cur_gas_per_action:u32,
+        fn finalize_router_taker(ref self:ComponentState<TContractState>, taker_order:Order, taker_hash:felt252, mut received_amount:u256, unspent_amount:u256, exchange:ContractAddress, gas_price:u256, trades:u16, cur_gas_per_action:u32,
                     spent_amount:u256) {
             // Finalize router taker
             // 1) pay for gas, trade, router fee
             // 2) transfer user erc20 tokens that he received + unspent amount of tokens he was selling
             let (b, q) = if taker_order.flags.is_sell_side { (spent_amount, received_amount) } else { (received_amount, spent_amount) };
-            let spending_token = if taker_order.flags.is_sell_side {let (b,_) = taker_order.ticker; b} else {let (_, q) = taker_order.ticker;q};
+            let (spending_token, receive_token) = if taker_order.flags.is_sell_side {let (b,q) = taker_order.ticker; (b,q)} else {let (b, q) = taker_order.ticker;(q,b)};
             
-            let (fee_token, router_fee_amount, exchange_fee_amount) =  self.apply_taker_fee_and_gas(taker_order, b, q, gas_price, trades, cur_gas_per_action);
-               
-            // tfer trade result
-            if (spending_token == fee_token) {
-                self.trasfer_back(exchange, fee_token, taker_order.maker, received_amount);
+            let (fee_token, router_fee_amount, exchange_fee_amount, mut gas) =  self.apply_taker_fee_and_gas(taker_order, b, q, gas_price, trades, cur_gas_per_action);
+            // we charged him for gas but we need to deduct before sending back in case it was gas currency he received
+            if (taker_order.fee.gas_fee.fee_token != receive_token) {gas = 0}
+            
+            if (spending_token == fee_token) { //if fees was in token user spend we deduct them from spend to return remaining else from recieve before sending back
+                self.trasfer_back(exchange, receive_token, taker_order.maker, received_amount - gas);
                 self.trasfer_back(exchange, spending_token, taker_order.maker, unspent_amount - router_fee_amount - exchange_fee_amount);
             } else {
-                self.trasfer_back(exchange, fee_token, taker_order.maker, received_amount - router_fee_amount - exchange_fee_amount);
+                self.trasfer_back(exchange, receive_token, taker_order.maker, received_amount - router_fee_amount - exchange_fee_amount - gas);
                 self.trasfer_back(exchange, spending_token, taker_order.maker, unspent_amount); // tfer unspent amount
             }
-            
         }
       
         fn punish_router_simple(ref self: ComponentState<TContractState>, gas_fee:super::GasFee,router_addr:ContractAddress, 
