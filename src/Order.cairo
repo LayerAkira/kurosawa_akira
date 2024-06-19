@@ -163,7 +163,7 @@ fn do_maker_checks(maker_order:Order, maker_fill_info:OrderTradeInfo, nonce:u32,
     assert!(!maker_order.flags.full_fill_only, "WRONG_MAKER_FLAG: maker_order can't be full_fill_only");
     assert!(get_block_timestamp() < maker_order.constraints.created_at.into() + maker_order.constraints.duration_valid.into(), "Maker order expire {}", maker_order.constraints.duration_valid);
     if maker_order.flags.post_only {
-        assert!(!maker_order.flags.best_level_only && !maker_order.flags.full_fill_only, "WRONG_MAKER_FLAGS");
+        assert!(!maker_order.flags.best_level_only, "WRONG_MAKER_FLAGS");
     }
     assert(!maker_order.flags.external_funds, 'MAKER_ALWAYS_NOT_EXTERNAL');
     return (settle_px, remaining); 
