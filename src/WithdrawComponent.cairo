@@ -131,8 +131,10 @@ mod withdraw_component {
             // 3) We require user to have GasFee with latest_gas_price * 2 for exchange be able to execute it on behalf of user once it is possible
             assert!(get_caller_address() == withdraw.maker, "WRONG_MAKER: withdraw maker ({}) should be equal caller ({})", withdraw.maker, get_caller_address());
             assert!(withdraw.amount > 0, "WITHDRAW_CANT_BE_ZERO");
+            assert!(withdraw.receiver != 0.try_into().unwrap(), "RECIPIENT_CANT_BE_ZERO");
+            
             let key = (withdraw.token, withdraw.maker);            
-            let (pending_ts, w_prev): (SlowModeDelay, Withdraw)  = self.pending_reqs.read(key);
+            let (_, w_prev): (SlowModeDelay, Withdraw)  = self.pending_reqs.read(key);
             let w_hash = withdraw.get_message_hash(withdraw.maker);
 
             assert!(w_prev != withdraw, "ALREADY_REQUESTED: withdraw for this token already requested");
@@ -177,13 +179,16 @@ mod withdraw_component {
         // or if there is ongoing pending withdrawal, exchange can process, 
         // in this case no need for signature verifaction because user already scheduled withdrawal onchain
         fn apply_withdraw(ref self: ComponentState<TContractState>, signed_withdraw: SignedWithdraw, gas_price:u256, cur_gas_per_action:u32) {
-            let hash = signed_withdraw.withdraw.get_message_hash(signed_withdraw.withdraw.maker);
-            let (delay, w_req):(SlowModeDelay, Withdraw) = self.pending_reqs.read((signed_withdraw.withdraw.token, signed_withdraw.withdraw.maker));
-            assert!(!self.completed_reqs.read(hash), "ALREADY_COMPLETED: withdraw (hash = {})", hash);
+            assert!(signed_withdraw.withdraw.receiver != 0.try_into().unwrap(), "RECIPIENT_CANT_BE_ZERO");
             
-            if w_req != signed_withdraw.withdraw { // need to check sign cause offchain withdrawal
+            let hash = signed_withdraw.withdraw.get_message_hash(signed_withdraw.withdraw.maker);
+            let (_, w_req):(SlowModeDelay, Withdraw) = self.pending_reqs.read((signed_withdraw.withdraw.token, signed_withdraw.withdraw.maker));
+            assert!(!self.completed_reqs.read(hash), "ALREADY_COMPLETED: withdraw (hash = {})", hash);
+            let is_onchain_withdrawal: bool = w_req == signed_withdraw.withdraw;
+            if !is_onchain_withdrawal { // need to check sign cause offchain withdrawal
                 let (r, s) = signed_withdraw.sign;
                 assert!(self.get_contract().check_sign(signed_withdraw.withdraw.maker, hash, r, s), "WRONG_SIGN: (hash, r, s) = ({}, {}, {})", hash, r, s);
+                self.completed_reqs.write(w_req.get_message_hash(w_req.maker), true) // invalidate pending one to avoid bad user experience
             }
             let w_req = signed_withdraw.withdraw;
         
@@ -192,7 +197,7 @@ mod withdraw_component {
              // payment to exchange for gas
             let gas_fee_amount = contract.validate_and_apply_gas_fee_internal(w_req.maker, w_req.gas_fee, gas_price, 1, cur_gas_per_action);
             let tfer_amount = if w_req.token == w_req.gas_fee.fee_token {w_req.amount - gas_fee_amount } else { w_req.amount};
-            self._transfer(w_req, hash, tfer_amount, gas_price, w_req == signed_withdraw.withdraw);
+            self._transfer(w_req, hash, tfer_amount, gas_price, is_onchain_withdrawal);
         }
         fn validate(self:@ComponentState<TContractState>, maker:ContractAddress, token:ContractAddress, amount:u256, gas_fee:GasFee) {
             // User must specify gas fee, by specifying adequate max_gas_price it will allow to exchange to finalizing withdrawal on user behalf bypassing delay
@@ -222,7 +227,7 @@ mod withdraw_component {
 
             self.emit(Withdrawal{maker:w_req.maker, token:w_req.token, amount: w_req.amount, salt:w_req.salt, receiver:w_req.receiver, gas_price,
                         gas_fee:w_req.gas_fee, direct:direct});
-           self.completed_reqs.write(w_hash, true);
+            self.completed_reqs.write(w_hash, true);
             
             
         }

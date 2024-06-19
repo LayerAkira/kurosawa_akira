@@ -53,6 +53,8 @@ mod signer_logic_component {
         fn bind_to_signer(ref self: ComponentState<TContractState>, signer: ContractAddress) {
             let caller = get_caller_address();
             assert!(self.trader_to_signer.read(caller) == 0.try_into().unwrap(), "ALREADY BINDED: signer = {}", self.trader_to_signer.read(caller));
+            assert!(signer != 0.try_into().unwrap(), "SIGNER_CANT_BE_SET_TO_ZERO");
+            
             self.trader_to_signer.write(caller, signer);
             self.emit(NewBinding { trading_account: caller, signer: signer });
         }

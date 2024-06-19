@@ -108,7 +108,7 @@ mod LayerAkira {
 
     #[external(v0)]
     fn update_exchange_version(ref self: ContractState, new_version:u16) {
-        assert!(self.owner.read() == get_caller_address(), "Access denied: update_exchange_invokers is only for the owner's use");
+        assert!(self.owner.read() == get_caller_address(), "Access denied: update_exchange_version is only for the owner's use");
         assert!(new_version > self.exchange_version.read(), "Exchange version can only increase");
         self.exchange_version.write(new_version);
         self.emit(VersionUpdate{new_version});
@@ -126,6 +126,8 @@ mod LayerAkira {
     #[external(v0)]
     fn update_fee_recipient(ref self: ContractState, new_fee_recipient: ContractAddress) {
         assert!(self.owner.read() == get_caller_address(), "Access denied: update_fee_recipient is only for the owner's use");
+        assert!(new_fee_recipient != 0.try_into().unwrap(), "Access denied: update_fee_recipient is only for the owner's use");
+        
         self.balancer_s.fee_recipient.write(new_fee_recipient);
         self.emit(FeeRecipientUpdate{new_fee_recipient});
     }
