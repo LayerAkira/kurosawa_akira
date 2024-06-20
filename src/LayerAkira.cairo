@@ -114,7 +114,7 @@ mod LayerAkira {
     #[external(v0)]
     fn update_fee_recipient(ref self: ContractState, new_fee_recipient: ContractAddress) {
         assert!(self.owner.read() == get_caller_address(), "Access denied: update_fee_recipient is only for the owner's use");
-        assert!(new_fee_recipient != 0.try_into().unwrap(), "Access denied: update_fee_recipient is only for the owner's use");
+        assert!(new_fee_recipient != 0.try_into().unwrap(), "NEW_FEE_RECIPIENT_CANT_BE_ZERO");
         
         self.balancer_s.fee_recipient.write(new_fee_recipient);
         self.emit(FeeRecipientUpdate{new_fee_recipient});
