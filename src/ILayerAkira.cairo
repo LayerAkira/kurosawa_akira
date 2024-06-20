@@ -3,7 +3,7 @@ use starknet::{get_contract_address, ContractAddress};
 use kurosawa_akira::Order::{SignedOrder,Order, OrderTradeInfo,OrderFee,FixedFee}; 
 use kurosawa_akira::WithdrawComponent::{Withdraw,SignedWithdraw};
 use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
-use kurosawa_akira::NonceComponent::SignedIncreaseNonce;
+use kurosawa_akira::NonceComponent::{SignedIncreaseNonce, IncreaseNonce};
 
 
 //  for testing purposes only
@@ -28,6 +28,10 @@ trait ILayerAkira<TContractState> {
     fn apply_increase_nonces(ref self: TContractState, signed_nonces: Array<SignedIncreaseNonce>, gas_price:u256);
 
 
+    fn get_order_hash(self: @TContractState, order:Order) -> felt252;
+
+    fn get_withdraw_hash(self: @TContractState, withdraw: Withdraw) -> felt252;
+    fn get_increase_nonce_hash(self: @TContractState, increase_nonce:IncreaseNonce) -> felt252;
 
 
     fn get_router(self:@TContractState, signer:ContractAddress) -> ContractAddress;

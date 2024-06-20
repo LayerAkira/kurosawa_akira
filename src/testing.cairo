@@ -61,7 +61,7 @@ mod tests_deposit_and_withdrawal_and_nonce {
             start_roll(CheatTarget::One(akira.contract_address), delay.block + req_time.block); 
             start_warp(CheatTarget::One(akira.contract_address), req_time.ts + delay.ts);
         }
-        start_prank(CheatTarget::One(akira.contract_address), trader); akira.apply_onchain_withdraw(token, w.get_message_hash(w.maker)); stop_prank(CheatTarget::One(akira.contract_address));
+        start_prank(CheatTarget::One(akira.contract_address), trader); akira.apply_onchain_withdraw(token, akira.get_withdraw_hash(w)); stop_prank(CheatTarget::One(akira.contract_address));
         if use_delay {
              stop_roll(CheatTarget::One(akira.contract_address));
              stop_warp(CheatTarget::One(akira.contract_address));
@@ -145,13 +145,13 @@ mod tests_deposit_and_withdrawal_and_nonce {
         start_prank(CheatTarget::One(akira.contract_address), trader); akira.bind_to_signer(pub_addr.try_into().unwrap()); stop_prank(CheatTarget::One(akira.contract_address));
        
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        akira.apply_withdraw(SignedWithdraw{withdraw:w, sign: sign(w.get_message_hash(w.maker), pub_addr, priv)}, 100,w.gas_fee.gas_per_action);
+        akira.apply_withdraw(SignedWithdraw{withdraw:w, sign: sign(akira.get_withdraw_hash(w), pub_addr, priv)}, 100,w.gas_fee.gas_per_action);
         stop_prank(CheatTarget::One(akira.contract_address));
     }    
 
     #[test]
     #[fork("block_based")]
-    #[should_panic(expected: ("ALREADY_COMPLETED: withdraw (hash = 735861519797621119801356248221602934209919578766885443499731178344076520098)",))]
+    #[should_panic(expected: ("ALREADY_COMPLETED: withdraw (hash = 1776129417799935887140732049933655015157703534447449325790282054076284963254)",))]
     fn test_withdraw_eth_indirect_twice() {
         let akira = ILayerAkiraDispatcher{contract_address:spawn_exchange()};
         let (trader, eth_addr, amount_deposit) = (get_trader_address_1(), get_eth_addr(),1_000_000);
@@ -162,9 +162,9 @@ mod tests_deposit_and_withdrawal_and_nonce {
         let w = get_withdraw(trader, amount_deposit, eth_addr, akira, 0);
         
         start_prank(CheatTarget::One(akira.contract_address), trader); akira.bind_to_signer(pub_addr.try_into().unwrap()); stop_prank(CheatTarget::One(akira.contract_address));
-
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        let sign = sign(w.get_message_hash(w.maker), pub_addr, priv);
+        
+        let sign = sign(akira.get_withdraw_hash(w), pub_addr, priv);
         akira.apply_withdraw(SignedWithdraw{withdraw:w, sign}, 100, w.gas_fee.gas_per_action);
         akira.apply_withdraw(SignedWithdraw{withdraw:w, sign}, 100, w.gas_fee.gas_per_action);
         
@@ -182,33 +182,10 @@ mod tests_deposit_and_withdrawal_and_nonce {
         start_prank(CheatTarget::One(akira.contract_address), trader); akira.bind_to_signer(pub_addr.try_into().unwrap()); stop_prank(CheatTarget::One(akira.contract_address));
 
         start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
-        let sign = sign(nonce.get_message_hash(nonce.maker), pub_addr, priv);
+        let sign = sign(akira.get_increase_nonce_hash(nonce), pub_addr, priv);
         akira.apply_increase_nonce(SignedIncreaseNonce{increase_nonce:nonce, sign}, 100, nonce.gas_fee.gas_per_action);        
         stop_prank(CheatTarget::One(akira.contract_address));
     } 
-
-    #[test]
-    #[fork("block_based")]
-    fn dd() {
-
-        let w = Withdraw{
-            maker: 0x024e8044680FEcDe3f23d4E270c7b0fA23c487Ae7B31b812ff72aFa7Bc7f6116.try_into().unwrap(),
-            token:0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7.try_into().unwrap(),
-            amount:199311999985,
-            gas_fee:GasFee{gas_per_action:3000,
-                         fee_token: 0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7.try_into().unwrap(),
-                         max_gas_price:1000, conversion_rate:(1, 1)
-                         },
-                         
-            salt:0,
-            receiver:0x024e8044680FEcDe3f23d4E270c7b0fA23c487Ae7B31b812ff72aFa7Bc7f6116.try_into().unwrap()
-        };
-
-        let mut serialized: Array<felt252> = ArrayTrait::new();
-        Serde::<Withdraw>::serialize(@w, ref serialized);
-        // serialized.print();
-        w.get_message_hash(w.maker).print();
-    }
 
 }
 
@@ -238,7 +215,7 @@ mod test_common_trade {
 
     fn prepare() ->(ILayerAkiraDispatcher, ContractAddress, ContractAddress, ContractAddress, ContractAddress, u256, u256) {
         let akira = ILayerAkiraDispatcher{contract_address:spawn_exchange()};
-        let (tr1,tr2, (pub_addr1, pk1), (pub_addr2, pk2)) = (get_trader_address_1(), get_trader_address_2(), get_trader_signer_and_pk_1(), get_trader_signer_and_pk_2());
+        let (tr1,tr2, (pub_addr1, _), (pub_addr2, _)) = (get_trader_address_1(), get_trader_address_2(), get_trader_signer_and_pk_1(), get_trader_signer_and_pk_2());
         let (eth, usdc) = (get_eth_addr(), get_usdc_addr());
         let (eth_amount, usdc_amount) = (1_000_000_000_000_000_000, 2000_000_000); //1eth and 2k usdc 
         tfer_eth_funds_to(tr1, 2 * eth_amount); tfer_eth_funds_to(tr2, 2 * eth_amount);
@@ -297,9 +274,10 @@ mod test_common_trade {
                 gas_fee: prepare_double_gas_fee_native(akira, get_swap_gas_cost())
             },
             flags,
-            version:0, source: 'layerakira'
+            source: 'layerakira'
         };
-        let hash = order.get_message_hash(order.maker);
+
+        let hash = akira.get_order_hash(order);
         let (pub_addr, pk) = if maker == get_trader_address_1() {
             get_trader_signer_and_pk_1()
         } else  { get_trader_signer_and_pk_2()};
@@ -354,7 +332,7 @@ mod tests_ecosystem_trade {
 
     use kurosawa_akira::signature::V0OffchainMessage::{OffchainMessageHashImpl};
 
-    use super::test_common_trade:: {prepare,get_maker_taker_fees,get_swap_gas_cost,spawn_order, spawn_double_qty_order, get_zero_router_fee,zero_router};
+    use super::test_common_trade:: {prepare,get_maker_taker_fees,get_swap_gas_cost, spawn_order, spawn_double_qty_order, get_zero_router_fee,zero_router};
 
 
 
@@ -582,7 +560,7 @@ mod tests_router_trade {
         let mut buy_order = spawn_order(akira, tr2, usdc_amount, eth_amount, 
                 get_order_flags(false, false, false, false, true), 2, signer);
 
-        buy_order.router_sign = sign(buy_order.order.get_message_hash(buy_order.order.maker), signer.into(), signer_pk);
+        buy_order.router_sign = sign(akira.get_order_hash(buy_order.order), signer.into(), signer_pk);
 
         let sell_order = spawn_order(akira, tr1, usdc_amount, eth_amount, 
                 get_order_flags(false, false, true, true, false), 0, zero_router());
@@ -640,7 +618,7 @@ mod tests_router_trade {
         
         let mut sell_order = spawn_order(akira, tr2, usdc_amount, eth_amount, 
                 get_order_flags(false, false, false, true, true), 1, signer);
-        sell_order.router_sign = sign(sell_order.order.get_message_hash(sell_order.order.maker), signer.into(), signer_pk);
+        sell_order.router_sign = sign(akira.get_order_hash(sell_order.order), signer.into(), signer_pk);
 
 
         let buy_order = spawn_order(akira, tr1, usdc_amount, eth_amount, 
@@ -699,7 +677,7 @@ mod tests_router_trade {
         let mut buy_order = spawn_order_fee_spent(akira, tr2, usdc_amount, eth_amount, 
                 get_order_flags(false, false, false, false, true), 2, signer);
 
-        buy_order.router_sign = sign(buy_order.order.get_message_hash(buy_order.order.maker), signer.into(), signer_pk);
+        buy_order.router_sign = sign(akira.get_order_hash(buy_order.order), signer.into(), signer_pk);
 
         let sell_order = spawn_order_fee_spent(akira, tr1, usdc_amount, eth_amount, 
                 get_order_flags(false, false, true, true, false), 0, zero_router());
@@ -764,7 +742,7 @@ mod tests_router_trade {
         let mut buy_order = spawn_order(akira, tr2, usdc_amount, eth_amount, 
                 get_order_flags(false, false, false, false, true), 2, signer);
 
-        buy_order.router_sign = sign(buy_order.order.get_message_hash(buy_order.order.maker), signer.into(), signer_pk);
+        buy_order.router_sign = sign(akira.get_order_hash(buy_order.order), signer.into(), signer_pk);
 
         let sell_order = spawn_order(akira, tr1, usdc_amount, eth_amount, 
                 get_order_flags(false, false, true, true, false), 0, zero_router());
@@ -1057,7 +1035,7 @@ mod tests_quote_qty_router_trade_01 {
         
         let mut taker_order = spawn_double_qty_order(akira, tr2, price, base_qty, quote_qty, 
                 get_order_flags(false, false, false, !change_side, true), 1, signer, true);
-        taker_order.router_sign = sign(taker_order.order.get_message_hash(taker_order.order.maker), signer.into(), signer_pk);
+        taker_order.router_sign = sign(akira.get_order_hash(taker_order.order), signer.into(), signer_pk);
 
 
         let maker_order = spawn_order(akira, tr1, price, base_qty, 
@@ -1231,10 +1209,10 @@ mod tests_quote_qty_router_trade_02 {
         
         let mut sell_order_01 = spawn_double_qty_order(akira, tr2, price, sell_order_01_base_qty, sell_order_01_quote_qty, 
                 get_order_router_flags(false, false, false, true, true), 1, signer, true);
-        sell_order_01.router_sign = sign(sell_order_01.order.get_message_hash(sell_order_01.order.maker), signer.into(), signer_pk);
+        sell_order_01.router_sign = sign(akira.get_order_hash(sell_order_01.order), signer.into(), signer_pk);
         let mut sell_order_02 = spawn_double_qty_order(akira, tr2, price, sell_order_02_base_qty, sell_order_02_quote_qty, 
                 get_order_router_flags(false, false, false, true, true), 2, signer, true);
-        sell_order_02.router_sign = sign(sell_order_02.order.get_message_hash(sell_order_02.order.maker), signer.into(), signer_pk);
+        sell_order_02.router_sign = sign(akira.get_order_hash(sell_order_02.order), signer.into(), signer_pk);
 
 
         let buy_order = spawn_order(akira, tr1, price, base_qty, 

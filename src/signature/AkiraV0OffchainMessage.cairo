@@ -1,7 +1,7 @@
 use core::option::OptionTrait;
 use core::traits::TryInto;
 use starknet::{
-    contract_address_const, get_tx_info, get_caller_address, testing::set_caller_address,ContractAddress
+    contract_address_const, get_tx_info, get_caller_address, testing::set_caller_address,ContractAddress, get_contract_address
 };
 use pedersen::PedersenTrait;
 use hash::{HashStateTrait, HashStateExTrait};
@@ -117,8 +117,8 @@ impl ConstraintsHashImpl of IStructHash<Constraints> {
     }
 }
 
-// const ORDER_TYPE_HASH: felt252 = selector!("Order(maker:felt,price:u256,qty:Quantity,base:felt,quote:felt,fee:OrderFee,constraints:Constraints,salt:felt,flags:OrderFlags,version:felt,source:felt)Constraints(number_of_swaps_allowed:felt,duration_valid:felt,created_at:felt,stp:felt,nonce:felt,min_receive_amount:u256,router_signer:felt)FixedFee(recipient:felt,maker_pbips:felt,taker_pbips:felt,apply_to_receipt_amount:bool)GasFee(gas_per_action:felt,fee_token:felt,max_gas_price:u256,r0:u256,r1:u256)OrderFee(trade_fee:FixedFee,router_fee:FixedFee,gas_fee:GasFee)OrderFlags(full_fill_only:bool,best_level_only:bool,post_only:bool,is_sell_side:bool,is_market_order:bool,to_ecosystem_book:bool,external_funds:bool)Quantity(base_qty:u256,quote_qty:u256,base_asset:u256)u256(low:felt,high:felt)");
-const ORDER_TYPE_HASH: felt252 =  0x3F942C5097267BC629D7A1693D720D71DB1242B5B5BE29DB565CB83A9435906;
+// const ORDER_TYPE_HASH: felt252 = selector!("Order(maker:felt,price:u256,qty:Quantity,base:felt,quote:felt,fee:OrderFee,constraints:Constraints,salt:felt,flags:OrderFlags,exchange:felt,source:felt)Constraints(number_of_swaps_allowed:felt,duration_valid:felt,created_at:felt,stp:felt,nonce:felt,min_receive_amount:u256,router_signer:felt)FixedFee(recipient:felt,maker_pbips:felt,taker_pbips:felt,apply_to_receipt_amount:bool)GasFee(gas_per_action:felt,fee_token:felt,max_gas_price:u256,r0:u256,r1:u256)OrderFee(trade_fee:FixedFee,router_fee:FixedFee,gas_fee:GasFee)OrderFlags(full_fill_only:bool,best_level_only:bool,post_only:bool,is_sell_side:bool,is_market_order:bool,to_ecosystem_book:bool,external_funds:bool)Quantity(base_qty:u256,quote_qty:u256,base_asset:u256)u256(low:felt,high:felt)");
+const ORDER_TYPE_HASH: felt252 =  0xE61DF9E68BC94ADBD575F0C188FACF8DEA26B7EE0994E554198FAFE8E7BB47;
 impl OrderHashImpl of IStructHash<Order> {
     fn hash_struct(self: @Order) -> felt252 {
         let mut state = PedersenTrait::new(0);
@@ -133,7 +133,7 @@ impl OrderHashImpl of IStructHash<Order> {
         state = state.update_with(self.constraints.hash_struct());
         state = state.update_with(*self.salt);
         state = state.update_with(self.flags.hash_struct());
-        state = state.update_with(*self.version);
+        state = state.update_with(get_contract_address());
         state = state.update_with(*self.source);
         state = state.update_with(12);
         state.finalize()
@@ -141,8 +141,8 @@ impl OrderHashImpl of IStructHash<Order> {
 }
 
 // const WITHDRAW_TYPE_HASH: felt252 = 
-    // selector!("Withdraw(maker:felt,token:felt,amount:u256,salt:felt,gas_fee:GasFee,receiver:felt)GasFee(gas_per_action:felt,fee_token:felt,max_gas_price:u256,r0:u256,r1:u256)u256(low:felt,high:felt)");
-const WITHDRAW_TYPE_HASH: felt252 = 0x466E61BEFD45811F87C6413B093A10F499B8AE9F47A9A12EBAC12A6F2E0F6C;
+    // selector!("Withdraw(maker:felt,token:felt,amount:u256,salt:felt,gas_fee:GasFee,receiver:felt,exchange:felt)GasFee(gas_per_action:felt,fee_token:felt,max_gas_price:u256,r0:u256,r1:u256)u256(low:felt,high:felt)");
+const WITHDRAW_TYPE_HASH: felt252 = 0x17C8204D2795C04835ABB036805B165A4B1CB4D0B6F2994AAF62D17E0B3C5E8;
 impl WithdrawHashImpl of IStructHash<Withdraw> {
     fn hash_struct(self: @Withdraw) -> felt252 {
         let mut state = PedersenTrait::new(0);
@@ -153,7 +153,8 @@ impl WithdrawHashImpl of IStructHash<Withdraw> {
         state = state.update_with(*self.salt);
         state = state.update_with(self.gas_fee.hash_struct());
         state = state.update_with(*self.receiver);
-        state = state.update_with(7);
+        state = state.update_with(get_contract_address());
+        state = state.update_with(8);
         state.finalize()
     }
 }

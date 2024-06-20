@@ -61,7 +61,7 @@ mod ecosystem_trade_component {
 
         // exposed only in contract user apply ecosystem trades
         fn apply_ecosystem_trades(ref self: ComponentState<TContractState>, mut taker_orders:Array<(SignedOrder, bool)>, mut maker_orders:Array<SignedOrder>, mut iters:Array<(u16, bool)>,
-                    mut oracle_settled_qty:Array<u256>, gas_price:u256,cur_gas_per_action:u32, version:u16) {
+                    mut oracle_settled_qty:Array<u256>, gas_price:u256,cur_gas_per_action:u32) {
             let mut maker_order = *maker_orders.at(0).order;
             let mut maker_hash: felt252  = 0.try_into().unwrap();  
             let mut maker_fill_info = self.orders_trade_info.read(maker_hash);
@@ -79,7 +79,7 @@ mod ecosystem_trade_component {
                         let (mut total_base, mut total_quote) = (0,0);
             
                         let (signed_taker_order, as_taker_completed) = taker_orders.pop_front().unwrap();
-                        let (taker_order, taker_hash, mut taker_fill_info) =  self.part_safe_validate_taker(signed_taker_order, trades, version, fee_recipient); 
+                        let (taker_order, taker_hash, mut taker_fill_info) =  self.part_safe_validate_taker(signed_taker_order, trades, fee_recipient); 
                         let mut cur = 0;
 
                         loop {
@@ -129,15 +129,15 @@ mod ecosystem_trade_component {
         }
 
         fn apply_single_taker(ref self: ComponentState<TContractState>, signed_taker_order:SignedOrder, mut signed_maker_orders:Array<(SignedOrder,u256)>,
-                    total_amount_matched:u256, gas_price:u256,  cur_gas_per_action:u32, as_taker_completed:bool, version:u16)  -> bool{
+                    total_amount_matched:u256, gas_price:u256,  cur_gas_per_action:u32, as_taker_completed:bool)  -> bool{
             
             let (exchange, trades): (ContractAddress, u16) = (get_contract_address(), signed_maker_orders.len().try_into().unwrap());
             let mut balancer = self.get_balancer_mut();
             let fee_recipient = balancer.fee_recipient.read();
             let (taker_order, taker_hash, mut taker_fill_info) =  if !signed_taker_order.order.flags.external_funds {
-                self.part_safe_validate_taker(signed_taker_order, trades, version, fee_recipient)
+                self.part_safe_validate_taker(signed_taker_order, trades, fee_recipient)
             } else {
-                let (o, hash, info, available) = self._do_part_external_taker_validate(signed_taker_order, trades, version, fee_recipient);
+                let (o, hash, info, available) = self._do_part_external_taker_validate(signed_taker_order, trades, fee_recipient);
                 // prevent exchange trigger reimbure on purpose else we can send 0 and it will trigger failure on checks and trigger router punishment
                 //  we need this oracle because we might dont know beforehand how much taker will spent because px is protection price
                 assert!(total_amount_matched <= available, "WRONG_AMOUNT_MATCHED_ORACLE got {} should be less {}", total_amount_matched, available);
@@ -229,14 +229,14 @@ mod ecosystem_trade_component {
         }
 
 
-        fn part_safe_validate_taker(self: @ComponentState<TContractState>, taker_signed_order:SignedOrder, swaps:u16, version:u16, fee_recipient:ContractAddress) -> (Order,felt252,OrderTradeInfo) {
+        fn part_safe_validate_taker(self: @ComponentState<TContractState>, taker_signed_order:SignedOrder, swaps:u16, fee_recipient:ContractAddress) -> (Order,felt252,OrderTradeInfo) {
             let (contract, taker_order,(r, s)) = (self.get_contract(), taker_signed_order.order, taker_signed_order.sign);
             let taker_order_hash = taker_order.get_message_hash(taker_order.maker);
             let taker_fill_info = self.orders_trade_info.read(taker_order_hash);
             
             assert(!taker_order.flags.external_funds, 'ECOSYSTEM_TAKER_NOT_EXTERNAL');
             assert!(contract.check_sign(taker_order.maker, taker_order_hash, r, s), "WRONG_SIGN_TAKER: (taker_order_hash, r, s) = ({}, {}, {})", taker_order_hash, r, s);
-            super::generic_taker_check(taker_order, taker_fill_info, contract.get_nonce(taker_order.maker), swaps, taker_order_hash, version, fee_recipient);
+            super::generic_taker_check(taker_order, taker_fill_info, contract.get_nonce(taker_order.maker), swaps, taker_order_hash, fee_recipient);
             return (taker_order, taker_order_hash, taker_fill_info);
         }
 
@@ -290,7 +290,7 @@ mod ecosystem_trade_component {
             return (fee_token_trade, fee_amount, exchange_fee);
         }
 
-        fn _do_part_external_taker_validate(self:@ComponentState<TContractState>, signed_taker_order:SignedOrder, swaps:u16, version: u16, fee_recipient:ContractAddress) -> (Order,felt252,OrderTradeInfo, u256) {
+        fn _do_part_external_taker_validate(self:@ComponentState<TContractState>, signed_taker_order:SignedOrder, swaps:u16, fee_recipient:ContractAddress) -> (Order,felt252,OrderTradeInfo, u256) {
             //Returns max user can actually spend
             let (router, taker_order) = (self.get_router(), signed_taker_order.order);
             let taker_hash = taker_order.get_message_hash(taker_order.maker);
@@ -299,7 +299,7 @@ mod ecosystem_trade_component {
             //Validate router, job of exchange because of this assert
             assert!(router.validate_router(taker_hash, signed_taker_order.router_sign, taker_order.constraints.router_signer, taker_order.fee.router_fee.recipient), "WRONG_ROUTER_SIGN");
             // nonce here so router cant on purpose send old orders of user
-            super::generic_taker_check(taker_order, taker_fill_info, self.get_contract().get_nonce(taker_order.maker), swaps, taker_hash, version, fee_recipient);
+            super::generic_taker_check(taker_order, taker_fill_info, self.get_contract().get_nonce(taker_order.maker), swaps, taker_hash, fee_recipient);
             assert!(taker_order.flags.is_market_order, "WRONG_MARKET_TYPE_EXTERNAL"); // external ones cant become passive orders
             let remaining_taker_amount =  self._infer_upper_bound_required(taker_order, taker_fill_info);
             let mut spend_fees = 0;
