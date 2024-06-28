@@ -73,7 +73,6 @@ mod LayerAkira {
         max_slow_mode_delay:SlowModeDelay, // upper bound for all delayed actions
         exchange_invokers: LegacyMap::<ContractAddress, bool>,
         owner: ContractAddress, // owner of contact that have permissions to grant and revoke role for invokers and update slow mode 
-        exchange_version:u16 // exchange version
     }
 
 
@@ -102,17 +101,6 @@ mod LayerAkira {
         self.emit(UpdateExchangeInvoker{invoker, enabled});
     }
 
-    #[external(v0)]
-    fn version(self: @ContractState) -> u16 { return self.exchange_version.read();}
-
-
-    #[external(v0)]
-    fn update_exchange_version(ref self: ContractState, new_version:u16) {
-        assert!(self.owner.read() == get_caller_address(), "Access denied: update_exchange_invokers is only for the owner's use");
-        assert!(new_version > self.exchange_version.read(), "Exchange version can only increase");
-        self.exchange_version.write(new_version);
-        self.emit(VersionUpdate{new_version});
-    }
 
     #[external(v0)]
     fn update_withdraw_component_params(ref self: ContractState, new_delay:SlowModeDelay) {
@@ -126,6 +114,8 @@ mod LayerAkira {
     #[external(v0)]
     fn update_fee_recipient(ref self: ContractState, new_fee_recipient: ContractAddress) {
         assert!(self.owner.read() == get_caller_address(), "Access denied: update_fee_recipient is only for the owner's use");
+        assert!(new_fee_recipient != 0.try_into().unwrap(), "NEW_FEE_RECIPIENT_CANT_BE_ZERO");
+        
         self.balancer_s.fee_recipient.write(new_fee_recipient);
         self.emit(FeeRecipientUpdate{new_fee_recipient});
     }
@@ -212,14 +202,14 @@ mod LayerAkira {
     #[external(v0)]
     fn apply_ecosystem_trades(ref self: ContractState, taker_orders:Array<(SignedOrder,bool)>, maker_orders: Array<SignedOrder>, iters:Array<(u16, bool)>, oracle_settled_qty:Array<u256>, gas_price:u256, cur_gas_per_action:u32) {
         assert_whitelisted_invokers(@self);
-        self.ecosystem_trade_s.apply_ecosystem_trades(taker_orders, maker_orders, iters, oracle_settled_qty, gas_price, cur_gas_per_action, self.exchange_version.read());
+        self.ecosystem_trade_s.apply_ecosystem_trades(taker_orders, maker_orders, iters, oracle_settled_qty, gas_price, cur_gas_per_action);
         self.balancer_s.latest_gas.write(gas_price);
     }
 
     #[external(v0)]
     fn apply_single_execution_step(ref self: ContractState, taker_order:SignedOrder, maker_orders: Array<(SignedOrder,u256)>, total_amount_matched:u256, gas_price:u256, cur_gas_per_action:u32,as_taker_completed:bool, ) -> bool {
         assert_whitelisted_invokers(@self);
-        let res = self.ecosystem_trade_s.apply_single_taker(taker_order, maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed, self.exchange_version.read());
+        let res = self.ecosystem_trade_s.apply_single_taker(taker_order, maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed);
         self.balancer_s.latest_gas.write(gas_price);
         return res;
     }
@@ -232,7 +222,7 @@ mod LayerAkira {
         loop {
             match bulk.pop_front(){
                 Option::Some((taker_order, maker_orders, total_amount_matched, as_taker_completed)) => {
-                    res.append(self.ecosystem_trade_s.apply_single_taker(taker_order, maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed, self.exchange_version.read()));
+                    res.append(self.ecosystem_trade_s.apply_single_taker(taker_order, maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed));
 
                 },
                 Option::None(_) => {break;}

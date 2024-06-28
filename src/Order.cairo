@@ -82,7 +82,6 @@ struct Order {
     constraints: Constraints,
     salt: felt252, // random salt for security
     flags: OrderFlags, // various order flags of order
-    version: u16,  // exchange versio
     source: felt252 // source of liquidity
 }
 
@@ -163,16 +162,15 @@ fn do_maker_checks(maker_order:Order, maker_fill_info:OrderTradeInfo, nonce:u32,
     assert!(!maker_order.flags.full_fill_only, "WRONG_MAKER_FLAG: maker_order can't be full_fill_only");
     assert!(get_block_timestamp() < maker_order.constraints.created_at.into() + maker_order.constraints.duration_valid.into(), "Maker order expire {}", maker_order.constraints.duration_valid);
     if maker_order.flags.post_only {
-        assert!(!maker_order.flags.best_level_only && !maker_order.flags.full_fill_only, "WRONG_MAKER_FLAGS");
+        assert!(!maker_order.flags.best_level_only, "WRONG_MAKER_FLAGS");
     }
     assert(!maker_order.flags.external_funds, 'MAKER_ALWAYS_NOT_EXTERNAL');
     return (settle_px, remaining); 
 }
 
 
-fn generic_taker_check(taker_order:Order, taker_fill_info:OrderTradeInfo, nonce:u32, swaps:u16, taker_order_hash:felt252, version:u16, fee_recipient:ContractAddress) {
+fn generic_taker_check(taker_order:Order, taker_fill_info:OrderTradeInfo, nonce:u32, swaps:u16, taker_order_hash:felt252, fee_recipient:ContractAddress) {
     assert!(taker_order.fee.trade_fee.recipient == fee_recipient, "WRONG_TAKER_FEE_RECIPIENT: expected {} got {}", fee_recipient, taker_order.fee.trade_fee.recipient);
-    assert!(taker_order.version == version, "WRONG_TAKER_VERSION");
     assert!(taker_order.constraints.number_of_swaps_allowed >= taker_fill_info.num_trades_happened + swaps, "HIT_SWAPS_ALLOWED");
     assert!(!taker_order.flags.post_only, "WRONG_TAKER_FLAG");
     assert!(taker_order.constraints.nonce >= nonce, "OLD_TAKER_NONCE");
@@ -185,7 +183,6 @@ fn generic_common_check(maker_order:Order, taker_order:Order) {
     assert!(taker_order.ticker == maker_order.ticker, "MISMATCH_TICKER");
     assert!(taker_order.flags.to_ecosystem_book == maker_order.flags.to_ecosystem_book, "MISMATCH_BOOK_DESTINATION");
     assert!(taker_order.qty.base_asset == maker_order.qty.base_asset, "WRONG_ASSET_AMOUNT");
-    assert!(maker_order.version == taker_order.version, "MISMATCH_VERSIONS");
 }
 
 
