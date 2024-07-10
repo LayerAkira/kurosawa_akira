@@ -264,7 +264,7 @@ mod LayerAkira {
                             apply_ecosystem_trades(ref self,takers,makers,iters,oracle_settled_qty, gas_price, ecosystem_steps);
                         },
                         Step::IncreaseNonceStep(data) => {apply_increase_nonce(ref self,data, gas_price, nonce_steps)},
-                        Step::WithdrawStep(data) => {apply_withdraw(ref self,data, gas_price, nonce_steps)},
+                        Step::WithdrawStep(data) => {apply_withdraw(ref self,data, gas_price, withdraw_steps)},
                     };
                 },
                 Option::None(_) => {break;}
