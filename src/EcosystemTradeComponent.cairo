@@ -10,6 +10,7 @@ trait IEcosystemTradeLogic<TContractState> {
 
 #[starknet::component]
 mod ecosystem_trade_component {
+    use core::array::SpanTrait;
     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as balance_component;
     use kurosawa_akira::ExchangeBalanceComponent::INewExchangeBalance;
     use balance_component::{InternalExchangeBalancebleImpl, InternalExchangeBalanceble, ExchangeBalancebleImpl, FeeReward, Trade, Punish};
@@ -220,7 +221,7 @@ mod ecosystem_trade_component {
 
 
         fn do_internal_maker_checks(self: @ComponentState<TContractState>, signed_order:SignedOrder, fee_recipient:ContractAddress) -> (Order,felt252, OrderTradeInfo) {
-            let (contract, order, (r, s)) = (self.get_contract(), signed_order.order, signed_order.sign);
+            let (contract, order, (r, s)) = (self.get_contract(), signed_order.order, (*signed_order.sign.at(0), *signed_order.sign.at(1)));
             let maker_hash =  order.get_message_hash(order.maker);
             let maker_fill_info = self.orders_trade_info.read(maker_hash);
             do_maker_checks(order, maker_fill_info, contract.get_nonce(order.maker), fee_recipient);            
@@ -230,7 +231,7 @@ mod ecosystem_trade_component {
 
 
         fn part_safe_validate_taker(self: @ComponentState<TContractState>, taker_signed_order:SignedOrder, swaps:u16, fee_recipient:ContractAddress) -> (Order,felt252,OrderTradeInfo) {
-            let (contract, taker_order,(r, s)) = (self.get_contract(), taker_signed_order.order, taker_signed_order.sign);
+            let (contract, taker_order,(r, s)) = (self.get_contract(), taker_signed_order.order,  (*taker_signed_order.sign.at(0), *taker_signed_order.sign.at(1)));
             let taker_order_hash = taker_order.get_message_hash(taker_order.maker);
             let taker_fill_info = self.orders_trade_info.read(taker_order_hash);
             
