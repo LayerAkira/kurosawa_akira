@@ -85,10 +85,10 @@ struct Order {
     source: felt252 // source of liquidity
 }
 
-#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+#[derive(Copy, Drop, Serde, PartialEq)]
 struct SignedOrder {
     order: Order,
-    sign: (felt252, felt252), // makers' signer signature of poseidon hash of order,
+    sign: Span<felt252>, // makers' signer signature of poseidon hash of order,
     router_sign: (felt252,felt252) // router_signer signature of poseidon hash of order in case of router taker order, else (0, 0)
 }
 

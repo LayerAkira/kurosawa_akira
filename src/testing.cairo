@@ -151,7 +151,7 @@ mod tests_deposit_and_withdrawal_and_nonce {
 
     #[test]
     #[fork("block_based")]
-    #[should_panic(expected: ("ALREADY_COMPLETED: withdraw (hash = 1776129417799935887140732049933655015157703534447449325790282054076284963254)",))]
+    #[should_panic(expected: ("ALREADY_COMPLETED: withdraw (hash = 957201278841670640498632393349450727444268037161897304282096904719289985567)",))]
     fn test_withdraw_eth_indirect_twice() {
         let akira = ILayerAkiraDispatcher{contract_address:spawn_exchange()};
         let (trader, eth_addr, amount_deposit) = (get_trader_address_1(), get_eth_addr(),1_000_000);
@@ -281,8 +281,9 @@ mod test_common_trade {
         let (pub_addr, pk) = if maker == get_trader_address_1() {
             get_trader_signer_and_pk_1()
         } else  { get_trader_signer_and_pk_2()};
-  
-        return SignedOrder{order, sign:sign(hash, pub_addr, pk), router_sign:(0,0)};
+    
+        let (r,s) = sign(hash, pub_addr, pk);
+        return SignedOrder{order, sign: array![r,s].span(), router_sign:(0,0)};
     }
 
     fn register_router(akira:ILayerAkiraDispatcher, funds_account:ContractAddress, signer:ContractAddress, router_address:ContractAddress) {
