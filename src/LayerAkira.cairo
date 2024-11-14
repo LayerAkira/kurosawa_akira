@@ -3,7 +3,7 @@
 mod LayerAkira {
     use core::starknet::event::EventEmitter;
     use kurosawa_akira::NonceComponent::nonce_component::InternalNonceable;
-    use starknet::{ContractAddress, get_caller_address};
+    use starknet::{ContractAddress, get_caller_address, get_tx_info};
 
     use kurosawa_akira::WithdrawComponent::withdraw_component::InternalWithdrawable;
     use starknet::{get_contract_address};
@@ -73,6 +73,8 @@ mod LayerAkira {
         max_slow_mode_delay:SlowModeDelay, // upper bound for all delayed actions
         exchange_invokers: LegacyMap::<ContractAddress, bool>,
         owner: ContractAddress, // owner of contact that have permissions to grant and revoke role for invokers and update slow mode 
+        hash_lock:felt252,
+        scheduled_taker_order:Order,
     }
 
 
@@ -92,6 +94,7 @@ mod LayerAkira {
         self.exchange_invokers.write(exchange_invoker, true);
         self.owner.write(owner);
         self.router_s.initializer(max_slow_mode_delay, wrapped_native_token, min_to_route, 10_000);
+        self.hash_lock.write(0);
     }
 
     #[external(v0)]
@@ -209,7 +212,7 @@ mod LayerAkira {
     #[external(v0)]
     fn apply_single_execution_step(ref self: ContractState, taker_order:SignedOrder, maker_orders: Array<(SignedOrder,u256)>, total_amount_matched:u256, gas_price:u256, cur_gas_per_action:u32,as_taker_completed:bool, ) -> bool {
         assert_whitelisted_invokers(@self);
-        let res = self.ecosystem_trade_s.apply_single_taker(taker_order, maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed);
+        let res = self.ecosystem_trade_s.apply_single_taker(taker_order, maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed, false);
         self.balancer_s.latest_gas.write(gas_price);
         return res;
     }
@@ -222,7 +225,7 @@ mod LayerAkira {
         loop {
             match bulk.pop_front(){
                 Option::Some((taker_order, maker_orders, total_amount_matched, as_taker_completed)) => {
-                    res.append(self.ecosystem_trade_s.apply_single_taker(taker_order, maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed));
+                    res.append(self.ecosystem_trade_s.apply_single_taker(taker_order, maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed, false));
 
                 },
                 Option::None(_) => {break;}
@@ -230,6 +233,32 @@ mod LayerAkira {
         };
         self.balancer_s.latest_gas.write(gas_price);
         return res;
+    }
+
+
+    #[external(v0)]
+    fn placeTakerOrder(ref self: ContractState, order: Order) {
+        let tx_info = get_tx_info().unbox();
+
+        assert(self.hash_lock.read() == 0, 'Lock already acquired');
+        self.hash_lock.write(tx_info.transaction_hash);
+        assert(order.maker == get_caller_address(), 'Maker must be caller');
+        assert!(self.exchange_invokers.read(tx_info.account_contract_address), "Access denied: Only whitelisted invokers");
+        self.scheduled_taker_order.write(order);
+    }
+
+    #[external(v0)]
+    fn fullfillTakerOrder(ref self: ContractState, mut maker_orders:Array<(SignedOrder,u256)>,
+                    total_amount_matched:u256, gas_steps:u32,gas_price:u256,  cur_gas_per_action:u32) {
+        assert_whitelisted_invokers(@self);
+
+        let tx_info = get_tx_info().unbox();
+        assert(self.hash_lock.read() == tx_info.transaction_hash, 'Lock not acquired');
+        self.ecosystem_trade_s.apply_single_taker(
+            SignedOrder{order:self.scheduled_taker_order.read(), sign: array![].span(), router_sign:(0,0)},
+            maker_orders, total_amount_matched, gas_price, gas_steps, true, true);
+        // release lock
+        self.hash_lock.write(0);
     }
 
 
