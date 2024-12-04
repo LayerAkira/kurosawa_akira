@@ -75,6 +75,7 @@ mod LayerAkira {
         owner: ContractAddress, // owner of contact that have permissions to grant and revoke role for invokers and update slow mode 
         hash_lock:felt252,
         scheduled_taker_order:Order,
+        router_sign: (felt252,felt252)
     }
 
 
@@ -237,7 +238,7 @@ mod LayerAkira {
 
 
     #[external(v0)]
-    fn placeTakerOrder(ref self: ContractState, order: Order) {
+    fn placeTakerOrder(ref self: ContractState, order: Order, router_sign: (felt252,felt252)) {
         let tx_info = get_tx_info().unbox();
 
         assert(self.hash_lock.read() == 0, 'Lock already acquired');
@@ -245,17 +246,18 @@ mod LayerAkira {
         assert(order.maker == get_caller_address(), 'Maker must be caller');
         assert!(self.exchange_invokers.read(tx_info.account_contract_address), "Access denied: Only whitelisted invokers");
         self.scheduled_taker_order.write(order);
+        self.router_sign.write(router_sign);
     }
 
     #[external(v0)]
     fn fullfillTakerOrder(ref self: ContractState, mut maker_orders:Array<(SignedOrder,u256)>,
-                    total_amount_matched:u256, gas_steps:u32,gas_price:u256,  cur_gas_per_action:u32) {
+                    total_amount_matched:u256, gas_steps:u32, gas_price:u256) {
         assert_whitelisted_invokers(@self);
 
         let tx_info = get_tx_info().unbox();
         assert(self.hash_lock.read() == tx_info.transaction_hash, 'Lock not acquired');
         self.ecosystem_trade_s.apply_single_taker(
-            SignedOrder{order:self.scheduled_taker_order.read(), sign: array![].span(), router_sign:(0,0)},
+            SignedOrder{order:self.scheduled_taker_order.read(), sign: array![].span(), router_sign:self.router_sign.read()},
             maker_orders, total_amount_matched, gas_price, gas_steps, true, true);
         // release lock
         self.hash_lock.write(0);

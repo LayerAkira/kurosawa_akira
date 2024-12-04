@@ -2,7 +2,7 @@
     use core::{traits::Into,array::ArrayTrait,option::OptionTrait,traits::TryInto,result::ResultTrait};
     use starknet::{ContractAddress,info::get_block_number,get_caller_address};
     use debug::PrintTrait;
-    use snforge_std::{start_prank,CheatTarget, start_warp,stop_warp,stop_prank,declare,ContractClassTrait, start_roll, stop_roll};
+    use snforge_std::{start_cheat_caller_address, stop_cheat_caller_address,declare,ContractClassTrait};
     use core::dict::{Felt252Dict, Felt252DictTrait, SquashedFelt252Dict};
     use kurosawa_akira::LayerAkira::LayerAkira;
     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait,IERC20Dispatcher};
@@ -21,16 +21,16 @@
     fn tfer_eth_funds_to(receiver: ContractAddress, amount: u256) {
         let caller_who_have_funds: ContractAddress = 0x07BB3440166aa8867c092b7D8726d58F499e10E0112487814DF7a598C35D9301.try_into().unwrap();
         let ETH = IERC20Dispatcher { contract_address: get_eth_addr() };
-        start_prank(CheatTarget::One(ETH.contract_address), caller_who_have_funds);
+        start_cheat_caller_address(ETH.contract_address, caller_who_have_funds);
         ETH.transfer(receiver, amount);
-        stop_prank(CheatTarget::One(ETH.contract_address));
+        stop_cheat_caller_address(ETH.contract_address);
     }
     fn tfer_usdc_funds_to(receiver: ContractAddress, amount: u256) {
         let caller_who_have_funds: ContractAddress = 0x07BB3440166aa8867c092b7D8726d58F499e10E0112487814DF7a598C35D9301.try_into().unwrap();
         let USDC = IERC20Dispatcher { contract_address: get_usdc_addr() };
-        start_prank(CheatTarget::One(USDC.contract_address), caller_who_have_funds);
+        start_cheat_caller_address(USDC.contract_address, caller_who_have_funds);
         USDC.transfer(receiver, amount);
-        stop_prank(CheatTarget::One(USDC.contract_address));
+        stop_cheat_caller_address(USDC.contract_address);
     }
 
 
@@ -92,8 +92,8 @@
         
         let erc = IERC20Dispatcher{contract_address: token};
         let (prev_total_supply,prev_user_balance) = (akira.total_supply(token), akira.balanceOf(trader, token));
-        start_prank(CheatTarget::One(token), trader);erc.approve(akira.contract_address, amount);stop_prank(CheatTarget::One(token));
-        start_prank(CheatTarget::One(akira.contract_address), trader); akira.deposit(trader, token, amount); stop_prank(CheatTarget::One(akira.contract_address));
+        start_cheat_caller_address(token, trader);erc.approve(akira.contract_address, amount);stop_cheat_caller_address(token);
+        start_cheat_caller_address(akira.contract_address, trader); akira.deposit(trader, token, amount); stop_cheat_caller_address(akira.contract_address);
         assert(akira.total_supply(token) == prev_total_supply + amount,'WRONG_MINT');
         assert(akira.balanceOf(trader, token) == prev_user_balance + amount,'WRONG_MINT'); 
     }
@@ -107,7 +107,7 @@
     fn sign(message_hash:felt252,pub_key:felt252,priv:felt252)->(felt252, felt252) {
         let mut signer = KeyPairTrait::<felt252, felt252>::from_secret_key(priv);
 
-        return signer.sign(message_hash);
+        return signer.sign(message_hash).ok().unwrap();
     }
 
 

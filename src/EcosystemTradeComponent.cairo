@@ -72,7 +72,7 @@ mod ecosystem_trade_component {
             let mut first_iter = true;
             assert!(!use_prev_maker, "WRONG_FIRST_ITER");
 
-            let fee_recipient = balance.fee_recipient.read();
+            let fee_recipient = balance.get_fee_recipient();
 
             loop {
                 match iters.pop_front(){
