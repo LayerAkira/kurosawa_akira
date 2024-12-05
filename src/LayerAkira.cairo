@@ -166,7 +166,6 @@ mod LayerAkira {
     fn apply_increase_nonce(ref self: ContractState, signed_nonce: SignedIncreaseNonce, gas_price:u256, cur_gas_per_action:u32) {
         assert_whitelisted_invokers(@self);
         self.nonce_s.apply_increase_nonce(signed_nonce, gas_price, cur_gas_per_action);
-        self.balancer_s.latest_gas.write(gas_price);
     }
 
 
@@ -179,14 +178,12 @@ mod LayerAkira {
                 Option::None(_) => {break;}
             };
         };
-        self.balancer_s.latest_gas.write(gas_price);
     }
 
     #[external(v0)]
     fn apply_withdraw(ref self: ContractState, signed_withdraw: SignedWithdraw, gas_price:u256, cur_gas_per_action:u32) {
         assert_whitelisted_invokers(@self);
         self.withdraw_s.apply_withdraw(signed_withdraw, gas_price, cur_gas_per_action);
-        self.balancer_s.latest_gas.write(gas_price);
         self.withdraw_s.gas_steps.write(cur_gas_per_action);
     }
 
@@ -200,21 +197,18 @@ mod LayerAkira {
             };
         };
         self.withdraw_s.gas_steps.write(cur_gas_per_action);
-        self.balancer_s.latest_gas.write(gas_price);
     }
 
     #[external(v0)]
     fn apply_ecosystem_trades(ref self: ContractState, taker_orders:Array<(SignedOrder,bool)>, maker_orders: Array<SignedOrder>, iters:Array<(u16, bool)>, oracle_settled_qty:Array<u256>, gas_price:u256, cur_gas_per_action:u32) {
         assert_whitelisted_invokers(@self);
         self.ecosystem_trade_s.apply_ecosystem_trades(taker_orders, maker_orders, iters, oracle_settled_qty, gas_price, cur_gas_per_action);
-        self.balancer_s.latest_gas.write(gas_price);
     }
 
     #[external(v0)]
     fn apply_single_execution_step(ref self: ContractState, taker_order:SignedOrder, maker_orders: Array<(SignedOrder,u256)>, total_amount_matched:u256, gas_price:u256, cur_gas_per_action:u32,as_taker_completed:bool, ) -> bool {
         assert_whitelisted_invokers(@self);
         let res = self.ecosystem_trade_s.apply_single_taker(taker_order, maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed, false);
-        self.balancer_s.latest_gas.write(gas_price);
         return res;
     }
 
@@ -232,7 +226,6 @@ mod LayerAkira {
                 Option::None(_) => {break;}
             };
         };
-        self.balancer_s.latest_gas.write(gas_price);
         return res;
     }
 
@@ -301,7 +294,6 @@ mod LayerAkira {
                 Option::None(_) => {break;}
             };
         };
-        self.balancer_s.latest_gas.write(gas_price);
     }
     
     #[event]

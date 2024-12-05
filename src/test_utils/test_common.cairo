@@ -100,7 +100,7 @@
 
     fn prepare_double_gas_fee_native(akira:ILayerAkiraDispatcher, gas_action:u32)-> GasFee {
         GasFee{ gas_per_action:gas_action, fee_token:get_eth_addr(), 
-                max_gas_price: 2 * akira.get_latest_gas_price(), conversion_rate: (1,1),
+                max_gas_price: 2 * 1000, conversion_rate: (1,1),
         }
     }
 

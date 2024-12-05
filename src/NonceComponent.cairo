@@ -14,13 +14,14 @@ struct IncreaseNonce {
     new_nonce: u32,
     gas_fee: GasFee,
     salt: felt252,
+    sign_scheme:felt252
 }
 
 
 #[derive(Copy, Drop, Serde)]
 struct SignedIncreaseNonce {
     increase_nonce: IncreaseNonce,
-    sign: (felt252, felt252),
+    sign: Span<felt252>,
 }
 
 #[starknet::interface]
@@ -55,7 +56,7 @@ mod nonce_component {
 
     #[storage]
     struct Storage {
-        nonces: LegacyMap::<ContractAddress, u32>, // user address to his trading nonce
+        nonces: starknet::storage::Map::<ContractAddress, u32>, // user address to his trading nonce
     }
 
     #[embeddable_as(Nonceable)]
@@ -86,15 +87,18 @@ mod nonce_component {
         fn apply_increase_nonce(ref self: ComponentState<TContractState>, signed_nonce_increase: super::SignedIncreaseNonce, gas_price:u256, cur_gas_per_action:u32) {
             let nonce_increase = signed_nonce_increase.increase_nonce;
             let key = nonce_increase.get_message_hash(nonce_increase.maker);
-            let (r,s) = signed_nonce_increase.sign;
-            assert!(self.get_contract().check_sign(nonce_increase.maker, key, r, s), "Failed maker signature check (key, r, s) = ({}, {}, {})", key, r, s);
+            assert!(self.get_contract().check_sign(nonce_increase.maker, key, signed_nonce_increase.sign, nonce_increase.sign_scheme), "Failed maker signature check (key, r, s) = ({})", key);
             assert!(nonce_increase.new_nonce > self.nonces.read(nonce_increase.maker), "Wrong nonce (Failed new_nonce ({}) > prev_nonce ({}))", nonce_increase.new_nonce, self.nonces.read(nonce_increase.maker));
             
             let mut balancer = self.get_balancer_mut();
-            balancer.validate_and_apply_gas_fee_internal(nonce_increase.maker, nonce_increase.gas_fee, gas_price, 1, cur_gas_per_action);
+            balancer.validate_and_apply_gas_fee_internal(nonce_increase.maker, nonce_increase.gas_fee, gas_price, 1, cur_gas_per_action, balancer.get_wrapped_native_token());
             self.nonces.write(nonce_increase.maker, nonce_increase.new_nonce);
 
             self.emit(NonceIncrease{ maker: nonce_increase.maker, new_nonce:nonce_increase.new_nonce});
+        }
+        fn update_nonce(ref self: ComponentState<TContractState>, maker:ContractAddress, new_nonce:u32 ) {
+            assert!(new_nonce > self.nonces.read(maker), "Wrong nonce (Failed new_nonce ({}) > prev_nonce ({}))", new_nonce, self.nonces.read(maker));
+            self.emit(NonceIncrease{ maker: maker, new_nonce:new_nonce});
         }
     }
 

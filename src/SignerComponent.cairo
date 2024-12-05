@@ -8,18 +8,29 @@ trait ISignerLogic<TContractState> {
     fn bind_to_signer(ref self: TContractState, signer: ContractAddress);
 
     // Validates that trader's  signer is correct signer of the message
-    fn check_sign(self: @TContractState, trader: ContractAddress, message: felt252, sig_r: felt252, sig_s: felt252) -> bool;
+    fn check_sign(self: @TContractState, trader: ContractAddress, message: felt252, signature: Span<felt252>, sign_scheme:felt252) -> bool;
     //  returns zero address in case of no binding
     fn get_signer(self: @TContractState, trader: ContractAddress) -> ContractAddress;
     //  returns zero address in case of no binding
     fn get_signers(self: @TContractState, traders: Span<ContractAddress>) -> Array<ContractAddress>;
+    // get address of verifier for sign_scheme
+    fn get_verifier_address(self: @TContractState, sign_scheme:felt252) -> ContractAddress;
     
     // TODO: later support rebinding 
 }
 
+#[starknet::interface]
+trait SignatureVerifier<TContractState> {
+    fn verify(self: @TContractState, signer: ContractAddress, message: felt252,  signature: Span<felt252>)->bool;
+    fn alias(self: @TContractState)->felt252;
+}
+
+
+
 #[starknet::component]
 mod signer_logic_component {
-    use core::option::OptionTrait;
+    use super::SignatureVerifierDispatcherTrait;
+use core::option::OptionTrait;
     use core::traits::TryInto;
     use starknet::{ContractAddress, get_caller_address};
     use ecdsa::check_ecdsa_signature;
@@ -30,7 +41,8 @@ mod signer_logic_component {
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
-        NewBinding: NewBinding
+        NewBinding: NewBinding,
+        NewSignScheme: NewSignScheme
     }
 
     #[derive(Drop, starknet::Event)]
@@ -40,10 +52,17 @@ mod signer_logic_component {
         #[key]
         signer: ContractAddress,
     }
+    #[derive(Drop, starknet::Event)]
+    struct NewSignScheme {
+        verifier_address: ContractAddress,
+        sign_scheme: felt252,
+    }
+
 
     #[storage]
     struct Storage {
-        trader_to_signer: LegacyMap::<ContractAddress, ContractAddress>,
+        trader_to_signer: starknet::storage::Map::<ContractAddress, ContractAddress>,
+        signer_scheme_to_verifier: starknet::storage::Map::<felt252, ContractAddress>,
     }
 
     #[embeddable_as(Signable)]
@@ -78,11 +97,32 @@ mod signer_logic_component {
             };
             return res;
         }
+        fn get_verifier_address(self: @ComponentState<TContractState>, sign_scheme:felt252) -> ContractAddress {
+            self.signer_scheme_to_verifier.read(sign_scheme)}
 
-        fn check_sign(self: @ComponentState<TContractState>, trader: ContractAddress, message: felt252, sig_r: felt252, sig_s: felt252) -> bool {
+        fn check_sign(self: @ComponentState<TContractState>, trader: ContractAddress, message: felt252, signature: Span<felt252>, 
+            sign_scheme:felt252) -> bool {
             let signer: ContractAddress = self.trader_to_signer.read(trader);
-            assert!(signer != 0.try_into().unwrap(), "UNDEFINED_SIGNER: no signer for this trader {}", trader);
-            return check_ecdsa_signature(message, signer.into(), sig_r, sig_s);
+            if (sign_scheme == 'ecdsa curve') {
+                assert(signature.len() == 2,'WRONG SIGN SIZE SIMPLE');
+                let (sig_r, sig_s) = (signature.at(0).deref(), signature.at(1).deref());
+                assert!(signer != 0.try_into().unwrap(), "UNDEFINED_SIGNER: no signer for this trader {}", trader);
+                return check_ecdsa_signature(message, signer.into(), sig_r, sig_s);
+            }
+            let verifier_address = self.signer_scheme_to_verifier.read(sign_scheme);
+            assert(verifier_address != 0.try_into().unwrap(),'UNKNOWN SIGN SCHEME');
+            let dispatcher = super::SignatureVerifierDispatcher { contract_address: verifier_address };
+            return dispatcher.verify(signer, message, signature);
+        }
+    }
+    #[generate_trait]
+    impl InternalSignableImpl<TContractState, +HasComponent<TContractState>> of InternalSignable<TContractState> {
+        fn add_signer_scheme(ref self: ComponentState<TContractState>, verifier_address:ContractAddress) {
+            let dispatcher = super::SignatureVerifierDispatcher { contract_address: verifier_address };
+            let sign_scheme = dispatcher.alias();
+            assert(self.signer_scheme_to_verifier.read(sign_scheme) == 0.try_into().unwrap(), 'ALREADY SPECIALIZED');
+            self.signer_scheme_to_verifier.write(sign_scheme, verifier_address);
+            self.emit(NewSignScheme{verifier_address, sign_scheme})
         }
     }
 }

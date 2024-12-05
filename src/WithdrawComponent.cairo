@@ -12,13 +12,14 @@ struct Withdraw {
     amount: u256, // amount of token, at the end user will receive amount of token diff from gas fee or amount - gas_fee, so user can always withdraw all his balances 
     salt: felt252, // random salt
     gas_fee: GasFee, // for some paths, this activity to be executed requires gasfee
-    receiver: ContractAddress // receiver of withdrawal tokens
+    receiver: ContractAddress, // receiver of withdrawal tokens
+    sign_scheme:felt252 // sign scheme
 }
 
 #[derive(Copy, Drop, Serde, PartialEq)]
 struct SignedWithdraw {
     withdraw: Withdraw,
-    sign: (felt252, felt252)
+    sign: Span<felt252>
 }
 
 #[starknet::interface]
@@ -186,8 +187,8 @@ mod withdraw_component {
             assert!(!self.completed_reqs.read(hash), "ALREADY_COMPLETED: withdraw (hash = {})", hash);
             let is_onchain_withdrawal: bool = w_req == signed_withdraw.withdraw;
             if !is_onchain_withdrawal { // need to check sign cause offchain withdrawal
-                let (r, s) = signed_withdraw.sign;
-                assert!(self.get_contract().check_sign(signed_withdraw.withdraw.maker, hash, r, s), "WRONG_SIGN: (hash, r, s) = ({}, {}, {})", hash, r, s);
+                let w = signed_withdraw.withdraw;
+                assert!(self.get_contract().check_sign(w.maker, hash, signed_withdraw.sign, w.sign_scheme), "WRONG_SIGN: (hash) = ({})", hash);
                 self.completed_reqs.write(w_req.get_message_hash(w_req.maker), true) // invalidate pending one to avoid bad user experience
             }
             let w_req = signed_withdraw.withdraw;
@@ -195,7 +196,7 @@ mod withdraw_component {
             let mut contract = self.get_balancer_mut();
 
              // payment to exchange for gas
-            let gas_fee_amount = contract.validate_and_apply_gas_fee_internal(w_req.maker, w_req.gas_fee, gas_price, 1, cur_gas_per_action);
+            let gas_fee_amount = contract.validate_and_apply_gas_fee_internal(w_req.maker, w_req.gas_fee, gas_price, 1, cur_gas_per_action, contract.get_wrapped_native_token());
             let tfer_amount = if w_req.token == w_req.gas_fee.fee_token {w_req.amount - gas_fee_amount } else { w_req.amount};
             self._transfer(w_req, hash, tfer_amount, gas_price, is_onchain_withdrawal);
         }

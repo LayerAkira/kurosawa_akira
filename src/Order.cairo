@@ -82,7 +82,8 @@ struct Order {
     constraints: Constraints,
     salt: felt252, // random salt for security
     flags: OrderFlags, // various order flags of order
-    source: felt252 // source of liquidity
+    source: felt252, // source of liquidity
+    sign_scheme:felt252 // sign scheme used to sign order
 }
 
 #[derive(Copy, Drop, Serde, PartialEq)]

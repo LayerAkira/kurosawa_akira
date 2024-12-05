@@ -32,7 +32,7 @@ mod ecosystem_trade_component {
 
     #[storage]
     struct Storage {
-        orders_trade_info: LegacyMap::<felt252, OrderTradeInfo>
+        orders_trade_info: starknet::storage::Map::<felt252, OrderTradeInfo>
     }
 
 
@@ -221,22 +221,22 @@ mod ecosystem_trade_component {
 
 
         fn do_internal_maker_checks(self: @ComponentState<TContractState>, signed_order:SignedOrder, fee_recipient:ContractAddress) -> (Order,felt252, OrderTradeInfo) {
-            let (contract, order, (r, s)) = (self.get_contract(), signed_order.order, (*signed_order.sign.at(0), *signed_order.sign.at(1)));
+            let (contract, order, sign) = (self.get_contract(), signed_order.order, signed_order.sign);
             let maker_hash =  order.get_message_hash(order.maker);
             let maker_fill_info = self.orders_trade_info.read(maker_hash);
             do_maker_checks(order, maker_fill_info, contract.get_nonce(order.maker), fee_recipient);            
-            assert!(contract.check_sign(signed_order.order.maker, maker_hash, r, s), "WRONG_SIGN_MAKER: (maker_hash, r, s) : ({}, {} ,{})", maker_hash, r, s);
+            assert!(contract.check_sign(order.maker, maker_hash, sign, order.sign_scheme), "WRONG_SIGN_MAKER: (maker_hash, sign) : ({})", maker_hash);
             return (order, maker_hash, maker_fill_info);
         }
 
 
         fn part_safe_validate_taker(self: @ComponentState<TContractState>, taker_signed_order:SignedOrder, swaps:u16, fee_recipient:ContractAddress) -> (Order,felt252,OrderTradeInfo) {
-            let (contract, taker_order,(r, s)) = (self.get_contract(), taker_signed_order.order,  (*taker_signed_order.sign.at(0), *taker_signed_order.sign.at(1)));
+            let (contract, taker_order, sign) = (self.get_contract(), taker_signed_order.order,  taker_signed_order.sign);
             let taker_order_hash = taker_order.get_message_hash(taker_order.maker);
             let taker_fill_info = self.orders_trade_info.read(taker_order_hash);
             
             assert(!taker_order.flags.external_funds, 'ECOSYSTEM_TAKER_NOT_EXTERNAL');
-            assert!(contract.check_sign(taker_order.maker, taker_order_hash, r, s), "WRONG_SIGN_TAKER: (taker_order_hash, r, s) = ({}, {}, {})", taker_order_hash, r, s);
+            assert!(contract.check_sign(taker_order.maker, taker_order_hash, sign, taker_order.sign_scheme), "WRONG_SIGN_TAKER: (taker_order_hash) = ({})", taker_order_hash,);
             super::generic_taker_check(taker_order, taker_fill_info, contract.get_nonce(taker_order.maker), swaps, taker_order_hash, fee_recipient);
             return (taker_order, taker_order_hash, taker_fill_info);
         }
@@ -272,7 +272,7 @@ mod ecosystem_trade_component {
         fn apply_taker_fee_and_gas(ref self: ComponentState<TContractState>, taker_order:Order, base_amount:u256, quote_amount:u256, gas_price:u256, trades:u16, cur_gas_per_action:u32) -> (ContractAddress, u256, u256, u256) {
             let mut balancer = self.get_balancer_mut();
             let (fee_token, fee_amount, exchange_fee) = self.apply_fixed_fees(taker_order,base_amount, quote_amount, false);
-            let spent_gas = balancer.validate_and_apply_gas_fee_internal(taker_order.maker, taker_order.fee.gas_fee, gas_price, trades, cur_gas_per_action);
+            let spent_gas = balancer.validate_and_apply_gas_fee_internal(taker_order.maker, taker_order.fee.gas_fee, gas_price, trades, cur_gas_per_action, balancer.get_wrapped_native_token());
             return (fee_token, fee_amount, exchange_fee, spent_gas);
         }
 

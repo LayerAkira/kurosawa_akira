@@ -38,7 +38,7 @@ mod tests_deposit_and_withdrawal_and_nonce {
     fn get_withdraw(trader:ContractAddress, amount:u256, token:ContractAddress, akira:ILayerAkiraDispatcher, salt:felt252)-> Withdraw {
         let gas_fee = prepare_double_gas_fee_native(akira, 100);
         let amount = if token == akira.get_wrapped_native_token() {amount} else {amount};
-        return Withdraw {maker:trader, token, amount, salt, gas_fee, receiver:trader};
+        return Withdraw {maker:trader, token, amount, salt, gas_fee, receiver:trader, sign_scheme: 'ecdsa curve'};
         
     }
 
@@ -125,7 +125,7 @@ mod tests_deposit_and_withdrawal_and_nonce {
         let b = erc.balanceOf(trader);
 
         start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
-        akira.apply_withdraw(SignedWithdraw{withdraw, sign:(0.into(), 0.into())}, 100, withdraw.gas_fee.gas_per_action);
+        akira.apply_withdraw(SignedWithdraw{withdraw, sign:array![0, 0].span()}, 100, withdraw.gas_fee.gas_per_action);
         stop_cheat_caller_address(akira.contract_address);
         assert(amount_deposit - withdraw.gas_fee.gas_per_action.into() * 100 == erc.balanceOf(trader) - b ,'WRONG_SEND');
         assert(akira.balanceOf(trader, eth_addr) == 0,'WRONG_BURN');
@@ -145,7 +145,8 @@ mod tests_deposit_and_withdrawal_and_nonce {
         start_cheat_caller_address(akira.contract_address, trader); akira.bind_to_signer(pub_addr.try_into().unwrap()); stop_cheat_caller_address(akira.contract_address);
        
         start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
-        akira.apply_withdraw(SignedWithdraw{withdraw:w, sign: sign(akira.get_withdraw_hash(w), pub_addr, priv)}, 100,w.gas_fee.gas_per_action);
+        let (r,s) = sign(akira.get_withdraw_hash(w), pub_addr, priv);
+        akira.apply_withdraw(SignedWithdraw{withdraw:w, sign: array![r,s].span()}, 100,w.gas_fee.gas_per_action);
         stop_cheat_caller_address(akira.contract_address);
     }    
 
@@ -164,9 +165,9 @@ mod tests_deposit_and_withdrawal_and_nonce {
         start_cheat_caller_address(akira.contract_address, trader); akira.bind_to_signer(pub_addr.try_into().unwrap()); stop_cheat_caller_address(akira.contract_address);
         start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
         
-        let sign = sign(akira.get_withdraw_hash(w), pub_addr, priv);
-        akira.apply_withdraw(SignedWithdraw{withdraw:w, sign}, 100, w.gas_fee.gas_per_action);
-        akira.apply_withdraw(SignedWithdraw{withdraw:w, sign}, 100, w.gas_fee.gas_per_action);
+        let (r,s) = sign(akira.get_withdraw_hash(w), pub_addr, priv);
+        akira.apply_withdraw(SignedWithdraw{withdraw:w, sign:array![r,s].span()}, 100, w.gas_fee.gas_per_action);
+        akira.apply_withdraw(SignedWithdraw{withdraw:w, sign:array![r,s].span()}, 100, w.gas_fee.gas_per_action);
         
         stop_cheat_caller_address(akira.contract_address);
     } 
@@ -177,13 +178,14 @@ mod tests_deposit_and_withdrawal_and_nonce {
         let (trader, eth_addr, amount_deposit) = (get_trader_address_1(), get_eth_addr(),1_000_000);
         let (pub_addr, priv) = get_trader_signer_and_pk_1();
         tfer_eth_funds_to(trader, amount_deposit); deposit(trader, amount_deposit, eth_addr, akira); 
-        let nonce = IncreaseNonce{maker:trader ,new_nonce:1, gas_fee:prepare_double_gas_fee_native(akira,100), salt:0};
+        let nonce = IncreaseNonce{maker:trader ,new_nonce:1, gas_fee:prepare_double_gas_fee_native(akira,100), salt:0,
+                    sign_scheme: 'ecdsa curve'};
 
         start_cheat_caller_address(akira.contract_address, trader); akira.bind_to_signer(pub_addr.try_into().unwrap()); stop_cheat_caller_address(akira.contract_address);
 
         start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
-        let sign = sign(akira.get_increase_nonce_hash(nonce), pub_addr, priv);
-        akira.apply_increase_nonce(SignedIncreaseNonce{increase_nonce:nonce, sign}, 100, nonce.gas_fee.gas_per_action);        
+        let (r,s) = sign(akira.get_increase_nonce_hash(nonce), pub_addr, priv);
+        akira.apply_increase_nonce(SignedIncreaseNonce{increase_nonce:nonce, sign:array![r,s].span()}, 100, nonce.gas_fee.gas_per_action);        
         stop_cheat_caller_address(akira.contract_address);
     } 
 
@@ -274,7 +276,8 @@ mod test_common_trade {
                 gas_fee: prepare_double_gas_fee_native(akira, get_swap_gas_cost())
             },
             flags,
-            source: 'layerakira'
+            source: 'layerakira',
+            sign_scheme: 'ecdsa curve'
         };
 
         let hash = akira.get_order_hash(order);
