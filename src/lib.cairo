@@ -15,3 +15,5 @@ mod testing;
 mod test_utils;
 
 mod LayerAkiraCore;
+mod AccessorComponent;
+mod LayerAkiraExternalGrantor;
