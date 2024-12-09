@@ -134,13 +134,13 @@ mod router_component {
 
     #[storage]
     struct Storage {
-        pending_unregister:LegacyMap::<felt252, SlowModeDelay>,
+        pending_unregister:starknet::storage::Map::<felt252, SlowModeDelay>,
         delay: SlowModeDelay, // set by exchange, can be updated but no more then original
         min_to_route:u256,
-        token_to_user:LegacyMap::<(ContractAddress,ContractAddress),u256>,
-        registered:LegacyMap::<ContractAddress,bool>,
+        token_to_user:starknet::storage::Map::<(ContractAddress,ContractAddress),u256>,
+        registered:starknet::storage::Map::<ContractAddress,bool>,
         native_base_token:ContractAddress,
-        signer_to_router:LegacyMap<ContractAddress,ContractAddress>,
+        signer_to_router:starknet::storage::Map<ContractAddress,ContractAddress>,
         punishment_bips:u16
     }
 
@@ -264,6 +264,7 @@ mod router_component {
             self.punishment_bips.write(punishment_bips);
             self.delay.write(delay);            
         }
+        // burn mint only by executor, alsways stake a tad amount
         fn mint(ref self: ComponentState<TContractState>,router:ContractAddress,token:ContractAddress, amount:u256) {
             // mint on router deposit and when we give reward to router after trade
             let new_balance = self.token_to_user.read((token, router)) + amount;
@@ -277,6 +278,16 @@ mod router_component {
             assert!(balance >= amount, "FEW_TO_BURN_ROUTER: failed balance ({}) >= amount ({})", balance, amount);
             self.token_to_user.write((token, router), balance - amount);
             self.emit(RouterBurn{router, token, amount});
+        }
+        fn burn_and_send(ref self: ComponentState<TContractState>,router:ContractAddress,token:ContractAddress, amount:u256,  
+                            to:ContractAddress) -> u256 {
+            self.burn(router, token, amount);
+            let erc20 = IERC20Dispatcher{contract_address: token};
+            let balance_before = erc20.balanceOf(get_contract_address());
+            erc20.transfer(to, amount);
+            let transferred = balance_before - erc20.balanceOf(get_contract_address());
+            assert!(transferred <= amount, "WRONG_TRANSFER_AMOUNT expected {} actual {}",  amount, transferred);
+            return transferred;
         }
     }
 
