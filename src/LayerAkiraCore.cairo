@@ -1,3 +1,30 @@
+use starknet::{ContractAddress};
+use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
+use kurosawa_akira::NonceComponent::{SignedIncreaseNonce, IncreaseNonce};
+    
+    
+#[starknet::interface]
+trait ILayerAkiraCore<TContractState> {
+
+    
+    fn is_approved_executor(self: @TContractState, user: ContractAddress) -> bool;
+    fn get_withdraw_hash(self: @TContractState, withdraw: Withdraw) -> felt252;
+    fn get_increase_nonce_hash(self: @TContractState, increase_nonce: IncreaseNonce) -> felt252;
+    fn transfer(ref self: TContractState, from: ContractAddress, to: ContractAddress, amount: u256, token: ContractAddress);
+    fn safe_mint(ref self: TContractState, to: ContractAddress, amount: u256, token: ContractAddress); // invoke after we erc.transfer(), positive delta
+    fn safe_burn(ref self: TContractState, to: ContractAddress, amount: u256, token: ContractAddress) -> u256; // invoke
+
+
+    fn apply_increase_nonce(ref self: TContractState, signed_nonce: SignedIncreaseNonce, gas_price: u256, cur_gas_per_action: u32);
+    fn apply_increase_nonces(ref self: TContractState, signed_nonces: Array<SignedIncreaseNonce>, gas_price: u256, cur_gas_per_action: u32);
+    fn apply_withdraw(ref self: TContractState, signed_withdraw: SignedWithdraw, gas_price: u256, cur_gas_per_action: u32);
+    fn apply_withdraws(ref self: TContractState, signed_withdraws: Array<SignedWithdraw>, gas_price: u256, cur_gas_per_action: u32);
+    
+    fn check_sign(self: @TContractState, trader: ContractAddress, message: felt252, signature: Span<felt252>, sign_scheme:felt252) -> bool; 
+}
+
+
+
 
 #[starknet::contract]
 mod LayerAkiraCore {
@@ -6,9 +33,12 @@ mod LayerAkiraCore {
     use kurosawa_akira::DepositComponent::deposit_component as  deposit_component;
     use kurosawa_akira::WithdrawComponent::withdraw_component as withdraw_component;
     use kurosawa_akira::NonceComponent::nonce_component as nonce_component;
+    use kurosawa_akira::AccessorComponent::accessor_logic_component as  accessor_logic_component;
+    
     
     use signer_logic_component::InternalSignableImpl;
     use exchange_balance_logic_component::InternalExchangeBalanceble;
+    use accessor_logic_component::InternalAccesorable;
     use withdraw_component::InternalWithdrawable;
     use nonce_component::InternalNonceable;
 
@@ -25,6 +55,7 @@ mod LayerAkiraCore {
     component!(path: deposit_component,storage: deposit_s, event:DepositEvent);
     component!(path: withdraw_component,storage: withdraw_s, event:WithdrawEvent);    
     component!(path: nonce_component, storage: nonce_s, event:NonceEvent);
+    component!(path: accessor_logic_component, storage: accessor_s, event:AccessorEvent);
     
     
 
@@ -38,6 +69,8 @@ mod LayerAkiraCore {
     impl WithdrawableImpl = withdraw_component::Withdrawable<ContractState>;
     #[abi(embed_v0)]
     impl NonceableImpl = nonce_component::Nonceable<ContractState>;
+    #[abi(embed_v0)]
+    impl AccsesorableImpl = accessor_logic_component::Accesorable<ContractState>;
     
     
 
@@ -53,13 +86,11 @@ mod LayerAkiraCore {
         withdraw_s: withdraw_component::Storage,
         #[substorage(v0)]
         nonce_s: nonce_component::Storage,
+        #[substorage(v0)]
+        accessor_s: accessor_logic_component::Storage,
+        
         
         max_slow_mode_delay:SlowModeDelay, // upper bound for all delayed actions
-        owner: ContractAddress, // owner of contact that have permissions to grant and revoke role for invokers and update slow mode 
-        executor: ContractAddress,
-        user_to_executor_granted: starknet::storage::Map::<ContractAddress, ContractAddress>, 
-        user_to_executor_epoch: starknet::storage::Map::<ContractAddress, u16>, // prevent re grant logic for old executors
-        executor_epoch:u16   
     }
 
 
@@ -76,25 +107,11 @@ mod LayerAkiraCore {
 
         self.balancer_s.initializer(fee_recipient, wrapped_native_token);
         self.withdraw_s.initializer(max_slow_mode_delay, withdraw_action_cost);
-        self.owner.write(owner);
-        self.executor.write(0.try_into().unwrap());
-        self.executor_epoch.write(0);
+        self.accessor_s.owner.write(owner);
+        self.accessor_s.executor.write(0.try_into().unwrap());
+        self.accessor_s.executor_epoch.write(0);
     }
 
-
-    #[external(v0)]
-    fn get_approved_executor(self: @ContractState, user:ContractAddress) -> (ContractAddress, u16) {
-        (self.user_to_executor_granted.read(user), self.user_to_executor_epoch.read(user))
-    }
-
-    #[external(v0)]
-    fn get_owner(self: @ContractState) -> ContractAddress { self.owner.read()}
-    
-    #[external(v0)]
-    fn get_executor(self: @ContractState) -> ContractAddress { self.executor.read()}
-    
-    #[external(v0)]
-    fn get_executor_epoch(self: @ContractState) -> u16 { self.executor_epoch.read()}
     
     #[external(v0)]
     fn get_withdraw_delay_params(self: @ContractState)->SlowModeDelay { self.withdraw_s.delay.read()}
@@ -109,49 +126,33 @@ mod LayerAkiraCore {
     fn get_increase_nonce_hash(self: @ContractState, increase_nonce:IncreaseNonce) -> felt252 { increase_nonce.get_message_hash(increase_nonce.maker)}
 
 
-
-    #[external(v0)]
-    fn grant_access_to_executor(ref self: ContractState) { 
-        // invoked by client to whitelist current executor to perform actions on his behalf
-        let (user, executor) = (get_caller_address(), self.executor.read());
-        assert!(self.user_to_executor_granted.read(user) != executor, "Executor access already granted");
-        self.user_to_executor_granted.write(user, executor);
-        self.user_to_executor_epoch.write(user, self.executor_epoch.read());
-        self.emit(ApprovalGranted{executor, user})
-    }
-
     #[external(v0)]
     fn add_signer_scheme(ref self: ContractState, verifier_address:ContractAddress) {
         // Add new signer scheme that user can use to authorize actions on behalf of his account
-        only_owner(@self);
+        self.accessor_s.only_owner();
         self.signer_s.add_signer_scheme(verifier_address);
     }
 
-    #[external(v0)]
-    fn set_owner(ref self: ContractState, new_owner:ContractAddress) {
-        only_owner(@self);
-        self.owner.write(new_owner);
-        self.emit(OwnerChanged{new_owner});
-    }
-
-    #[external(v0)]
-    fn set_executor(ref self: ContractState, new_executor:ContractAddress) {
-        only_owner(@self);
-        self.executor.write(new_executor);
-        self.executor_epoch.write(self.executor_epoch.read() + 1);
-        self.emit(ExecutorChanged{new_executor,new_epoch:self.executor_epoch.read()});
-    }
 
     #[external(v0)]
     fn transfer(ref self: ContractState, from: ContractAddress, to: ContractAddress, amount: u256, token: ContractAddress) {
-        only_executor(@self); // is redundant?
-        only_authorized_by_user(@self, from);        
+        self.accessor_s.only_executor(); self.accessor_s.only_authorized_by_user(from);        
         self.balancer_s.internal_transfer(from, to, amount, token);
     }
-            
+    #[external(v0)]
+    fn safe_mint(ref self: ContractState, to: ContractAddress, amount: u256, token: ContractAddress) {
+         self.deposit_s.nonatomic_deposit(to, token, amount);
+    }
+
+    #[external(v0)]
+    fn safe_burn(ref self: ContractState, to: ContractAddress, amount: u256, token: ContractAddress) -> u256 {
+        self.accessor_s.only_executor(); self.accessor_s.only_authorized_by_user(to); 
+        return self.withdraw_s.safe_withdraw(to, amount, token);
+    }
+ 
     #[external(v0)]
     fn update_withdraw_component_params(ref self: ContractState, new_delay:SlowModeDelay) {
-        only_owner(@self);
+        self.accessor_s.only_owner();
         let max = self.max_slow_mode_delay.read();
         assert!(new_delay.block <= max.block && new_delay.ts <= max.ts, "Failed withdraw params update: new_delay <= max_slow_mode_delay");
         self.withdraw_s.delay.write(new_delay);
@@ -160,7 +161,7 @@ mod LayerAkiraCore {
 
     #[external(v0)]
     fn update_fee_recipient(ref self: ContractState, new_fee_recipient: ContractAddress) {
-        only_owner(@self);
+        self.accessor_s.only_owner();
         assert!(new_fee_recipient != 0.try_into().unwrap(), "NEW_FEE_RECIPIENT_CANT_BE_ZERO");        
         self.balancer_s.fee_recipient.write(new_fee_recipient);
         self.emit(FeeRecipientUpdate{new_fee_recipient});
@@ -168,28 +169,26 @@ mod LayerAkiraCore {
 
     #[external(v0)]
     fn update_base_token(ref self: ContractState, new_base_token:ContractAddress) {
-        only_owner(@self);
+        self.accessor_s.only_owner();
         self.balancer_s.wrapped_native_token.write(new_base_token);
         self.emit(BaseTokenUpdate{new_base_token});
     }
 
-
-
     #[external(v0)]
     fn apply_increase_nonce(ref self: ContractState, signed_nonce: SignedIncreaseNonce, gas_price:u256, cur_gas_per_action:u32) {
-        only_executor(@self);
-        only_authorized_by_user(@self, signed_nonce.increase_nonce.maker);
+        self.accessor_s.only_executor();
+        self.accessor_s.only_authorized_by_user(signed_nonce.increase_nonce.maker);
         self.nonce_s.apply_increase_nonce(signed_nonce, gas_price, cur_gas_per_action);
     }
 
 
     #[external(v0)]
     fn apply_increase_nonces(ref self: ContractState, mut signed_nonces: Array<SignedIncreaseNonce>, gas_price:u256, cur_gas_per_action:u32) {
-        only_executor(@self);
+        self.accessor_s.only_executor();
         loop {
             match signed_nonces.pop_front(){
                 Option::Some(signed_nonce) => { 
-                    only_authorized_by_user(@self, signed_nonce.increase_nonce.maker);
+                    self.accessor_s.only_authorized_by_user(signed_nonce.increase_nonce.maker);
                     self.nonce_s.apply_increase_nonce(signed_nonce, gas_price, cur_gas_per_action);
                     },
                 Option::None(_) => {break;}
@@ -199,19 +198,19 @@ mod LayerAkiraCore {
 
     #[external(v0)]
     fn apply_withdraw(ref self: ContractState, signed_withdraw: SignedWithdraw, gas_price:u256, cur_gas_per_action:u32) {
-        only_owner(@self);
-        only_authorized_by_user(@self,signed_withdraw.withdraw.maker);
+        self.accessor_s.only_owner();
+        self.accessor_s.only_authorized_by_user(signed_withdraw.withdraw.maker);
         self.withdraw_s.apply_withdraw(signed_withdraw, gas_price, cur_gas_per_action);
         self.withdraw_s.gas_steps.write(cur_gas_per_action);
     }
 
     #[external(v0)]
     fn apply_withdraws(ref self: ContractState, mut signed_withdraws: Array<SignedWithdraw>, gas_price:u256, cur_gas_per_action:u32) {
-        only_owner(@self);
+        self.accessor_s.only_owner();
         loop {
             match signed_withdraws.pop_front(){
                 Option::Some(signed_withdraw) => {
-                    only_authorized_by_user(@self,signed_withdraw.withdraw.maker);
+                    self.accessor_s.only_authorized_by_user(signed_withdraw.withdraw.maker);
                     self.withdraw_s.apply_withdraw(signed_withdraw, gas_price, cur_gas_per_action)
                 },
                 Option::None(_) => {break;}
@@ -221,15 +220,6 @@ mod LayerAkiraCore {
     }
 
 
-    fn only_authorized_by_user(self: @ContractState, user:ContractAddress) {
-        let (current_executor, current_epoch) = (self.executor.read(), self.executor_epoch.read());
-        let (approved, user_epoch) = (self.user_to_executor_granted.read(user), self.user_to_executor_epoch.read(user));      
-        assert(approved == current_executor && user_epoch == current_epoch, 'Access denied: not granted');
-    }
-    fn only_owner(self: @ContractState) { assert!(self.owner.read() == get_caller_address(), "Access denied: set_executor is only for the owner's use");}
-    fn only_executor(self: @ContractState) { assert(self.executor.read() == get_caller_address(), 'Access denied: only executor');}
-
-
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
@@ -237,13 +227,11 @@ mod LayerAkiraCore {
         DepositEvent: deposit_component::Event,
         SignerEvent: signer_logic_component::Event,
         WithdrawEvent: withdraw_component::Event,
+        AccessorEvent: accessor_logic_component::Event,
         NonceEvent: nonce_component::Event,
         BaseTokenUpdate: BaseTokenUpdate,
         FeeRecipientUpdate: FeeRecipientUpdate,
         WithdrawComponentUpdate: WithdrawComponentUpdate,
-        OwnerChanged: OwnerChanged,
-        ExecutorChanged: ExecutorChanged,
-        ApprovalGranted:ApprovalGranted
     }
 
     #[derive(Drop, starknet::Event)]
@@ -253,12 +241,6 @@ mod LayerAkiraCore {
     
     #[derive(Drop, starknet::Event)]
     struct WithdrawComponentUpdate {new_delay:SlowModeDelay}
-    
-    #[derive(Drop, starknet::Event)]
-    struct OwnerChanged {new_owner:ContractAddress}
-    #[derive(Drop, starknet::Event)]
-    struct ExecutorChanged {new_executor:ContractAddress, new_epoch:u16}
-    #[derive(Drop, starknet::Event)]
-    struct ApprovalGranted {user:ContractAddress, #[key] executor:ContractAddress}
 
 }
+

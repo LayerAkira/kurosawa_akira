@@ -228,13 +228,17 @@ mod withdraw_component {
 
             self.emit(Withdrawal{maker:w_req.maker, token:w_req.token, amount: w_req.amount, salt:w_req.salt, receiver:w_req.receiver, gas_price,
                         gas_fee:w_req.gas_fee, direct:direct});
-            self.completed_reqs.write(w_hash, true);
-            
-            
+            self.completed_reqs.write(w_hash, true);    
         }
 
-        
-
+        fn safe_withdraw(ref self: ComponentState<TContractState>, to:ContractAddress, amount:u256, token:ContractAddress) -> u256 {
+            let (erc20, mut contract, exchange) = (IERC20Dispatcher { contract_address: token },self.get_balancer_mut(), get_contract_address());
+            let balance_before = erc20.balanceOf(exchange);
+            contract.burn(to, amount, token); erc20.transfer(to, amount);
+            let transferred = balance_before - erc20.balanceOf(exchange);
+            assert!(transferred <= amount, "WRONG_TRANSFER_AMOUNT expected {} actual {}",  amount, transferred);
+            return transferred;
+        }        
     }   
 
 
