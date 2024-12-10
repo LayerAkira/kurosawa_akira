@@ -10,17 +10,20 @@ trait ILayerAkiraCore<TContractState> {
     fn is_approved_executor(self: @TContractState, user: ContractAddress) -> bool;
     fn get_withdraw_hash(self: @TContractState, withdraw: Withdraw) -> felt252;
     fn get_increase_nonce_hash(self: @TContractState, increase_nonce: IncreaseNonce) -> felt252;
+    fn get_nonce(self: @TContractState, user:ContractAddress) -> u32;
     fn transfer(ref self: TContractState, from: ContractAddress, to: ContractAddress, amount: u256, token: ContractAddress);
     fn safe_mint(ref self: TContractState, to: ContractAddress, amount: u256, token: ContractAddress); // invoke after we erc.transfer(), positive delta
     fn safe_burn(ref self: TContractState, to: ContractAddress, amount: u256, token: ContractAddress) -> u256; // invoke
-
+    fn rebalance_after_trade(ref self: TContractState, maker:ContractAddress, taker:ContractAddress, ticker:(ContractAddress, ContractAddress),
+            amount_base:u256, amount_quote:u256, is_maker_seller:bool);
 
     fn apply_increase_nonce(ref self: TContractState, signed_nonce: SignedIncreaseNonce, gas_price: u256, cur_gas_per_action: u32);
     fn apply_increase_nonces(ref self: TContractState, signed_nonces: Array<SignedIncreaseNonce>, gas_price: u256, cur_gas_per_action: u32);
     fn apply_withdraw(ref self: TContractState, signed_withdraw: SignedWithdraw, gas_price: u256, cur_gas_per_action: u32);
     fn apply_withdraws(ref self: TContractState, signed_withdraws: Array<SignedWithdraw>, gas_price: u256, cur_gas_per_action: u32);
     
-    fn check_sign(self: @TContractState, trader: ContractAddress, message: felt252, signature: Span<felt252>, sign_scheme:felt252) -> bool; 
+    fn check_sign(self: @TContractState, trader: ContractAddress, message: felt252, signature: Span<felt252>, sign_scheme:felt252) -> bool;
+    fn get_signer(self: @TContractState, trader: ContractAddress);
 }
 
 
@@ -125,7 +128,7 @@ mod LayerAkiraCore {
     
     #[external(v0)]
     fn get_increase_nonce_hash(self: @ContractState, increase_nonce:IncreaseNonce) -> felt252 { increase_nonce.get_message_hash(increase_nonce.maker)}
-
+    
 
     #[external(v0)]
     fn add_signer_scheme(ref self: ContractState, verifier_address:ContractAddress) {
@@ -140,6 +143,7 @@ mod LayerAkiraCore {
         self.accessor_s.only_executor(); self.accessor_s.only_authorized_by_user(from);        
         self.balancer_s.internal_transfer(from, to, amount, token);
     }
+    
     #[external(v0)]
     fn safe_mint(ref self: ContractState, to: ContractAddress, amount: u256, token: ContractAddress) {
          self.accessor_s.only_owner_or_executor();
@@ -150,6 +154,13 @@ mod LayerAkiraCore {
     fn safe_burn(ref self: ContractState, to: ContractAddress, amount: u256, token: ContractAddress) -> u256 {
         self.accessor_s.only_owner_or_executor(); self.accessor_s.only_authorized_by_user(to); 
         return self.withdraw_s.safe_withdraw(to, amount, token);
+    }
+
+    #[external(v0)]
+    fn rebalance_after_trade(ref self: ContractState, maker:ContractAddress, taker:ContractAddress, ticker:(ContractAddress, ContractAddress),
+            amount_base:u256, amount_quote:u256, is_maker_seller:bool) {
+        self.accessor_s.only_executor(); self.accessor_s.only_authorized_by_user(maker); self.accessor_s.only_authorized_by_user(taker);
+        self.balancer_s.rebalance_after_trade(maker,taker,ticker,amount_base,amount_quote, is_maker_seller);          
     }
  
     #[external(v0)]

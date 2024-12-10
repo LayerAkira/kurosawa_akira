@@ -1,0 +1,243 @@
+use starknet::{ContractAddress};
+use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
+use kurosawa_akira::NonceComponent::{SignedIncreaseNonce, IncreaseNonce};
+    
+    
+
+
+#[starknet::contract]
+mod LayerAkiraExecutor {
+    use kurosawa_akira::BaseTradeComponent::base_trade_component as  base_trade_component;
+    use starknet::{ContractAddress, get_caller_address, get_tx_info};
+
+    use base_trade_component::InternalBaseOrderTradable;
+    use kurosawa_akira::LayerAkiraCore::{ILayerAkiraCoreDispatcherTrait, ILayerAkiraCoreDispatcher};
+
+    use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
+    use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
+    use kurosawa_akira::NonceComponent::{SignedIncreaseNonce, IncreaseNonce};
+    use kurosawa_akira::signature::V0OffchainMessage::{OffchainMessageHashImpl};
+    use kurosawa_akira::signature::AkiraV0OffchainMessage::{OrderHashImpl,SNIP12MetadataImpl,IncreaseNonceHashImpl,WithdrawHashImpl};
+    use kurosawa_akira::Order::{SignedOrder, Order};
+    
+    
+    component!(path: base_trade_component,storage: base_trade_s, event:BaseTradeEvent);
+    
+
+    #[abi(embed_v0)]
+    impl BaseOrderTradableImpl = base_trade_component::BaseTradable<ContractState>;
+    
+    #[storage]
+    struct Storage {
+        #[substorage(v0)]
+        base_trade_s: base_trade_component::Storage,
+        owner:ContractAddress,
+        exchange_invokers: starknet::storage::Map::<ContractAddress, bool>,
+
+        hash_lock:felt252,
+        scheduled_taker_order:Order,
+        router_sign: (felt252,felt252)
+    }
+
+
+    #[constructor]
+    fn constructor(ref self: ContractState,
+                core_address:ContractAddress,
+                router_address:ContractAddress, 
+                fee_recipient:ContractAddress,
+                base_token:ContractAddress, 
+                owner:ContractAddress) {
+        self.base_trade_s.core_contract.write(core_address);
+        self.base_trade_s.router_contract.write(router_address);
+        self.base_trade_s.fee_recipient.write(fee_recipient);
+        self.base_trade_s.base_token.write(base_token);
+        self.owner.write(owner);
+        self.exchange_invokers.write(owner, true);
+    }
+
+    #[external(v0)]
+    fn update_exchange_invokers(ref self: ContractState, invoker:ContractAddress, enabled:bool) {
+        assert!(self.owner.read() == get_caller_address(), "Access denied: update_exchange_invokers is only for the owner's use");
+        self.exchange_invokers.write(invoker, enabled);
+        self.emit(UpdateExchangeInvoker{invoker, enabled});
+    }
+
+        #[external(v0)]
+    fn update_fee_recipient(ref self: ContractState, new_fee_recipient: ContractAddress) {
+        assert!(self.owner.read() == get_caller_address(), "Access denied: update_fee_recipient is only for the owner's use");
+        assert!(new_fee_recipient != 0.try_into().unwrap(), "NEW_FEE_RECIPIENT_CANT_BE_ZERO");
+        self.base_trade_s.fee_recipient.write(new_fee_recipient);
+        self.emit(FeeRecipientUpdate{new_fee_recipient});
+    }
+
+    #[external(v0)]
+    fn update_base_token(ref self: ContractState, new_base_token:ContractAddress) {
+        assert!(self.owner.read() == get_caller_address(), "Access denied: update_base_token is only for the owner's use");
+        self.base_trade_s.base_token.write(new_base_token);
+        self.emit(BaseTokenUpdate{new_base_token});
+    }
+
+    #[external(v0)]
+    fn get_order_hash(self: @ContractState, order:Order) -> felt252 { order.get_message_hash(order.maker)}
+
+
+
+    #[external(v0)]
+    fn apply_increase_nonce(ref self: ContractState, signed_nonce: SignedIncreaseNonce, gas_price:u256, cur_gas_per_action:u32) {
+        assert_whitelisted_invokers(@self);
+        ILayerAkiraCoreDispatcher {contract_address:self.base_trade_s.core_contract.read()}
+            .apply_increase_nonce(signed_nonce, gas_price, cur_gas_per_action);
+    }
+
+
+    #[external(v0)]
+    fn apply_increase_nonces(ref self: ContractState, mut signed_nonces: Array<SignedIncreaseNonce>, gas_price:u256, cur_gas_per_action:u32) {
+        assert_whitelisted_invokers(@self);
+        ILayerAkiraCoreDispatcher {contract_address:self.base_trade_s.core_contract.read()}
+            .apply_increase_nonces(signed_nonces,gas_price,cur_gas_per_action);
+    }
+
+    #[external(v0)]
+    fn apply_withdraw(ref self: ContractState, signed_withdraw: SignedWithdraw, gas_price:u256, cur_gas_per_action:u32) {
+        assert_whitelisted_invokers(@self);
+        ILayerAkiraCoreDispatcher {contract_address:self.base_trade_s.core_contract.read()}.
+            apply_withdraw(signed_withdraw, gas_price, cur_gas_per_action);
+    }
+
+    #[external(v0)]
+    fn apply_withdraws(ref self: ContractState, mut signed_withdraws: Array<SignedWithdraw>, gas_price:u256, cur_gas_per_action:u32) {
+        assert_whitelisted_invokers(@self);
+        ILayerAkiraCoreDispatcher {contract_address:self.base_trade_s.core_contract.read()}.
+            apply_withdraws(signed_withdraws, gas_price, cur_gas_per_action);
+    }
+
+    #[external(v0)]
+    fn apply_ecosystem_trades(ref self: ContractState, taker_orders:Array<(SignedOrder,bool)>, maker_orders: Array<SignedOrder>, iters:Array<(u16, bool)>, oracle_settled_qty:Array<u256>, gas_price:u256, cur_gas_per_action:u32) {
+        assert_whitelisted_invokers(@self);
+        self.base_trade_s.apply_ecosystem_trades(taker_orders, maker_orders, iters, oracle_settled_qty, gas_price, cur_gas_per_action);
+    }
+
+    #[external(v0)]
+    fn apply_single_execution_step(ref self: ContractState, taker_order:SignedOrder, maker_orders: Array<(SignedOrder,u256)>, total_amount_matched:u256, gas_price:u256, cur_gas_per_action:u32,as_taker_completed:bool, ) -> bool {
+        assert_whitelisted_invokers(@self);
+        return self.base_trade_s.apply_single_taker(taker_order, maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed, false);
+    }
+
+    #[external(v0)]
+    fn apply_execution_steps(ref self: ContractState,  mut bulk:Array<(SignedOrder, Array<(SignedOrder,u256)>, u256, bool)>,  gas_price:u256,  cur_gas_per_action:u32) -> Array<bool> {
+        assert_whitelisted_invokers(@self);
+        let mut res: Array<bool> = ArrayTrait::new();
+            
+        loop {
+            match bulk.pop_front(){
+                Option::Some((taker_order, maker_orders, total_amount_matched, as_taker_completed)) => {
+                    res.append(self.base_trade_s.apply_single_taker(taker_order, maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed, false));
+
+                },
+                Option::None(_) => {break;}
+            };
+        };
+        return res;
+    }
+
+
+    #[external(v0)]
+    fn placeTakerOrder(ref self: ContractState, order: Order, router_sign: (felt252,felt252)) {
+        let tx_info = get_tx_info().unbox();
+
+        assert(self.hash_lock.read() == 0, 'Lock already acquired');
+        self.hash_lock.write(tx_info.transaction_hash);
+        assert(order.maker == get_caller_address(), 'Maker must be caller');
+        assert!(self.exchange_invokers.read(tx_info.account_contract_address), "Access denied: Only whitelisted invokers");
+        self.scheduled_taker_order.write(order);
+        self.router_sign.write(router_sign);
+    }
+
+    #[external(v0)]
+    fn fullfillTakerOrder(ref self: ContractState, mut maker_orders:Array<(SignedOrder,u256)>,
+                    total_amount_matched:u256, gas_steps:u32, gas_price:u256) {
+        assert_whitelisted_invokers(@self);
+
+        let tx_info = get_tx_info().unbox();
+        assert(self.hash_lock.read() == tx_info.transaction_hash, 'Lock not acquired');
+        self.base_trade_s.apply_single_taker(
+            SignedOrder{order:self.scheduled_taker_order.read(), sign: array![].span(), router_sign:self.router_sign.read()},
+            maker_orders, total_amount_matched, gas_price, gas_steps, true, true);
+        // release lock
+        self.hash_lock.write(0);
+    }
+
+
+
+    #[derive(Drop, Serde)]
+    enum Step {
+        BulkExecutionSteps: (Array<(SignedOrder, Array<(SignedOrder,u256)>, u256, bool)>, bool),
+        SingleExecutionStep:((SignedOrder, Array<(SignedOrder,u256)>, u256, bool),bool),
+        EcosystemTrades: (Array<(SignedOrder,bool)>, Array<SignedOrder>, Array<(u16, bool)>, Array<u256>),
+        IncreaseNonceStep:SignedIncreaseNonce,
+        WithdrawStep:SignedWithdraw,
+    }
+
+
+    #[external(v0)]
+    fn apply_steps(ref self: ContractState, mut steps:Array<Step>, nonce_steps: u32, withdraw_steps:u32,router_steps:u32, ecosystem_steps:u32, gas_price:u256) {
+        assert_whitelisted_invokers(@self);
+        loop {
+            match steps.pop_front(){
+                Option::Some(step)=> {
+                    match step {
+                        Step::BulkExecutionSteps((data, is_ecosystem_gas_book)) => {
+                            let gas_steps = if is_ecosystem_gas_book {ecosystem_steps} else {router_steps};
+                            apply_execution_steps(ref self, data, gas_price, gas_steps);  
+                        },    
+                        Step::SingleExecutionStep((data, is_ecosystem_gas_book)) => {
+                            let gas_steps = if is_ecosystem_gas_book {ecosystem_steps} else {router_steps};
+                            let (taker_order, maker_orders, total_amount_matched,as_taker_completed) = data;
+                            apply_single_execution_step(ref self, taker_order, maker_orders, total_amount_matched, gas_price, gas_steps, as_taker_completed);  
+                        },
+                        Step::EcosystemTrades((takers, makers, iters, oracle_settled_qty)) => {
+                            apply_ecosystem_trades(ref self,takers,makers,iters,oracle_settled_qty, gas_price, ecosystem_steps);
+                        },
+                        Step::IncreaseNonceStep(data) => {apply_increase_nonce(ref self,data, gas_price, nonce_steps)},
+                        Step::WithdrawStep(data) => {apply_withdraw(ref self,data, gas_price, withdraw_steps)},
+                    };
+                },
+                Option::None(_) => {break;}
+            };
+        };
+    }
+
+    
+
+
+
+    
+
+    
+
+    
+    fn assert_whitelisted_invokers(self: @ContractState) {
+        assert!(self.exchange_invokers.read(get_caller_address()), "Access denied: Only whitelisted invokers");
+    }
+
+
+
+    #[event]
+    #[derive(Drop, starknet::Event)]
+    enum Event {
+        BaseTradeEvent: base_trade_component::Event,
+        UpdateExchangeInvoker: UpdateExchangeInvoker,
+        BaseTokenUpdate: BaseTokenUpdate,
+        FeeRecipientUpdate: FeeRecipientUpdate, 
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct UpdateExchangeInvoker {#[key] invoker: ContractAddress, enabled: bool}
+    #[derive(Drop, starknet::Event)]
+    struct BaseTokenUpdate {new_base_token: ContractAddress}
+    #[derive(Drop, starknet::Event)]
+    struct FeeRecipientUpdate {new_fee_recipient: ContractAddress}
+
+
+}
+

@@ -17,3 +17,5 @@ mod test_utils;
 mod LayerAkiraCore;
 mod AccessorComponent;
 mod LayerAkiraExternalGrantor;
+mod BaseTradeComponent;
+mod LayerAkiraExecutor;
