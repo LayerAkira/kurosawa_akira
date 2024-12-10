@@ -135,7 +135,7 @@ mod router_component {
     #[storage]
     struct Storage {
         pending_unregister:starknet::storage::Map::<felt252, SlowModeDelay>,
-        delay: SlowModeDelay, // set by exchange, can be updated but no more then original
+        r_delay: SlowModeDelay, // set by exchange, can be updated but no more then original
         min_to_route:u256,
         token_to_user:starknet::storage::Map::<(ContractAddress,ContractAddress),u256>,
         registered:starknet::storage::Map::<ContractAddress,bool>,
@@ -223,7 +223,7 @@ mod router_component {
             assert!(self.registered.read(router), "NOT_REGISTERED: not registered router {}", router);
             let ongoing:SlowModeDelay = self.pending_unregister.read(router.into());
             assert!(ongoing.block != 0, "NOT_REQUESTED: router {} has not requested deregistration", router);
-            let delay:SlowModeDelay = self.delay.read();
+            let delay:SlowModeDelay = self.r_delay.read();
             let (block_delta, ts_delta) = (get_block_number() - ongoing.block, get_block_timestamp() - ongoing.ts);
             assert!(block_delta >= delay.block && ts_delta >= delay.ts, "FEW_TIME_PASSED: wait at least {} block and {} ts (for now its {} and {})", delay.block, delay.ts, block_delta, ts_delta);
             
@@ -262,7 +262,7 @@ mod router_component {
             self.min_to_route.write(min_to_route); 
             self.native_base_token.write(wrapped_native_token);
             self.punishment_bips.write(punishment_bips);
-            self.delay.write(delay);            
+            self.r_delay.write(delay);            
         }
         // burn mint only by executor, alsways stake a tad amount
         fn mint(ref self: ComponentState<TContractState>,router:ContractAddress,token:ContractAddress, amount:u256) {

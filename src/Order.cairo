@@ -187,7 +187,7 @@ fn generic_common_check(maker_order:Order, taker_order:Order) {
 }
 
 
-fn get_gas_fee_and_coin(gas_fee: GasFee, cur_gas_price: u256, native_token:ContractAddress, cur_gas_per_action:u32) -> (u256, ContractAddress) {
+fn get_gas_fee_and_coin(gas_fee: GasFee, cur_gas_price: u256, native_token:ContractAddress, cur_gas_per_action:u32, times:u16) -> (u256, ContractAddress) {
     if cur_gas_price == 0 { return (0, native_token);}
     if gas_fee.gas_per_action == 0 { return (0, native_token);}
     assert!(gas_fee.max_gas_price >= cur_gas_price, "Failed: max_gas_price ({}) >= cur_gas_price ({})", gas_fee.max_gas_price, cur_gas_price);
@@ -201,5 +201,5 @@ fn get_gas_fee_and_coin(gas_fee: GasFee, cur_gas_price: u256, native_token:Contr
 
     let (r0, r1) = gas_fee.conversion_rate;
     let spend_converted = spend_native * r1 / r0;
-    return (spend_converted, gas_fee.fee_token);
+    return (spend_converted * times.into(), gas_fee.fee_token);
 }

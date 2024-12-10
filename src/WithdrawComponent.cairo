@@ -92,8 +92,8 @@ mod withdraw_component {
     #[storage]
     struct Storage {
         delay: SlowModeDelay, // set by exchange, can be updated but no more then original
-        pending_reqs: LegacyMap::<(ContractAddress,ContractAddress),(SlowModeDelay, Withdraw)>,
-        completed_reqs: LegacyMap::<felt252,bool>,
+        pending_reqs: starknet::storage::Map::<(ContractAddress,ContractAddress),(SlowModeDelay, Withdraw)>,
+        completed_reqs: starknet::storage::Map::<felt252,bool>,
         gas_steps: u32, //set by us, during exec of rollups of withdraws, same semantic as with latest gas
     }
 
@@ -170,7 +170,7 @@ mod withdraw_component {
 
      #[generate_trait]
     impl InternalWithdrawableImpl<TContractState, +HasComponent<TContractState>,
-    +balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of InternalWithdrawable<TContractState> {
+    impl Balance:balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of InternalWithdrawable<TContractState> {
         fn initializer(ref self: ComponentState<TContractState> ,delay:SlowModeDelay, gas_steps_cost:u32) {
             self.delay.write(delay);
             self.gas_steps.write(gas_steps_cost);
@@ -193,16 +193,20 @@ mod withdraw_component {
             }
             let w_req = signed_withdraw.withdraw;
         
-            let mut contract = self.get_balancer_mut();
+            let mut balancer = get_dep_component_mut!(ref self, Balance);
 
              // payment to exchange for gas
-            let gas_fee_amount = contract.validate_and_apply_gas_fee_internal(w_req.maker, w_req.gas_fee, gas_price, 1, cur_gas_per_action, contract.get_wrapped_native_token());
+            let (gas_fee_amount, coin) = super::get_gas_fee_and_coin(w_req.gas_fee, gas_price, balancer.get_wrapped_native_token(), cur_gas_per_action, 1);
+            balancer.internal_transfer(w_req.maker, balancer.get_fee_recipient(), gas_fee_amount, coin);
+            
+            // let gas_fee_amount = contract.validate_and_apply_gas_fee_internal(w_req.maker, w_req.gas_fee, gas_price, 1, cur_gas_per_action, contract.get_wrapped_native_token());
+            
             let tfer_amount = if w_req.token == w_req.gas_fee.fee_token {w_req.amount - gas_fee_amount } else { w_req.amount};
             self._transfer(w_req, hash, tfer_amount, gas_price, is_onchain_withdrawal);
         }
         fn validate(self:@ComponentState<TContractState>, maker:ContractAddress, token:ContractAddress, amount:u256, gas_fee:GasFee) {
             // User must specify gas fee, by specifying adequate max_gas_price it will allow to exchange to finalizing withdrawal on user behalf bypassing delay
-            let balancer =  self.get_balancer();
+            let balancer =  get_dep_component!(self, Balance);
             let balance = balancer.balanceOf(maker, token);
             let gas_steps = self.gas_steps.read().into();
             assert!(gas_fee.gas_per_action == gas_steps, "WRONG_GAS_PER_ACTION: expected {} got {}", gas_steps, gas_fee.gas_per_action);
@@ -216,7 +220,7 @@ mod withdraw_component {
         fn _transfer(ref self: ComponentState<TContractState>, w_req:Withdraw, w_hash:felt252, tfer_amount:u256, gas_price:u256, direct:bool) {
             // burn tokens on exchange
             // tfer them to recipient via erc20 interface, validate that tfer was correct i.e exhancge didnt spend more then burnt
-            let mut contract = self.get_balancer_mut();
+            let mut contract = get_dep_component_mut!(ref self, Balance);
             contract.burn(w_req.maker, tfer_amount, w_req.token);
             let erc20 = IERC20Dispatcher { contract_address: w_req.token };
             let balance_before = erc20.balanceOf(get_contract_address());
@@ -232,7 +236,7 @@ mod withdraw_component {
         }
 
         fn safe_withdraw(ref self: ComponentState<TContractState>, to:ContractAddress, amount:u256, token:ContractAddress) -> u256 {
-            let (erc20, mut contract, exchange) = (IERC20Dispatcher { contract_address: token },self.get_balancer_mut(), get_contract_address());
+            let (erc20, mut contract, exchange) = (IERC20Dispatcher { contract_address: token },get_dep_component_mut!(ref self, Balance), get_contract_address());
             let balance_before = erc20.balanceOf(exchange);
             contract.burn(to, amount, token); erc20.transfer(to, amount);
             let transferred = balance_before - erc20.balanceOf(exchange);
@@ -241,26 +245,4 @@ mod withdraw_component {
         }        
     }   
 
-
-    // this (or something similar) will potentially be generated in the next RC
-    #[generate_trait]
-    impl GetBalancer<
-        TContractState,
-        +HasComponent<TContractState>,
-        +balance_component::HasComponent<TContractState>,
-        +Drop<TContractState>> of GetBalancerTrait<TContractState> {
-        fn get_balancer(
-            self: @ComponentState<TContractState>
-        ) -> @balance_component::ComponentState<TContractState> {
-            let contract = self.get_contract();
-            balance_component::HasComponent::<TContractState>::get_component(contract)
-        }
-
-        fn get_balancer_mut(
-            ref self: ComponentState<TContractState>
-        ) -> balance_component::ComponentState<TContractState> {
-            let mut contract = self.get_contract_mut();
-            balance_component::HasComponent::<TContractState>::get_component_mut(ref contract)
-        }
-    }
 }

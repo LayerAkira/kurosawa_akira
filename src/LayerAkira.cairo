@@ -71,7 +71,7 @@ mod LayerAkira {
         ecosystem_trade_s: ecosystem_trade_component::Storage,
         
         max_slow_mode_delay:SlowModeDelay, // upper bound for all delayed actions
-        exchange_invokers: LegacyMap::<ContractAddress, bool>,
+        exchange_invokers: starknet::storage::Map::<ContractAddress, bool>,
         owner: ContractAddress, // owner of contact that have permissions to grant and revoke role for invokers and update slow mode 
         hash_lock:felt252,
         scheduled_taker_order:Order,
@@ -137,7 +137,7 @@ mod LayerAkira {
         assert!(self.owner.read() == get_caller_address(), "Access denied: update_router_component_params is only for the owner's use");
         let max = self.max_slow_mode_delay.read();
         assert!(new_delay.block <= max.block && new_delay.ts <= max.ts, "Failed router params update: new_delay <= max_slow_mode_delay");
-        self.router_s.delay.write(new_delay);
+        self.router_s.r_delay.write(new_delay);
         self.router_s.min_to_route.write(min_amount_to_route);
         self.router_s.punishment_bips.write(new_punishment_bips);
         self.emit(RouterComponentUpdate{new_delay,min_amount_to_route,new_punishment_bips});
