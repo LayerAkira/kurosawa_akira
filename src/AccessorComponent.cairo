@@ -85,8 +85,11 @@ mod accessor_logic_component {
             let (approved, user_epoch) = (self.user_to_executor_granted.read(user), self.user_to_executor_epoch.read(user));      
             assert(approved == current_executor && user_epoch == current_epoch, 'Access denied: not granted');
         }
-        fn only_owner(self: @ComponentState<TContractState>) { assert!(self.owner.read() == get_caller_address(), "Access denied: set_executor is only for the owner's use");}
+        fn only_owner(self: @ComponentState<TContractState>) { assert!(self.owner.read() == get_caller_address(), "Access denied: only for the owner's use");}
         fn only_executor(self: @ComponentState<TContractState>) { assert(self.executor.read() == get_caller_address(), 'Access denied: only executor');}
+        fn only_owner_or_executor(self: @ComponentState<TContractState>) {
+             assert!(self.owner.read() == get_caller_address() || self.executor.read() == get_caller_address(), "Access denied: only for the owner's or executor's use");}
+        
     }
 
 

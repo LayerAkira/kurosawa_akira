@@ -3,7 +3,6 @@ use starknet::ContractAddress;
 #[starknet::interface]
 trait IDeposit<TContractState> {
     fn deposit(ref self: TContractState, receiver:ContractAddress, token:ContractAddress, amount:u256);
-    fn nonatomic_deposit(ref self: TContractState,receiver:ContractAddress, token:ContractAddress, amount:u256);
 }
 
 #[starknet::component]
@@ -51,6 +50,13 @@ mod deposit_component {
             self.emit(Deposit{receiver:receiver, token:token, funder:caller, amount:amount});
         }
 
+
+
+    }
+
+    #[generate_trait]
+    impl InternalDepositableImpl<TContractState, +HasComponent<TContractState>,
+    +balance_component::HasComponent<TContractState>,+Drop<TContractState>> of InternalDepositable<TContractState> {
         fn nonatomic_deposit(ref self: ComponentState<TContractState>, receiver:ContractAddress, token:ContractAddress, amount:u256) {
             let (erc20, mut b_contract) = (IERC20Dispatcher { contract_address: token }, self.get_balancer_mut());
             let (before, after) = (self.get_balancer().total_supply(token), erc20.balanceOf(get_contract_address()));
@@ -59,10 +65,7 @@ mod deposit_component {
             // TODO should we fire an deposit event actually?
             self.emit(Deposit{receiver:receiver, token:token, funder:get_caller_address(), amount:amount});
         }
-
-    }
-
-
+    }  
 
     // this (or something similar) will potentially be generated in the next RC
     #[generate_trait]

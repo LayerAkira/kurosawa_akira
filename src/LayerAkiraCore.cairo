@@ -41,7 +41,8 @@ mod LayerAkiraCore {
     use accessor_logic_component::InternalAccesorable;
     use withdraw_component::InternalWithdrawable;
     use nonce_component::InternalNonceable;
-
+    use deposit_component::InternalDepositable;
+    
     use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
     use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
     use kurosawa_akira::NonceComponent::{SignedIncreaseNonce, IncreaseNonce};
@@ -141,12 +142,13 @@ mod LayerAkiraCore {
     }
     #[external(v0)]
     fn safe_mint(ref self: ContractState, to: ContractAddress, amount: u256, token: ContractAddress) {
+         self.accessor_s.only_owner_or_executor();
          self.deposit_s.nonatomic_deposit(to, token, amount);
     }
 
     #[external(v0)]
     fn safe_burn(ref self: ContractState, to: ContractAddress, amount: u256, token: ContractAddress) -> u256 {
-        self.accessor_s.only_executor(); self.accessor_s.only_authorized_by_user(to); 
+        self.accessor_s.only_owner_or_executor(); self.accessor_s.only_authorized_by_user(to); 
         return self.withdraw_s.safe_withdraw(to, amount, token);
     }
  
