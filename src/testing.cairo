@@ -574,7 +574,7 @@ mod tests_router_trade {
         let usdc_erc = IERC20Dispatcher{contract_address:usdc};
         let taker = buy_order.order.maker;
 
-        let (eth_b, usdc_b, router_b) = (eth_erc.balanceOf(taker), usdc_erc.balanceOf(taker), akira.balance_of_router(router, eth));
+        let (eth_b, usdc_b, router_b) = (eth_erc.balanceOf(taker), usdc_erc.balanceOf(taker), akira.balanceOf(router, eth));
 
 
 
@@ -601,7 +601,7 @@ mod tests_router_trade {
         let (eth_b, usdc_b) = (eth_erc.balanceOf(taker) - eth_b, usdc_b - usdc_erc.balanceOf(taker));
         assert(usdc_b == usdc_amount, 'DEDUCTED_AS_EXPECTED');
         assert(eth_b + gas_fee  + taker_fee + router_fee == eth_amount, 'RECEIVED_AS_EXPECTED');
-        assert(akira.balance_of_router(router, eth) - router_b == router_fee, 'WRONG_ROUTER_RECEIVED');
+        assert!(akira.balanceOf(router, eth) - router_b == router_fee, "WRONG_ROUTER_RECEIVED {} {}", akira.balanceOf(router, eth), router_b);
         
     } 
 
@@ -632,7 +632,7 @@ mod tests_router_trade {
         let eth_erc = IERC20Dispatcher{contract_address:eth};
         let usdc_erc = IERC20Dispatcher{contract_address:usdc};
         let taker = sell_order.order.maker;
-        let (eth_b, usdc_b, router_b) = (eth_erc.balanceOf(taker), usdc_erc.balanceOf(taker), akira.balance_of_router(router, usdc));
+        let (eth_b, usdc_b, router_b) = (eth_erc.balanceOf(taker), usdc_erc.balanceOf(taker), akira.balanceOf(router, usdc));
 
         start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
         assert(akira.apply_single_execution_step(sell_order, array![(buy_order,0)],  eth_amount, 100, get_swap_gas_cost(), false), 'FAILED_MATCH');
@@ -642,7 +642,7 @@ mod tests_router_trade {
         assert(akira.balanceOf(sell_order.order.maker, usdc) == 0, 'WRONG_ROUTER_T_BALANCE_USDC');
         let taker_fee = get_feeable_qty(sell_order.order.fee.trade_fee, usdc_amount, false);
         let router_fee = get_feeable_qty(sell_order.order.fee.router_fee, usdc_amount, false);
-        assert(akira.balance_of_router(router, usdc) - router_b == router_fee, 'WRONG_ROUTER_RECEIVED');
+        assert(akira.balanceOf(router, usdc) - router_b == router_fee, 'WRONG_ROUTER_RECEIVED');
 
         let maker_fee = get_feeable_qty(buy_order.order.fee.trade_fee, eth_amount, true);
         assert(akira.balanceOf(buy_order.order.maker, eth) == eth_amount - maker_fee, 'WRONG_MATCH_RECIEVE_ETH');
@@ -657,8 +657,10 @@ mod tests_router_trade {
 
 
         start_cheat_caller_address(akira.contract_address, router);
-        akira.router_withdraw(usdc, router_fee, router);
-        assert(usdc_erc.balanceOf(router) == router_fee, 'WRONG_ROUTER_WITHDRAW');
+        // akira.router_withdraw(usdc, router_fee, router);
+        // assert(usdc_erc.balanceOf(router) == router_fee, 'WRONG_ROUTER_WITHDRAW');
+        assert!(akira.balanceOf(router, usdc) == router_fee, "WRONG_ROUTER_WITHDRAW: {}, {}", akira.balanceOf(router, usdc),router_fee);
+        
         stop_cheat_caller_address(akira.contract_address);
 
         
@@ -703,7 +705,7 @@ mod tests_router_trade {
 
 
 
-        let (eth_b, usdc_b, router_b) = (eth_erc.balanceOf(taker), usdc_erc.balanceOf(taker), akira.balance_of_router(router, usdc));
+        let (eth_b, usdc_b, router_b) = (eth_erc.balanceOf(taker), usdc_erc.balanceOf(taker), akira.balanceOf(router, usdc));
 
 
         start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
@@ -723,7 +725,7 @@ mod tests_router_trade {
         let (eth_b, usdc_b) = (eth_erc.balanceOf(taker) - eth_b, usdc_b - usdc_erc.balanceOf(taker));
         assert(usdc_b == usdc_amount + taker_fee + router_fee, 'DEDUCTED_AS_EXPECTED');
         assert(eth_b + gas_fee  == eth_amount, 'RECEIVED_AS_EXPECTED');
-        assert(akira.balance_of_router(router, usdc) - router_b == router_fee, 'WRONG_ROUTER_RECEIVED');
+        assert(akira.balanceOf(router, usdc) - router_b == router_fee, 'WRONG_ROUTER_RECEIVED');
         
     } 
 
@@ -1050,7 +1052,7 @@ mod tests_quote_qty_router_trade_01 {
         let usdc_erc = IERC20Dispatcher{contract_address:usdc};
         let taker = taker_order.order.maker;
         let (eth_b, usdc_b) = (eth_erc.balanceOf(taker), usdc_erc.balanceOf(taker));
-        let router_b = if !change_side{akira.balance_of_router(router, usdc)} else {akira.balance_of_router(router, eth)};
+        let router_b = if !change_side{akira.balanceOf(router, usdc)} else {akira.balanceOf(router, eth)};
 
         let actual_matched_qty = if !change_side {(base_qty / price) * expected_qty} else {expected_qty * 1};
 
@@ -1063,11 +1065,11 @@ mod tests_quote_qty_router_trade_01 {
         let mut router_fee = 0;
         if !change_side{
             router_fee = get_feeable_qty(taker_order.order.fee.router_fee, expected_qty, false);
-            assert(akira.balance_of_router(router, usdc) - router_b == router_fee, 'WRONG_ROUTER_RECEIVED');
+            assert(akira.balanceOf(router, usdc) - router_b == router_fee, 'WRONG_ROUTER_RECEIVED');
         }
         else {
             router_fee = get_feeable_qty(taker_order.order.fee.router_fee, (base_qty / price) * expected_qty, false);
-            assert!(akira.balance_of_router(router, eth) - router_b == router_fee, "WRONG_ROUTER_RECEIVED: {}, {}", akira.balance_of_router(router, eth) - router_b, router_fee);
+            assert!(akira.balanceOf(router, eth) - router_b == router_fee, "WRONG_ROUTER_RECEIVED: {}, {}", akira.balanceOf(router, eth) - router_b, router_fee);
         }
 
 
@@ -1085,13 +1087,13 @@ mod tests_quote_qty_router_trade_01 {
         start_cheat_caller_address(akira.contract_address, router);
         if !change_side{
             let r_b = usdc_erc.balanceOf(router);
-            akira.router_withdraw(usdc, router_fee, router);
-            assert(usdc_erc.balanceOf(router) == r_b + router_fee, 'WRONG_ROUTER_WITHDRAW');
+            // akira.router_withdraw(usdc, router_fee, router);
+            assert(akira.balanceOf(router,usdc) == router_fee, 'WRONG_ROUTER_WITHDRAW');
         }
         else {
             let r_b = eth_erc.balanceOf(router);
-            akira.router_withdraw(eth, router_fee, router);
-            assert(eth_erc.balanceOf(router) == r_b + router_fee, 'WRONG_ROUTER_WITHDRAW');
+            // akira.router_withdraw(eth, router_fee, router);
+            assert(akira.balanceOf(router,eth) == router_fee, 'WRONG_ROUTER_WITHDRAW');
         }
         stop_cheat_caller_address(akira.contract_address);
     }  
@@ -1226,7 +1228,7 @@ mod tests_quote_qty_router_trade_02 {
         let eth_erc = IERC20Dispatcher{contract_address:eth};
         let usdc_erc = IERC20Dispatcher{contract_address:usdc};
         let taker = sell_order_01.order.maker;
-        let (eth_b, usdc_b, router_b) = (eth_erc.balanceOf(taker), usdc_erc.balanceOf(taker), akira.balance_of_router(router, usdc));
+        let (eth_b, usdc_b, router_b) = (eth_erc.balanceOf(taker), usdc_erc.balanceOf(taker), akira.balanceOf(router, usdc));
 
         start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
         assert(akira.apply_single_execution_step(sell_order_01, array![(buy_order,0)],  base_qty / 2, 100, get_swap_gas_cost(), false), 'FAILED_MATCH');
@@ -1236,7 +1238,7 @@ mod tests_quote_qty_router_trade_02 {
         assert(akira.balanceOf(sell_order_01.order.maker, eth) == 0, 'WRONG_ROUTER_T_BALANCE_ETH');
         assert(akira.balanceOf(sell_order_01.order.maker, usdc) == 0, 'WRONG_ROUTER_T_BALANCE_USDC');
         let router_fee = get_feeable_qty(sell_order_01.order.fee.router_fee, price / 2, false) + get_feeable_qty(sell_order_02.order.fee.router_fee, price / 2, false);
-        assert!(akira.balance_of_router(router, usdc) - router_b == router_fee, "WRONG_ROUTER_RECEIVED {} {}", akira.balance_of_router(router, usdc) - router_b, router_fee);
+        assert!(akira.balanceOf(router, usdc) - router_b == router_fee, "WRONG_ROUTER_RECEIVED {} {}", akira.balanceOf(router, usdc) - router_b, router_fee);
 
         let maker_fee = get_feeable_qty(buy_order.order.fee.trade_fee, base_qty, true);
         assert(akira.balanceOf(buy_order.order.maker, eth) == base_qty  - maker_fee, 'WRONG_MATCH_RECIEVE_ETH');
@@ -1244,8 +1246,8 @@ mod tests_quote_qty_router_trade_02 {
 
 
         start_cheat_caller_address(akira.contract_address, router);
-        akira.router_withdraw(usdc, router_fee, router);
-        assert(usdc_erc.balanceOf(router) == router_fee, 'WRONG_ROUTER_WITHDRAW');
+        // akira.router_withdraw(usdc, router_fee, router);
+        assert!(akira.balanceOf(router, usdc) == router_fee, "WRONG_ROUTER_WITHDRAW: {}, {}", akira.balanceOf(router, usdc),router_fee);
         stop_cheat_caller_address(akira.contract_address);
     }  
 

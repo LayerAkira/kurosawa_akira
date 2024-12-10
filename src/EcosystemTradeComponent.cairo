@@ -18,6 +18,12 @@ mod ecosystem_trade_component {
     use kurosawa_akira::{RouterComponent::IRouter};
     use kurosawa_akira::RouterComponent::router_component as router_component;
     use router_component::{InternalRoutable, RoutableImpl};    
+
+    use kurosawa_akira::WithdrawComponent::withdraw_component as withdraw_component;
+    use withdraw_component::{InternalWithdrawable, WithdrawableImpl};    
+
+    use kurosawa_akira::DepositComponent::deposit_component as deposit_component;
+    use deposit_component::{DepositableImpl,InternalDepositable};    
     use core::{traits::TryInto,option::OptionTrait, array::ArrayTrait, traits::Destruct, traits::Into};
     use kurosawa_akira::FundsTraits::{check_sign};
     use kurosawa_akira::{NonceComponent::INonceLogic, SignerComponent::ISignerLogic};
@@ -58,6 +64,8 @@ mod ecosystem_trade_component {
 
      #[generate_trait]
     impl InternalEcosystemTradableImpl<TContractState, +HasComponent<TContractState>,+INonceLogic<TContractState>, +router_component::HasComponent<TContractState>,
+    +withdraw_component::HasComponent<TContractState>,
+    +deposit_component::HasComponent<TContractState>,
     +balance_component::HasComponent<TContractState>,+Drop<TContractState>,+ISignerLogic<TContractState>> of InternalEcosystemTradable<TContractState> {
 
         // exposed only in contract user apply ecosystem trades
@@ -284,8 +292,11 @@ mod ecosystem_trade_component {
             if fee_amount > 0 { 
                 let mut router = self.get_router_mut();
                 // explictly separate routers balance from balance on exchnage, separate entities
-                router.mint(order.fee.router_fee.recipient, fee_token_trade, fee_amount);
-                balancer.burn(order.fee.router_fee.recipient, fee_amount, fee_token_trade);     
+                // TODO: maybe not separate?
+                // TODO: maybe not separate
+                // TODO: not allow to trade from accounts that are routers 
+                // router.mint(order.fee.router_fee.recipient, fee_token_trade, fee_amount);
+                // balancer.burn(order.fee.router_fee.recipient, fee_amount, fee_token_trade);     
                 balancer.emit(FeeReward{ recipient:order.fee.router_fee.recipient, token:fee_token_trade, amount:fee_amount});
             }
             return (fee_token_trade, fee_amount, exchange_fee);
@@ -385,36 +396,35 @@ mod ecosystem_trade_component {
       
         fn punish_router_simple(ref self: ComponentState<TContractState>, gas_fee:super::GasFee,router_addr:ContractAddress, 
                     maker:ContractAddress, taker:ContractAddress, gas_px:u256, taker_hash:felt252, maker_hash:felt252, cur_gas_per_action:u32) {
-            let (mut balancer, mut router) = (self.get_balancer_mut(), self.get_router_mut());
+            let (mut balancer, mut router, mut deposit) = (self.get_balancer_mut(), self.get_router_mut(),self.get_deposit_mut());
             let native_base_token = balancer.get_wrapped_native_token();
             let charged_fee = cur_gas_per_action.into() * gas_px * router.get_punishment_factor_bips().into() / 10000;
             if charged_fee == 0 {return;}
-            router.burn(router_addr, native_base_token, 2 * charged_fee); // punish
-            balancer.mint(balancer.fee_recipient.read(), charged_fee, native_base_token); // reimburse
-            balancer.mint(maker, charged_fee, native_base_token); // reimburse
+            // actually one method burnToCore
+            // router.burn(router_addr, native_base_token, 2 * charged_fee); // punish
+            router.burn_and_send(router_addr, native_base_token, 2 * charged_fee, get_contract_address());
+            deposit.nonatomic_deposit(balancer.fee_recipient.read(),native_base_token,charged_fee);
+            deposit.nonatomic_deposit(maker,native_base_token,charged_fee);
+            
+            //TODO: method tfer to only inside contract
+            // set balancer contract, set executor
+            // balances safe_deposit twice
+            // balancer.mint(balancer.fee_recipient.read(), charged_fee, native_base_token); // reimburse
+            // balancer.mint(maker, charged_fee, native_base_token); // reimburse
             balancer.emit(Punish{router:router_addr, taker_hash, maker_hash, amount: 2 * charged_fee});
         }
 
         fn transfer_back(ref self:ComponentState<TContractState>, exchange:ContractAddress, token:ContractAddress, maker:ContractAddress, amount:u256) {
             if amount == 0 {return;}
-            let mut balancer = self.get_balancer_mut();
-            let erc = IERC20Dispatcher {contract_address:token};
-
-            let balance = erc.balanceOf(exchange);
-            erc.transfer(maker, amount);
-            balancer.burn(maker, amount, token);
-            assert!(balance - erc.balanceOf(exchange) <= amount, "OUT_TFER_ERROR {} {} {}", token, maker, amount); // ensure token contract not drains any extra
+            let mut withdraw = self.get_withdraw_mut();
+            withdraw.safe_withdraw(maker, amount, token);
         }
 
         fn transfer_in(ref self:ComponentState<TContractState>, exchange:ContractAddress, token:ContractAddress, maker:ContractAddress, amount:u256) {
             if amount == 0 {return;}
-            let mut balancer = self.get_balancer_mut();
-            let erc = IERC20Dispatcher {contract_address:token};
-            let balance = erc.balanceOf(exchange);
-
-            erc.transferFrom(maker, exchange, amount);
-            balancer.mint(maker, amount, token);
-            assert!(erc.balanceOf(exchange) - balance >= amount, "IN_TFER_ERROR {} {} {}", token, maker, amount); // ensure token contract not drains any extra
+            let erc = IERC20Dispatcher {contract_address:token}; erc.transferFrom(maker, exchange, amount);
+            let mut depositer = self.get_deposit_mut();
+            depositer.nonatomic_deposit(maker, token, amount);
         }
         fn can_transfer(self:@ComponentState<TContractState>, exchange:ContractAddress, token:ContractAddress, maker:ContractAddress, amount:u256) -> bool {
             if amount == 0 {return true;}
@@ -466,6 +476,47 @@ mod ecosystem_trade_component {
         ) -> router_component::ComponentState<TContractState> {
             let mut contract = self.get_contract_mut();
             router_component::HasComponent::<TContractState>::get_component_mut(ref contract)
+        }
+    }
+
+    #[generate_trait]
+    impl GetWithdraw<
+        TContractState,
+        +HasComponent<TContractState>,
+        +withdraw_component::HasComponent<TContractState>,
+        +Drop<TContractState>> of GetWithdrawTrait<TContractState> {
+        fn get_withdraw(
+            self: @ComponentState<TContractState>
+        ) -> @withdraw_component::ComponentState<TContractState> {
+            let contract = self.get_contract();
+            withdraw_component::HasComponent::<TContractState>::get_component(contract)
+        }
+
+        fn get_withdraw_mut(
+            ref self: ComponentState<TContractState>
+        ) -> withdraw_component::ComponentState<TContractState> {
+            let mut contract = self.get_contract_mut();
+            withdraw_component::HasComponent::<TContractState>::get_component_mut(ref contract)
+        }
+    }
+    #[generate_trait]
+    impl GetDeposit<
+        TContractState,
+        +HasComponent<TContractState>,
+        +deposit_component::HasComponent<TContractState>,
+        +Drop<TContractState>> of GetDepositTrait<TContractState> {
+        fn get_deposit(
+            self: @ComponentState<TContractState>
+        ) -> @deposit_component::ComponentState<TContractState> {
+            let contract = self.get_contract();
+            deposit_component::HasComponent::<TContractState>::get_component(contract)
+        }
+
+        fn get_deposit_mut(
+            ref self: ComponentState<TContractState>
+        ) -> deposit_component::ComponentState<TContractState> {
+            let mut contract = self.get_contract_mut();
+            deposit_component::HasComponent::<TContractState>::get_component_mut(ref contract)
         }
     }
 }
