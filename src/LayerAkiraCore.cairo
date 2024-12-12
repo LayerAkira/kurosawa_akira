@@ -1,10 +1,31 @@
 use starknet::{ContractAddress};
-use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
+use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw,SlowModeDelay};
 use kurosawa_akira::NonceComponent::{SignedIncreaseNonce, IncreaseNonce};
     
     
 #[starknet::interface]
 trait ILayerAkiraCore<TContractState> {
+
+    fn total_supply(self: @TContractState, token: ContractAddress) -> u256;
+    fn balanceOf(self: @TContractState, address: ContractAddress, token: ContractAddress) -> u256;
+    fn balancesOf(self: @TContractState, addresses: Span<ContractAddress>, tokens: Span<ContractAddress>) -> Array<Array<u256>>;
+    fn get_wrapped_native_token(self: @TContractState) -> ContractAddress;
+    fn get_fee_recipient(self: @TContractState) -> ContractAddress;
+
+
+
+    fn set_executor(ref self: TContractState, new_executor:ContractAddress);
+    fn grant_access_to_executor(ref self: TContractState);
+
+    fn deposit(ref self: TContractState, receiver:ContractAddress, token:ContractAddress, amount:u256);
+
+    fn get_pending_withdraw(self:@TContractState, maker:ContractAddress,token:ContractAddress)->(SlowModeDelay,Withdraw);
+    fn request_onchain_withdraw(ref self: TContractState, withdraw: Withdraw);
+    // can only be performed by the owner
+    fn apply_onchain_withdraw(ref self: TContractState, token:ContractAddress, key:felt252);
+
+
+    fn bind_to_signer(ref self: TContractState, signer: ContractAddress);
 
     
     fn is_approved_executor(self: @TContractState, user: ContractAddress) -> bool;

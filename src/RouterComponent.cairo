@@ -7,9 +7,8 @@ use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
 
 #[starknet::interface]
 trait IRouter<TContractState> {
-    // For first iteration we will accept orders from those routers that registered and reliable for us
-    // At second iteration, any router who have enough money deposited to router component is legit provider and we happily accept orders from them
-
+    fn get_base_token(self:@TContractState)-> ContractAddress;
+        
 
     // same semantic as in deposit component
     fn router_deposit(ref self:TContractState, router:ContractAddress, coin:ContractAddress, amount:u256);
@@ -146,7 +145,7 @@ mod router_component {
 
     #[embeddable_as(Routable)]
     impl RoutableImpl<TContractState, +HasComponent<TContractState>> of super::IRouter<ComponentState<TContractState>> {
-
+        fn get_base_token(self:@ComponentState<TContractState>)-> ContractAddress {self.native_base_token.read()}
         fn get_router(self:@ComponentState<TContractState>, signer:ContractAddress) -> ContractAddress { self.signer_to_router.read(signer)}
 
         fn get_route_amount(self:@ComponentState<TContractState>) -> u256 { 2 * self.min_to_route.read() }

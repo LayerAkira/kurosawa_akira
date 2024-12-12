@@ -130,7 +130,7 @@ mod exchange_balance_logic_component {
             };
             return res;
         }
-
+        // remove
         fn get_wrapped_native_token(self: @ComponentState<TContractState>) -> ContractAddress { return self.wrapped_native_token.read();}
 
         fn get_fee_recipient(self: @ComponentState<TContractState>) -> ContractAddress { return self.fee_recipient.read();}

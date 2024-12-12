@@ -251,7 +251,7 @@ mod base_trade_component {
                     (accum_base, expected_amount_spend - accum_quote, accum_quote)
                 };
                 // do the reward and pay for the gas, we accumulate all and consume at once, avoiding repetitive actions
-                self.finalize_router_taker(taker_order, taker_hash, taker_received, unspent, exchange, gas_price, trades, cur_gas_per_action, spent);  
+                self.finalize_router_taker(taker_order, taker_hash, taker_received, unspent, gas_price, trades, cur_gas_per_action, spent);  
             } else  {
                 self.apply_taker_fee_and_gas(taker_order, accum_base, accum_quote, gas_price, trades, cur_gas_per_action);    
             }
@@ -397,7 +397,7 @@ mod base_trade_component {
             return true;
         }
 
-        fn finalize_router_taker(ref self:ComponentState<TContractState>, taker_order:Order, taker_hash:felt252, mut received_amount:u256, unspent_amount:u256, exchange:ContractAddress, gas_price:u256, trades:u16, cur_gas_per_action:u32,
+        fn finalize_router_taker(ref self:ComponentState<TContractState>, taker_order:Order, taker_hash:felt252, mut received_amount:u256, unspent_amount:u256, gas_price:u256, trades:u16, cur_gas_per_action:u32,
                     spent_amount:u256) {
             // Finalize router taker
             // 1) pay for gas, trade, router fee
@@ -410,11 +410,11 @@ mod base_trade_component {
             if (taker_order.fee.gas_fee.fee_token != receive_token) {gas = 0}
             
             if (spending_token == fee_token) { //if fees was in token user spend we deduct them from spend to return remaining else from recieve before sending back
-                self.transfer_back(exchange, receive_token, taker_order.maker, received_amount - gas);
-                self.transfer_back(exchange, spending_token, taker_order.maker, unspent_amount - router_fee_amount - exchange_fee_amount);
+                self.transfer_back(receive_token, taker_order.maker, received_amount - gas);
+                self.transfer_back(spending_token, taker_order.maker, unspent_amount - router_fee_amount - exchange_fee_amount);
             } else {
-                self.transfer_back(exchange, receive_token, taker_order.maker, received_amount - router_fee_amount - exchange_fee_amount - gas);
-                self.transfer_back(exchange, spending_token, taker_order.maker, unspent_amount); // tfer unspent amount
+                self.transfer_back(receive_token, taker_order.maker, received_amount - router_fee_amount - exchange_fee_amount - gas);
+                self.transfer_back(spending_token, taker_order.maker, unspent_amount); // tfer unspent amount
             }
         }
       
@@ -425,20 +425,20 @@ mod base_trade_component {
             let charged_fee = cur_gas_per_action.into() * gas_px * router.get_punishment_factor_bips().into() / 10000;
             if charged_fee == 0 {return;}
             
-            router.transfer_to_core(router_addr,native_base_token, 2 * charged_fee);
+            router.transfer_to_core(router_addr, native_base_token, 2 * charged_fee);
             deposit.safe_mint(self.fee_recipient.read(), charged_fee, native_base_token);
             deposit.safe_mint(maker, charged_fee, native_base_token);
             self.emit(Punish{router:router_addr, taker_hash, maker_hash, amount: 2 * charged_fee});
         }
 
-        fn transfer_back(ref self:ComponentState<TContractState>, exchange:ContractAddress, token:ContractAddress, maker:ContractAddress, amount:u256) {
+        fn transfer_back(ref self:ComponentState<TContractState>, token:ContractAddress, maker:ContractAddress, amount:u256) {
             if amount == 0 {return;}
             ILayerAkiraCoreDispatcher { contract_address: self.core_contract.read() }.safe_burn(maker, amount, token);
         }
 
         fn transfer_in(ref self:ComponentState<TContractState>, exchange:ContractAddress, token:ContractAddress, maker:ContractAddress, amount:u256) {
             if amount == 0 {return;}
-            let erc = IERC20Dispatcher {contract_address:token}; erc.transferFrom(maker, exchange, amount);
+            let erc = IERC20Dispatcher {contract_address:token}; erc.transferFrom(maker, self.core_contract.read(), amount);
             ILayerAkiraCoreDispatcher { contract_address: self.core_contract.read() }.safe_mint(maker, amount, token);
         }
         fn can_transfer(self:@ComponentState<TContractState>, exchange:ContractAddress, token:ContractAddress, maker:ContractAddress, amount:u256) -> bool {

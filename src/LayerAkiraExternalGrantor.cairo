@@ -9,6 +9,9 @@ use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
 #[starknet::interface]
 trait IExternalGrantor<TContractState> {
     
+    fn balance_of_router(self:@TContractState, router:ContractAddress, coin:ContractAddress)->u256;
+
+    
     // validates that message was signed by signer that mapped to router
     fn validate_router(self: @TContractState, message: felt252, signature: (felt252, felt252), signer: ContractAddress, router:ContractAddress) -> bool;
 
@@ -24,8 +27,26 @@ trait IExternalGrantor<TContractState> {
     // how much one must hold have in balance to be registered as router
     fn get_route_amount(self:@TContractState) -> u256;
 
-    fn transfer_to_core(ref self: TContractState, router:ContractAddress,token:ContractAddress, amount:u256) -> u256;
+
+    fn router_deposit(ref self:TContractState, router:ContractAddress, coin:ContractAddress, amount:u256);
     
+    //  native  token can be withdrawn up to amount specified to be eligible of being router
+    fn router_withdraw(ref self: TContractState, coin: ContractAddress, amount: u256, receiver:ContractAddress);
+    
+    // register router so the required amount is held while he is router
+    fn register_router(ref self: TContractState);
+
+    // if router wish to bind new signers
+    fn transfer_to_core(ref self: TContractState, router:ContractAddress,token:ContractAddress, amount:u256) -> u256;
+
+    fn add_router_binding(ref self: TContractState, signer: ContractAddress);
+    fn get_base_token(self:@TContractState)-> ContractAddress;
+
+    fn grant_access_to_executor(ref self: TContractState);
+    fn set_executor(ref self: TContractState, new_executor:ContractAddress);
+
+
+
 }
 
 
