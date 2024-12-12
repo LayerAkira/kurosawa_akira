@@ -104,8 +104,6 @@ mod LayerAkiraCore {
                 fee_recipient:ContractAddress,
                 max_slow_mode_delay:SlowModeDelay, 
                 withdraw_action_cost:u32, // propably u16
-                exchange_invoker:ContractAddress,
-                min_to_route:u256, // minimum amount neccesary to start to provide 
                 owner:ContractAddress) {
         self.max_slow_mode_delay.write(max_slow_mode_delay);
 

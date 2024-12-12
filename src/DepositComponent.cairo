@@ -3,6 +3,7 @@ use starknet::ContractAddress;
 #[starknet::interface]
 trait IDeposit<TContractState> {
     fn deposit(ref self: TContractState, receiver:ContractAddress, token:ContractAddress, amount:u256);
+    fn deposit_s(ref self: TContractState, token:ContractAddress, amount:u256);
 }
 
 #[starknet::component]
@@ -49,6 +50,8 @@ mod deposit_component {
             b_contract.mint(receiver, amount, token);
             self.emit(Deposit{receiver:receiver, token:token, funder:caller, amount:amount});
         }
+
+        fn deposit_s(ref self: ComponentState<TContractState>, token:ContractAddress, amount:u256) { self.deposit(get_caller_address(), token, amount);}
 
 
 

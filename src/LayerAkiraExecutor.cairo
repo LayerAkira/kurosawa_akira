@@ -1,16 +1,13 @@
-use starknet::{ContractAddress};
-use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
-use kurosawa_akira::NonceComponent::{SignedIncreaseNonce, IncreaseNonce};
-    
-    
-
-
 #[starknet::contract]
 mod LayerAkiraExecutor {
     use kurosawa_akira::BaseTradeComponent::base_trade_component as  base_trade_component;
+    use kurosawa_akira::SORTradeComponent::sor_trade_component as  sor_trade_component;
+    
     use starknet::{ContractAddress, get_caller_address, get_tx_info};
 
     use base_trade_component::InternalBaseOrderTradable;
+    use sor_trade_component::InternalSORTradable;
+
     use kurosawa_akira::LayerAkiraCore::{ILayerAkiraCoreDispatcherTrait, ILayerAkiraCoreDispatcher};
 
     use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
@@ -22,21 +19,23 @@ mod LayerAkiraExecutor {
     
     
     component!(path: base_trade_component,storage: base_trade_s, event:BaseTradeEvent);
+    component!(path: sor_trade_component,storage: sor_trade_s, event:SORTradeEvent);
     
 
     #[abi(embed_v0)]
     impl BaseOrderTradableImpl = base_trade_component::BaseTradable<ContractState>;
+    #[abi(embed_v0)]
+    impl SORTradableImpl = sor_trade_component::SORTradable<ContractState>;
     
     #[storage]
     struct Storage {
         #[substorage(v0)]
         base_trade_s: base_trade_component::Storage,
+        #[substorage(v0)]
+        sor_trade_s: sor_trade_component::Storage,
+        
         owner:ContractAddress,
         exchange_invokers: starknet::storage::Map::<ContractAddress, bool>,
-
-        hash_lock:felt252,
-        scheduled_taker_order:Order,
-        router_sign: (felt252,felt252)
     }
 
 
@@ -62,7 +61,7 @@ mod LayerAkiraExecutor {
         self.emit(UpdateExchangeInvoker{invoker, enabled});
     }
 
-        #[external(v0)]
+    #[external(v0)]
     fn update_fee_recipient(ref self: ContractState, new_fee_recipient: ContractAddress) {
         assert!(self.owner.read() == get_caller_address(), "Access denied: update_fee_recipient is only for the owner's use");
         assert!(new_fee_recipient != 0.try_into().unwrap(), "NEW_FEE_RECIPIENT_CANT_BE_ZERO");
@@ -144,30 +143,14 @@ mod LayerAkiraExecutor {
     #[external(v0)]
     fn placeTakerOrder(ref self: ContractState, order: Order, router_sign: (felt252,felt252)) {
         let tx_info = get_tx_info().unbox();
-
-        assert(self.hash_lock.read() == 0, 'Lock already acquired');
-        self.hash_lock.write(tx_info.transaction_hash);
-        assert(order.maker == get_caller_address(), 'Maker must be caller');
-        assert!(self.exchange_invokers.read(tx_info.account_contract_address), "Access denied: Only whitelisted invokers");
-        self.scheduled_taker_order.write(order);
-        self.router_sign.write(router_sign);
+        if (!self.exchange_invokers.read(tx_info.account_contract_address)) {return;}; // shallow termination for client// argent simulation
+        self.sor_trade_s.placeTakerOrder(order,router_sign);
     }
-
     #[external(v0)]
     fn fullfillTakerOrder(ref self: ContractState, mut maker_orders:Array<(SignedOrder,u256)>,
                     total_amount_matched:u256, gas_steps:u32, gas_price:u256) {
-        assert_whitelisted_invokers(@self);
-
-        let tx_info = get_tx_info().unbox();
-        assert(self.hash_lock.read() == tx_info.transaction_hash, 'Lock not acquired');
-        self.base_trade_s.apply_single_taker(
-            SignedOrder{order:self.scheduled_taker_order.read(), sign: array![].span(), router_sign:self.router_sign.read()},
-            maker_orders, total_amount_matched, gas_price, gas_steps, true, true);
-        // release lock
-        self.hash_lock.write(0);
+        assert_whitelisted_invokers(@self); self.sor_trade_s.fullfillTakerOrder(maker_orders, total_amount_matched, gas_steps, gas_price);
     }
-
-
 
     #[derive(Drop, Serde)]
     enum Step {
@@ -207,25 +190,18 @@ mod LayerAkiraExecutor {
         };
     }
 
-    
 
-
-
-    
-
-    
-
-    
     fn assert_whitelisted_invokers(self: @ContractState) {
         assert!(self.exchange_invokers.read(get_caller_address()), "Access denied: Only whitelisted invokers");
     }
-
 
 
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
         BaseTradeEvent: base_trade_component::Event,
+        SORTradeEvent: sor_trade_component::Event,
+
         UpdateExchangeInvoker: UpdateExchangeInvoker,
         BaseTokenUpdate: BaseTokenUpdate,
         FeeRecipientUpdate: FeeRecipientUpdate, 
