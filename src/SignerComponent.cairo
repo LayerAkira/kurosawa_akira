@@ -113,6 +113,7 @@ mod signer_logic_component {
             if (sign_scheme == 'account') {
                 return super::check_sign(trader, message, signature);
             }
+            if (sign_scheme == 'direct') {return true;}
             let verifier_address = self.signer_scheme_to_verifier.read(sign_scheme);
             assert(verifier_address != 0.try_into().unwrap(),'UNKNOWN SIGN SCHEME');
             let dispatcher = super::SignatureVerifierDispatcher { contract_address: verifier_address };
@@ -124,7 +125,7 @@ mod signer_logic_component {
         fn add_signer_scheme(ref self: ComponentState<TContractState>, verifier_address:ContractAddress) {
             let dispatcher = super::SignatureVerifierDispatcher { contract_address: verifier_address };
             let sign_scheme = dispatcher.alias();
-            assert(sign_scheme != 'account' && sign_scheme != 'ecdsa curve', 'ALREADY SPECIALIZED');
+            assert(sign_scheme != 'account' && sign_scheme != 'ecdsa curve' && sign_scheme != 'direct', 'ALREADY SPECIALIZED');
             assert(self.signer_scheme_to_verifier.read(sign_scheme) == 0.try_into().unwrap(), 'ALREADY SPECIALIZED');
             self.signer_scheme_to_verifier.write(sign_scheme, verifier_address);
             self.emit(NewSignScheme{verifier_address, sign_scheme})

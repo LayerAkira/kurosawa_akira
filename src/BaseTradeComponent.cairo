@@ -171,7 +171,7 @@ mod base_trade_component {
         }
 
         fn apply_single_taker(ref self: ComponentState<TContractState>, signed_taker_order:SignedOrder, mut signed_maker_orders:Array<(SignedOrder,u256)>,
-                    total_amount_matched:u256, gas_price:u256,  cur_gas_per_action:u32, as_taker_completed:bool, skip_taker_signature_check:bool)  -> bool{
+                    total_amount_matched:u256, gas_price:u256,  cur_gas_per_action:u32, as_taker_completed:bool)  -> bool{
             
             let (exchange, trades): (ContractAddress, u16) = (get_contract_address(), signed_maker_orders.len().try_into().unwrap());
             let core = ILayerAkiraCoreDispatcher {contract_address:self.core_contract.read() };
@@ -188,7 +188,7 @@ mod base_trade_component {
                                 
             let mut expected_amount_spend = if taker_order.flags.external_funds  {
                 // HOW to deal with PPL that create AA that force exception in implementation?
-                if (!skip_taker_signature_check && !core.check_sign(taker_order.maker, taker_hash, signed_taker_order.sign, taker_order.sign_scheme)) {0}
+                if (!core.check_sign(taker_order.maker, taker_hash, signed_taker_order.sign, taker_order.sign_scheme)) {0}
                 else {
                     if !self._prepare_router_taker(taker_order, total_amount_matched, exchange, trades, gas_price, cur_gas_per_action) {0} else {total_amount_matched}
                 }

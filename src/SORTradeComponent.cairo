@@ -64,7 +64,7 @@ mod sor_trade_component {
             let mut base_trade = get_dep_component_mut!(ref self, BaseTrade);
             base_trade.apply_single_taker(
                 SignedOrder{order:self.scheduled_taker_order.read(), sign: array![].span(), router_sign:router_signature},
-                maker_orders, total_amount_matched, gas_price, gas_steps, true, true);
+                maker_orders, total_amount_matched, gas_price, gas_steps, true);
             // release lock
             self.atomic_taker_info.write((0, (0,0)));
         }
