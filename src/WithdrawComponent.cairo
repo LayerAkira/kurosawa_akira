@@ -133,7 +133,7 @@ mod withdraw_component {
             assert!(get_caller_address() == withdraw.maker, "WRONG_MAKER: withdraw maker ({}) should be equal caller ({})", withdraw.maker, get_caller_address());
             assert!(withdraw.amount > 0, "WITHDRAW_CANT_BE_ZERO");
             assert!(withdraw.receiver != 0.try_into().unwrap(), "RECIPIENT_CANT_BE_ZERO");
-            
+            assert!(withdraw.sign_scheme == '', "Should not be specified");
             let key = (withdraw.token, withdraw.maker);            
             let (_, w_prev): (SlowModeDelay, Withdraw)  = self.pending_reqs.read(key);
             let w_hash = withdraw.get_message_hash(withdraw.maker);

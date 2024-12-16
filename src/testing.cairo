@@ -32,15 +32,16 @@ mod tests_deposit_and_withdrawal_and_nonce {
         deposit(trader, amount_deposit, eth_addr, core_contract); 
     }
 
-    fn get_withdraw(trader:ContractAddress, amount:u256, token:ContractAddress, akira:ILayerAkiraCoreDispatcher, salt:felt252)-> Withdraw {
+    fn get_withdraw(trader:ContractAddress, amount:u256, token:ContractAddress, akira:ILayerAkiraCoreDispatcher, 
+                salt:felt252, sign_scheme:felt252)-> Withdraw {
         let gas_fee = prepare_double_gas_fee_native(akira, 100);
         let amount = if token == akira.get_wrapped_native_token() {amount} else {amount};
-        return Withdraw {maker:trader, token, amount, salt, gas_fee, receiver:trader, sign_scheme: 'ecdsa curve'};
+        return Withdraw {maker:trader, token, amount, salt, gas_fee, receiver:trader, sign_scheme};
         
     }
 
     fn request_onchain_withdraw(trader:ContractAddress, amount:u256, token:ContractAddress, akira:ILayerAkiraCoreDispatcher, salt:felt252)-> (Withdraw,SlowModeDelay) {
-        let withdraw = get_withdraw(trader, amount, token, akira, salt);
+        let withdraw = get_withdraw(trader, amount, token, akira, salt, '');
         start_cheat_caller_address(akira.contract_address, trader); akira.request_onchain_withdraw(withdraw); stop_cheat_caller_address(akira.contract_address);
         let (request_time, w) = akira.get_pending_withdraw(trader, token);
         assert(withdraw == w, 'WRONG_WTIHDRAW_RETURNED');
@@ -147,7 +148,7 @@ mod tests_deposit_and_withdrawal_and_nonce {
         
         tfer_eth_funds_to(trader, amount_deposit); deposit(trader, amount_deposit, eth_addr, akira); 
         
-        let w = get_withdraw(trader, amount_deposit, eth_addr, akira, 0);
+        let w = get_withdraw(trader, amount_deposit, eth_addr, akira, 0, 'ecdsa curve');
 
         start_cheat_caller_address(akira.contract_address, trader); akira.bind_to_signer(pub_addr.try_into().unwrap()); stop_cheat_caller_address(akira.contract_address);
        
@@ -169,7 +170,7 @@ mod tests_deposit_and_withdrawal_and_nonce {
         
         tfer_eth_funds_to(trader, amount_deposit); deposit(trader, amount_deposit, eth_addr, akira); 
         
-        let w = get_withdraw(trader, amount_deposit, eth_addr, akira, 0);
+        let w = get_withdraw(trader, amount_deposit, eth_addr, akira, 0,'ecdsa curve');
         
         start_cheat_caller_address(akira.contract_address, trader); akira.bind_to_signer(pub_addr.try_into().unwrap()); stop_cheat_caller_address(akira.contract_address);
         start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
