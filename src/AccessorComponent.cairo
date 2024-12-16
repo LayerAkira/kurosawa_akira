@@ -72,7 +72,7 @@ mod accessor_logic_component {
             assert!(self.user_to_executor_granted.read(user) != executor, "Executor access already granted");
             self.user_to_executor_granted.write(user, executor);
             self.user_to_executor_epoch.write(user, self.executor_epoch.read());
-            self.emit(ApprovalGranted{executor, user})
+            self.emit(ApprovalGranted{executor, user, epoch:self.executor_epoch.read() })
         }
     }
 
@@ -99,7 +99,7 @@ mod accessor_logic_component {
     #[derive(Drop, starknet::Event)]
     struct ExecutorChanged {new_executor:ContractAddress, new_epoch:u16}
     #[derive(Drop, starknet::Event)]
-    struct ApprovalGranted {user:ContractAddress, #[key] executor:ContractAddress}
+    struct ApprovalGranted {user:ContractAddress, #[key] executor:ContractAddress, epoch:u16}
 
         #[event]
     #[derive(Drop, starknet::Event)]
