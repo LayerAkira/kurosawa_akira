@@ -99,7 +99,7 @@ mod accessor_logic_component {
     #[derive(Drop, starknet::Event)]
     struct ExecutorChanged {new_executor:ContractAddress, new_epoch:u16}
     #[derive(Drop, starknet::Event)]
-    struct ApprovalGranted {user:ContractAddress, #[key] executor:ContractAddress, epoch:u16}
+    struct ApprovalGranted {#[key] executor:ContractAddress, user:ContractAddress, epoch:u16}
 
         #[event]
     #[derive(Drop, starknet::Event)]

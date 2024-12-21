@@ -82,6 +82,14 @@ mod LayerAkiraExecutor {
     }
 
     #[external(v0)]
+    fn get_owner(self: @ContractState) -> ContractAddress {self.owner.read()}
+    #[external(v0)]
+    fn get_core(self: @ContractState) -> ContractAddress {self.base_trade_s.core_contract.read()}
+    #[external(v0)]
+    fn get_router(self: @ContractState) -> ContractAddress {self.base_trade_s.router_contract.read()}
+
+
+    #[external(v0)]
     fn update_exchange_invokers(ref self: ContractState, invoker:ContractAddress, enabled:bool) {
         assert!(self.owner.read() == get_caller_address(), "Access denied: update_exchange_invokers is only for the owner's use");
         self.exchange_invokers.write(invoker, enabled);
@@ -146,7 +154,7 @@ mod LayerAkiraExecutor {
     #[external(v0)]
     fn apply_single_execution_step(ref self: ContractState, taker_order:SignedOrder, maker_orders: Array<(SignedOrder,u256)>, total_amount_matched:u256, gas_price:u256, cur_gas_per_action:u32,as_taker_completed:bool, ) -> bool {
         assert_whitelisted_invokers(@self);
-        return self.base_trade_s.apply_single_taker(taker_order, maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed);
+        return self.base_trade_s.apply_single_taker(taker_order, maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed, false);
     }
 
     #[external(v0)]
@@ -157,7 +165,7 @@ mod LayerAkiraExecutor {
         loop {
             match bulk.pop_front(){
                 Option::Some((taker_order, maker_orders, total_amount_matched, as_taker_completed)) => {
-                    res.append(self.base_trade_s.apply_single_taker(taker_order, maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed));
+                    res.append(self.base_trade_s.apply_single_taker(taker_order, maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed, false));
 
                 },
                 Option::None(_) => {break;}

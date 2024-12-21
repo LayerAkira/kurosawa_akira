@@ -230,7 +230,7 @@ mod LayerAkiraCore {
 
     #[external(v0)]
     fn apply_withdraw(ref self: ContractState, signed_withdraw: SignedWithdraw, gas_price:u256, cur_gas_per_action:u32) {
-        self.accessor_s.only_owner();
+        self.accessor_s.only_executor();
         self.accessor_s.only_authorized_by_user(signed_withdraw.withdraw.maker);
         self.withdraw_s.apply_withdraw(signed_withdraw, gas_price, cur_gas_per_action);
         self.withdraw_s.gas_steps.write(cur_gas_per_action);
@@ -238,7 +238,7 @@ mod LayerAkiraCore {
 
     #[external(v0)]
     fn apply_withdraws(ref self: ContractState, mut signed_withdraws: Array<SignedWithdraw>, gas_price:u256, cur_gas_per_action:u32) {
-        self.accessor_s.only_owner();
+        self.accessor_s.only_executor();
         loop {
             match signed_withdraws.pop_front(){
                 Option::Some(signed_withdraw) => {
