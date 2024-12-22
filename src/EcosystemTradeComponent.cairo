@@ -72,7 +72,7 @@ mod ecosystem_trade_component {
             let mut first_iter = true;
             assert!(!use_prev_maker, "WRONG_FIRST_ITER");
 
-            let fee_recipient = balance.fee_recipient.read();
+            let fee_recipient = balance.get_fee_recipient();
 
             loop {
                 match iters.pop_front(){
@@ -130,7 +130,7 @@ mod ecosystem_trade_component {
         }
 
         fn apply_single_taker(ref self: ComponentState<TContractState>, signed_taker_order:SignedOrder, mut signed_maker_orders:Array<(SignedOrder,u256)>,
-                    total_amount_matched:u256, gas_price:u256,  cur_gas_per_action:u32, as_taker_completed:bool)  -> bool{
+                    total_amount_matched:u256, gas_price:u256,  cur_gas_per_action:u32, as_taker_completed:bool, skip_taker_signature_check:bool)  -> bool{
             
             let (exchange, trades): (ContractAddress, u16) = (get_contract_address(), signed_maker_orders.len().try_into().unwrap());
             let mut balancer = self.get_balancer_mut();
@@ -147,7 +147,7 @@ mod ecosystem_trade_component {
                                 
             let mut expected_amount_spend = if taker_order.flags.external_funds  {
                 // HOW to deal with PPL that create AA that force exception in implementation?
-                if !check_sign(taker_order.maker, taker_hash, signed_taker_order.sign) {0}
+                if (!skip_taker_signature_check && !check_sign(taker_order.maker, taker_hash, signed_taker_order.sign)) {0}
                 else {
                     if !self._prepare_router_taker(taker_order, total_amount_matched, exchange, trades, gas_price, cur_gas_per_action) {0} else {total_amount_matched}
                 }

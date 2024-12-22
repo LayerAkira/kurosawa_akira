@@ -8,7 +8,7 @@ mod tests_deposit_and_withdrawal_and_nonce {
     use core::{traits::Into,array::ArrayTrait,option::OptionTrait,traits::TryInto,result::ResultTrait};
     use starknet::{ContractAddress,info::get_block_number,get_caller_address};
     use debug::PrintTrait;
-    use snforge_std::{CheatTarget, start_prank,start_warp,stop_warp,stop_prank,declare,ContractClassTrait, start_roll, stop_roll};
+    use snforge_std::{start_cheat_caller_address,stop_cheat_caller_address, start_cheat_block_timestamp,stop_cheat_block_timestamp, declare,ContractClassTrait, start_cheat_block_number, stop_cheat_block_number};
     use core::dict::{Felt252Dict, Felt252DictTrait, SquashedFelt252Dict};
     use kurosawa_akira::LayerAkira::LayerAkira;
     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait,IERC20Dispatcher};
@@ -44,7 +44,7 @@ mod tests_deposit_and_withdrawal_and_nonce {
 
     fn request_onchain_withdraw(trader:ContractAddress, amount:u256, token:ContractAddress, akira:ILayerAkiraDispatcher, salt:felt252)-> (Withdraw,SlowModeDelay) {
         let withdraw = get_withdraw(trader, amount, token, akira, salt);
-        start_prank(CheatTarget::One(akira.contract_address), trader); akira.request_onchain_withdraw(withdraw); stop_prank(CheatTarget::One(akira.contract_address));
+        start_cheat_caller_address(akira.contract_address, trader); akira.request_onchain_withdraw(withdraw); stop_cheat_caller_address(akira.contract_address);
         let (request_time, w) = akira.get_pending_withdraw(trader, token);
         assert(withdraw == w, 'WRONG_WTIHDRAW_RETURNED');
         return (withdraw, request_time);
@@ -58,13 +58,13 @@ mod tests_deposit_and_withdrawal_and_nonce {
         let (akira_total, akira_user) = (akira.total_supply(token), akira.balanceOf(trader,token));
 
         if use_delay{
-            start_roll(CheatTarget::One(akira.contract_address), delay.block + req_time.block); 
-            start_warp(CheatTarget::One(akira.contract_address), req_time.ts + delay.ts);
+            start_cheat_block_number(akira.contract_address, delay.block + req_time.block); 
+            start_cheat_block_timestamp(akira.contract_address, req_time.ts + delay.ts);
         }
-        start_prank(CheatTarget::One(akira.contract_address), trader); akira.apply_onchain_withdraw(token, akira.get_withdraw_hash(w)); stop_prank(CheatTarget::One(akira.contract_address));
+        start_cheat_caller_address(akira.contract_address, trader); akira.apply_onchain_withdraw(token, akira.get_withdraw_hash(w)); stop_cheat_caller_address(akira.contract_address);
         if use_delay {
-             stop_roll(CheatTarget::One(akira.contract_address));
-             stop_warp(CheatTarget::One(akira.contract_address));
+             stop_cheat_block_number(akira.contract_address);
+             stop_cheat_block_timestamp(akira.contract_address);
         }
 
         assert(erc.balanceOf(trader) - balance_trader == w.amount, 'WRONG_AMOUNT_RECEIVED');
@@ -124,9 +124,9 @@ mod tests_deposit_and_withdrawal_and_nonce {
         let erc = IERC20Dispatcher{contract_address: eth_addr};
         let b = erc.balanceOf(trader);
 
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
+        start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
         akira.apply_withdraw(SignedWithdraw{withdraw, sign:(0.into(), 0.into())}, 100, withdraw.gas_fee.gas_per_action);
-        stop_prank(CheatTarget::One(akira.contract_address));
+        stop_cheat_caller_address(akira.contract_address);
         assert(amount_deposit - withdraw.gas_fee.gas_per_action.into() * 100 == erc.balanceOf(trader) - b ,'WRONG_SEND');
         assert(akira.balanceOf(trader, eth_addr) == 0,'WRONG_BURN');
     }
@@ -142,11 +142,11 @@ mod tests_deposit_and_withdrawal_and_nonce {
         
         let w = get_withdraw(trader, amount_deposit, eth_addr, akira, 0);
 
-        start_prank(CheatTarget::One(akira.contract_address), trader); akira.bind_to_signer(pub_addr.try_into().unwrap()); stop_prank(CheatTarget::One(akira.contract_address));
+        start_cheat_caller_address(akira.contract_address, trader); akira.bind_to_signer(pub_addr.try_into().unwrap()); stop_cheat_caller_address(akira.contract_address);
        
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
+        start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
         akira.apply_withdraw(SignedWithdraw{withdraw:w, sign: sign(akira.get_withdraw_hash(w), pub_addr, priv)}, 100,w.gas_fee.gas_per_action);
-        stop_prank(CheatTarget::One(akira.contract_address));
+        stop_cheat_caller_address(akira.contract_address);
     }    
 
     #[test]
@@ -161,14 +161,14 @@ mod tests_deposit_and_withdrawal_and_nonce {
         
         let w = get_withdraw(trader, amount_deposit, eth_addr, akira, 0);
         
-        start_prank(CheatTarget::One(akira.contract_address), trader); akira.bind_to_signer(pub_addr.try_into().unwrap()); stop_prank(CheatTarget::One(akira.contract_address));
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
+        start_cheat_caller_address(akira.contract_address, trader); akira.bind_to_signer(pub_addr.try_into().unwrap()); stop_cheat_caller_address(akira.contract_address);
+        start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
         
         let sign = sign(akira.get_withdraw_hash(w), pub_addr, priv);
         akira.apply_withdraw(SignedWithdraw{withdraw:w, sign}, 100, w.gas_fee.gas_per_action);
         akira.apply_withdraw(SignedWithdraw{withdraw:w, sign}, 100, w.gas_fee.gas_per_action);
         
-        stop_prank(CheatTarget::One(akira.contract_address));
+        stop_cheat_caller_address(akira.contract_address);
     } 
     #[test]
     #[fork("block_based")]
@@ -179,12 +179,12 @@ mod tests_deposit_and_withdrawal_and_nonce {
         tfer_eth_funds_to(trader, amount_deposit); deposit(trader, amount_deposit, eth_addr, akira); 
         let nonce = IncreaseNonce{maker:trader ,new_nonce:1, gas_fee:prepare_double_gas_fee_native(akira,100), salt:0};
 
-        start_prank(CheatTarget::One(akira.contract_address), trader); akira.bind_to_signer(pub_addr.try_into().unwrap()); stop_prank(CheatTarget::One(akira.contract_address));
+        start_cheat_caller_address(akira.contract_address, trader); akira.bind_to_signer(pub_addr.try_into().unwrap()); stop_cheat_caller_address(akira.contract_address);
 
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
+        start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
         let sign = sign(akira.get_increase_nonce_hash(nonce), pub_addr, priv);
         akira.apply_increase_nonce(SignedIncreaseNonce{increase_nonce:nonce, sign}, 100, nonce.gas_fee.gas_per_action);        
-        stop_prank(CheatTarget::One(akira.contract_address));
+        stop_cheat_caller_address(akira.contract_address);
     } 
 
 }
@@ -198,7 +198,7 @@ mod test_common_trade {
     use core::{traits::Into,array::ArrayTrait,option::OptionTrait,traits::TryInto,result::ResultTrait};
     use starknet::{ContractAddress,info::get_block_number,get_caller_address};
     use debug::PrintTrait;
-    use snforge_std::{CheatTarget,start_prank,start_warp,stop_warp,stop_prank,declare,ContractClassTrait, start_roll, stop_roll};
+    use snforge_std::{start_cheat_caller_address,start_cheat_block_timestamp,stop_cheat_block_timestamp,stop_cheat_caller_address,declare,ContractClassTrait, start_cheat_block_number, stop_cheat_block_number};
     use core::dict::{Felt252Dict, Felt252DictTrait, SquashedFelt252Dict};
     use kurosawa_akira::LayerAkira::LayerAkira;
     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait,IERC20Dispatcher};
@@ -221,8 +221,8 @@ mod test_common_trade {
         tfer_eth_funds_to(tr1, 2 * eth_amount); tfer_eth_funds_to(tr2, 2 * eth_amount);
         tfer_usdc_funds_to(tr1, 2 *  usdc_amount); tfer_usdc_funds_to(tr2, 2 * usdc_amount);
 
-        start_prank(CheatTarget::One(akira.contract_address), tr1); akira.bind_to_signer(pub_addr1.try_into().unwrap()); stop_prank(CheatTarget::One(akira.contract_address));
-        start_prank(CheatTarget::One(akira.contract_address), tr2); akira.bind_to_signer(pub_addr2.try_into().unwrap()); stop_prank(CheatTarget::One(akira.contract_address));
+        start_cheat_caller_address(akira.contract_address, tr1); akira.bind_to_signer(pub_addr1.try_into().unwrap()); stop_cheat_caller_address(akira.contract_address);
+        start_cheat_caller_address(akira.contract_address, tr2); akira.bind_to_signer(pub_addr2.try_into().unwrap()); stop_cheat_caller_address(akira.contract_address);
         
         return (akira, tr1, tr2, eth, usdc, eth_amount, usdc_amount);
     }
@@ -289,21 +289,21 @@ mod test_common_trade {
     fn register_router(akira:ILayerAkiraDispatcher, funds_account:ContractAddress, signer:ContractAddress, router_address:ContractAddress) {
         let (route_amount, base) = (akira.get_route_amount(), akira.get_wrapped_native_token());
         
-        start_prank(CheatTarget::One(base), funds_account);
+        start_cheat_caller_address(base, funds_account);
         IERC20Dispatcher{contract_address:base}.increaseAllowance(akira.contract_address,  route_amount);
-        stop_prank(CheatTarget::One(base));
+        stop_cheat_caller_address(base);
         
-        start_prank(CheatTarget::One(akira.contract_address), funds_account);
+        start_cheat_caller_address(akira.contract_address, funds_account);
         akira.router_deposit(router_address, base, route_amount);
-        stop_prank(CheatTarget::One(akira.contract_address));
+        stop_cheat_caller_address(akira.contract_address);
         
         
-        start_prank(CheatTarget::One(akira.contract_address), router_address);
+        start_cheat_caller_address(akira.contract_address, router_address);
         akira.register_router();
         
         akira.add_router_binding(signer);
 
-        stop_prank(CheatTarget::One(akira.contract_address));
+        stop_cheat_caller_address(akira.contract_address);
         
     }
 
@@ -318,7 +318,7 @@ mod tests_ecosystem_trade {
     use core::{traits::Into,array::ArrayTrait,option::OptionTrait,traits::TryInto,result::ResultTrait};
     use starknet::{ContractAddress,info::get_block_number,get_caller_address};
     use debug::PrintTrait;
-    use snforge_std::{CheatTarget,start_prank,start_warp,stop_warp,stop_prank,declare,ContractClassTrait, start_roll, stop_roll};
+    use snforge_std::{start_cheat_caller_address,start_cheat_block_timestamp,stop_cheat_block_timestamp,stop_cheat_caller_address,declare,ContractClassTrait, start_cheat_block_number, stop_cheat_block_number};
     use core::dict::{Felt252Dict, Felt252DictTrait, SquashedFelt252Dict};
     use kurosawa_akira::LayerAkira::LayerAkira;
     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait,IERC20Dispatcher};
@@ -354,7 +354,7 @@ mod tests_ecosystem_trade {
         let buy_limit_flags = get_order_flags(false, false, false, false, true);
         let buy_order = spawn_order(akira, tr2, usdc_amount, eth_amount, buy_limit_flags, 2, zero_router());
 
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
+        start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
         akira.apply_ecosystem_trades(array![(buy_order,false)], array![sell_order], array![(1,false)], array![0], 100, get_swap_gas_cost());
         let maker_fee = get_feeable_qty(sell_order.order.fee.trade_fee, usdc_amount, true);
         assert(akira.balanceOf(sell_order.order.maker, usdc) == usdc_amount - maker_fee,'WRONG_MATCH_RECIEVE_USDC');
@@ -366,7 +366,7 @@ mod tests_ecosystem_trade {
         assert(akira.balanceOf(sell_order.order.maker, eth) == 0, 'WRONG_MATCH_SEND_ETH');
        
         
-        stop_prank(CheatTarget::One(akira.contract_address));
+        stop_cheat_caller_address(akira.contract_address);
     }  
 
 
@@ -387,13 +387,13 @@ mod tests_ecosystem_trade {
         let buy_limit_flags = get_order_flags(false, false, true, false, false);
 
         let buy_order = spawn_order(akira, tr2, usdc_amount, eth_amount, buy_limit_flags, 0,  zero_router());
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
+        start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
 
         akira.apply_ecosystem_trades(array![(sell_order, false)], array![buy_order], array![(1,false)], array![0], 100, get_swap_gas_cost());
 
         //0 cause remaining eth was spent on gas
         assert!(akira.balanceOf(sell_order.order.maker, eth) == 0, "WRONG_MATCH_ETH_SELL");
-        stop_prank(CheatTarget::One(akira.contract_address));
+        stop_cheat_caller_address(akira.contract_address);
     }  
 
 
@@ -409,7 +409,7 @@ mod tests_ecosystem_trade {
         let buy_limit_flags = get_order_flags(false, false, false, false, true);
         let buy_order = spawn_order(akira, tr2, usdc_amount, eth_amount, buy_limit_flags, 2, zero_router());
 
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
+        start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
         akira.apply_single_execution_step(buy_order, array![(sell_order, 0)], 0, 100, get_swap_gas_cost(), true);
         let maker_fee = get_feeable_qty(sell_order.order.fee.trade_fee, usdc_amount, true);
         assert(akira.balanceOf(sell_order.order.maker, usdc) == usdc_amount - maker_fee,'WRONG_MATCH_RECIEVE_USDC');
@@ -420,7 +420,7 @@ mod tests_ecosystem_trade {
         assert(akira.balanceOf(buy_order.order.maker, eth) == eth_amount - gas_fee - taker_fee, 'WRONG_MATCH_RECIEVE_ETH');
         assert(akira.balanceOf(sell_order.order.maker, eth) == 0, 'WRONG_MATCH_SEND_ETH');
        
-        stop_prank(CheatTarget::One(akira.contract_address));
+        stop_cheat_caller_address(akira.contract_address);
     }  
 
     #[test]
@@ -439,13 +439,13 @@ mod tests_ecosystem_trade {
         let buy_limit_flags = get_order_flags(false, false, true, false, false);
 
         let buy_order = spawn_order(akira, tr2, usdc_amount, eth_amount, buy_limit_flags, 0,  zero_router());
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
+        start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
 
         akira.apply_single_execution_step(sell_order, array![(buy_order,0)], 0, 100, get_swap_gas_cost(), false);
 
         //0 cause remaining eth was spent on gas
         assert!(akira.balanceOf(sell_order.order.maker, eth) == 0, "WRONG_MATCH_ETH_SELL");
-        stop_prank(CheatTarget::One(akira.contract_address));
+        stop_cheat_caller_address(akira.contract_address);
     }  
 
 
@@ -465,13 +465,13 @@ mod tests_ecosystem_trade {
         let buy_limit_flags = get_order_flags(false, false, true, false, false);
 
         let buy_order = spawn_order(akira, tr2, usdc_amount, eth_amount, buy_limit_flags, 0,  zero_router());
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
+        start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
 
         akira.apply_ecosystem_trades(array![(sell_order, false)], array![buy_order], array![(1,false)], array![eth_amount - gas_required], 100, get_swap_gas_cost());
 
         //0 cause remaining eth was spent on gas
         assert!(akira.balanceOf(sell_order.order.maker, eth) == 0 , "WRONG_MATCH_ETH_SELL");
-        stop_prank(CheatTarget::One(akira.contract_address));
+        stop_cheat_caller_address(akira.contract_address);
     }  
 
 }
@@ -485,7 +485,7 @@ mod tests_router_trade {
     use core::{traits::Into,array::ArrayTrait,option::OptionTrait,traits::TryInto,result::ResultTrait};
     use starknet::{ContractAddress,info::get_block_number,get_caller_address};
     use debug::PrintTrait;
-    use snforge_std::{CheatTarget,start_prank,start_warp,stop_warp,stop_prank,declare,ContractClassTrait, start_roll, stop_roll};
+    use snforge_std::{start_cheat_caller_address,start_cheat_block_timestamp,stop_cheat_block_timestamp,stop_cheat_caller_address,declare,ContractClassTrait, start_cheat_block_number, stop_cheat_block_number};
     use core::dict::{Felt252Dict, Felt252DictTrait, SquashedFelt252Dict};
     use kurosawa_akira::LayerAkira::LayerAkira;
     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait,IERC20Dispatcher};
@@ -503,9 +503,9 @@ mod tests_router_trade {
     use super::test_common_trade:: {prepare, get_maker_taker_fees, get_swap_gas_cost,spawn_order, spawn_double_qty_order, get_zero_router_fee, zero_router,register_router};
     
     fn grant_allowances(akira:ILayerAkiraDispatcher, trader:ContractAddress, token:ContractAddress, amount:u256) {
-        start_prank(CheatTarget::One(token), trader);
+        start_cheat_caller_address((token), trader);
         IERC20Dispatcher{contract_address:token}.increaseAllowance(akira.contract_address,amount);
-        stop_prank(CheatTarget::One(token));
+        stop_cheat_caller_address((token));
     }
 
     // router ones
@@ -531,9 +531,9 @@ mod tests_router_trade {
         let buy_order = spawn_order(akira, tr2, usdc_amount, eth_amount, 
                 get_order_flags(false, false, false, false, true), 2, zero_router());
         
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
+        start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
         akira.apply_single_execution_step(buy_order, array![(sell_order,0)], usdc_amount*eth_amount / buy_order.order.qty.base_asset, 100,get_swap_gas_cost(), false);
-        stop_prank(CheatTarget::One(akira.contract_address));
+        stop_cheat_caller_address(akira.contract_address);
     }  
 
 
@@ -575,9 +575,9 @@ mod tests_router_trade {
 
 
 
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
+        start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
         assert(akira.apply_single_execution_step(buy_order, array![(sell_order, 0)],  (usdc_amount) * eth_amount / buy_order.order.qty.base_asset, 100, get_swap_gas_cost(), false), 'FAILED_MATCH');
-        stop_prank(CheatTarget::One(akira.contract_address));
+        stop_cheat_caller_address(akira.contract_address);
 
 
 
@@ -631,9 +631,9 @@ mod tests_router_trade {
         let taker = sell_order.order.maker;
         let (eth_b, usdc_b, router_b) = (eth_erc.balanceOf(taker), usdc_erc.balanceOf(taker), akira.balance_of_router(router, usdc));
 
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
+        start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
         assert(akira.apply_single_execution_step(sell_order, array![(buy_order,0)],  eth_amount, 100, get_swap_gas_cost(), false), 'FAILED_MATCH');
-        stop_prank(CheatTarget::One(akira.contract_address));
+        stop_cheat_caller_address(akira.contract_address);
          
         assert(akira.balanceOf(sell_order.order.maker, eth) == 0, 'WRONG_ROUTER_T_BALANCE_ETH');
         assert(akira.balanceOf(sell_order.order.maker, usdc) == 0, 'WRONG_ROUTER_T_BALANCE_USDC');
@@ -653,10 +653,10 @@ mod tests_router_trade {
 
 
 
-        start_prank(CheatTarget::One(akira.contract_address), router);
+        start_cheat_caller_address(akira.contract_address, router);
         akira.router_withdraw(usdc, router_fee, router);
         assert(usdc_erc.balanceOf(router) == router_fee, 'WRONG_ROUTER_WITHDRAW');
-        stop_prank(CheatTarget::One(akira.contract_address));
+        stop_cheat_caller_address(akira.contract_address);
 
         
     }  
@@ -703,9 +703,9 @@ mod tests_router_trade {
         let (eth_b, usdc_b, router_b) = (eth_erc.balanceOf(taker), usdc_erc.balanceOf(taker), akira.balance_of_router(router, usdc));
 
 
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
+        start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
         assert(akira.apply_single_execution_step(buy_order, array![(sell_order, 0)],  usdc_amount  + taker_fee + router_fee, 100, get_swap_gas_cost(), false), 'FAILED_MATCH');
-        stop_prank(CheatTarget::One(akira.contract_address));
+        stop_cheat_caller_address(akira.contract_address);
 
 
         
@@ -751,9 +751,9 @@ mod tests_router_trade {
 
         let router_b = akira.balance_of_router(router, eth);
 
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
+        start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
         assert(!akira.apply_single_execution_step(buy_order, array![(sell_order, 0)],  usdc_amount * eth_amount / buy_order.order.qty.base_asset, 100, get_swap_gas_cost(), false), 'EXPECTS_FAIL');
-        stop_prank(CheatTarget::One(akira.contract_address));
+        stop_cheat_caller_address(akira.contract_address);
         let charge = 2 * gas_fee * akira.get_punishment_factor_bips().into() / 10000;
         assert(router_b - akira.balance_of_router(router, eth) == charge, 'WRONG_RECEIVED');
     }  
@@ -769,7 +769,7 @@ mod tests_quote_qty_ecosystem_trade_01 {
     use core::{traits::Into,array::ArrayTrait,option::OptionTrait,traits::TryInto,result::ResultTrait};
     use starknet::{ContractAddress,info::get_block_number,get_caller_address};
     use debug::PrintTrait;
-    use snforge_std::{CheatTarget,start_prank,start_warp,stop_warp,stop_prank,declare,ContractClassTrait, start_roll, stop_roll};
+    use snforge_std::{start_cheat_caller_address,start_cheat_block_timestamp,stop_cheat_block_timestamp,stop_cheat_caller_address,declare,ContractClassTrait, start_cheat_block_number, stop_cheat_block_number};
     use core::dict::{Felt252Dict, Felt252DictTrait, SquashedFelt252Dict};
     use kurosawa_akira::LayerAkira::LayerAkira;
     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait,IERC20Dispatcher};
@@ -806,13 +806,13 @@ mod tests_quote_qty_ecosystem_trade_01 {
         let buy_limit_flags = get_order_flags(false, false, true, false, false);
 
         let buy_order = spawn_double_qty_order(akira, tr2, usdc_amount, eth_amount, quote_qty_02, buy_limit_flags, 0,  zero_router(), true);
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
+        start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
 
         akira.apply_ecosystem_trades(array![(sell_order, false)], array![buy_order], array![(1,false)], array![0], 100, get_swap_gas_cost());
 
         //0 cause remaining eth was spent on gas
         assert!(akira.balanceOf(sell_order.order.maker, eth) == (usdc_amount - actual_qty) * (eth_amount / usdc_amount), "WRONG_MATCH_ETH_SELL {}, {}", akira.balanceOf(sell_order.order.maker, eth), (usdc_amount - actual_qty) * (eth_amount / usdc_amount));
-        stop_prank(CheatTarget::One(akira.contract_address));
+        stop_cheat_caller_address(akira.contract_address);
     }  
 
 
@@ -873,13 +873,13 @@ mod tests_quote_qty_ecosystem_trade_01 {
         let sell_market_flags = get_order_flags(false, false, true, true, false);
 
         let sell_order = spawn_double_qty_order(akira, tr2, usdc_amount, eth_amount, quote_qty, sell_market_flags, 0,  zero_router(), true);
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
+        start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
 
         akira.apply_ecosystem_trades(array![(buy_order, false)], array![sell_order], array![(1,false)], array![0], 100, get_swap_gas_cost());
 
         //0 cause remaining eth was spent on gas
         assert!(akira.balanceOf(buy_order.order.maker, usdc) == 1, "WRONG_MATCH");
-        stop_prank(CheatTarget::One(akira.contract_address));
+        stop_cheat_caller_address(akira.contract_address);
     }  
 }
 
@@ -892,7 +892,7 @@ mod tests_quote_qty_ecosystem_trade_02 {
     use core::{traits::Into,array::ArrayTrait,option::OptionTrait,traits::TryInto,result::ResultTrait};
     use starknet::{ContractAddress,info::get_block_number,get_caller_address};
     use debug::PrintTrait;
-    use snforge_std::{CheatTarget,start_prank,start_warp,stop_warp,stop_prank,declare,ContractClassTrait, start_roll, stop_roll};
+    use snforge_std::{start_cheat_caller_address,start_cheat_block_timestamp,stop_cheat_block_timestamp,stop_cheat_caller_address,declare,ContractClassTrait, start_cheat_block_number, stop_cheat_block_number};
     use core::dict::{Felt252Dict, Felt252DictTrait, SquashedFelt252Dict};
     use kurosawa_akira::LayerAkira::LayerAkira;
     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait,IERC20Dispatcher};
@@ -910,9 +910,9 @@ mod tests_quote_qty_ecosystem_trade_02 {
     use super::test_common_trade:: {prepare, get_maker_taker_fees, get_swap_gas_cost,spawn_order, spawn_double_qty_order, get_zero_router_fee, zero_router,register_router};
     
     fn grant_allowances(akira:ILayerAkiraDispatcher, trader:ContractAddress, token:ContractAddress, amount:u256) {
-        start_prank(CheatTarget::One(token), trader);
+        start_cheat_caller_address((token), trader);
         IERC20Dispatcher{contract_address:token}.increaseAllowance(akira.contract_address,amount);
-        stop_prank(CheatTarget::One(token));
+        stop_cheat_caller_address((token));
     }
 
     // router ones
@@ -939,14 +939,14 @@ mod tests_quote_qty_ecosystem_trade_02 {
         let buy_limit_flags = get_order_ecosystem_flags(false, false, true, false, false);
 
         let buy_order = spawn_double_qty_order(akira, tr2, usdc_amount, eth_amount, 0, buy_limit_flags, 0,  zero_router(), true);
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
+        start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
 
         akira.apply_ecosystem_trades(array![(sell_order_01, false), (sell_order_02, false)], array![buy_order], array![(1,false), (1,true)], array![0, 0], 100, get_swap_gas_cost());
 
         //0 cause remaining eth was spent on gas
         assert!(akira.balanceOf(sell_order_01.order.maker, eth) == 0, "WRONG_MATCH_ETH_SELL {}, {}", akira.balanceOf(sell_order_01.order.maker, eth), 0);
         assert!(akira.balanceOf(buy_order.order.maker, usdc) == 0, "WRONG_MATCH {}, {}", akira.balanceOf(buy_order.order.maker, usdc), 0);
-        stop_prank(CheatTarget::One(akira.contract_address));
+        stop_cheat_caller_address(akira.contract_address);
     }  
 
 
@@ -992,7 +992,7 @@ mod tests_quote_qty_router_trade_01 {
     use core::{traits::Into,array::ArrayTrait,option::OptionTrait,traits::TryInto,result::ResultTrait};
     use starknet::{ContractAddress,info::get_block_number,get_caller_address};
     use debug::PrintTrait;
-    use snforge_std::{CheatTarget,start_prank,start_warp,stop_warp,stop_prank,declare,ContractClassTrait, start_roll, stop_roll};
+    use snforge_std::{start_cheat_caller_address,start_cheat_block_timestamp,stop_cheat_block_timestamp,stop_cheat_caller_address,declare,ContractClassTrait, start_cheat_block_number, stop_cheat_block_number};
     use core::dict::{Felt252Dict, Felt252DictTrait, SquashedFelt252Dict};
     use kurosawa_akira::LayerAkira::LayerAkira;
     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait,IERC20Dispatcher};
@@ -1010,9 +1010,9 @@ mod tests_quote_qty_router_trade_01 {
     use super::test_common_trade:: {prepare, get_maker_taker_fees, get_swap_gas_cost,spawn_order, spawn_double_qty_order, get_zero_router_fee, zero_router,register_router};
     
     fn grant_allowances(akira:ILayerAkiraDispatcher, trader:ContractAddress, token:ContractAddress, amount:u256) {
-        start_prank(CheatTarget::One(token), trader);
+        start_cheat_caller_address((token), trader);
         IERC20Dispatcher{contract_address:token}.increaseAllowance(akira.contract_address,amount);
-        stop_prank(CheatTarget::One(token));
+        stop_cheat_caller_address((token));
     }
 
     // router ones
@@ -1051,9 +1051,9 @@ mod tests_quote_qty_router_trade_01 {
 
         let actual_matched_qty = if !change_side {(base_qty / price) * expected_qty} else {expected_qty * 1};
 
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
+        start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
         assert(akira.apply_single_execution_step(taker_order, array![(maker_order,0)],  actual_matched_qty, 100, get_swap_gas_cost(), false), 'FAILED_MATCH');
-        stop_prank(CheatTarget::One(akira.contract_address));
+        stop_cheat_caller_address(akira.contract_address);
          
         assert(akira.balanceOf(taker_order.order.maker, eth) == 0, 'WRONG_ROUTER_T_BALANCE_ETH');
         assert(akira.balanceOf(taker_order.order.maker, usdc) == 0, 'WRONG_ROUTER_T_BALANCE_USDC');
@@ -1079,7 +1079,7 @@ mod tests_quote_qty_router_trade_01 {
         }
 
 
-        start_prank(CheatTarget::One(akira.contract_address), router);
+        start_cheat_caller_address(akira.contract_address, router);
         if !change_side{
             let r_b = usdc_erc.balanceOf(router);
             akira.router_withdraw(usdc, router_fee, router);
@@ -1090,7 +1090,7 @@ mod tests_quote_qty_router_trade_01 {
             akira.router_withdraw(eth, router_fee, router);
             assert(eth_erc.balanceOf(router) == r_b + router_fee, 'WRONG_ROUTER_WITHDRAW');
         }
-        stop_prank(CheatTarget::One(akira.contract_address));
+        stop_cheat_caller_address(akira.contract_address);
     }  
 
     #[test]
@@ -1160,7 +1160,7 @@ mod tests_quote_qty_router_trade_02 {
     use core::{traits::Into,array::ArrayTrait,option::OptionTrait,traits::TryInto,result::ResultTrait};
     use starknet::{ContractAddress,info::get_block_number,get_caller_address};
     use debug::PrintTrait;
-    use snforge_std::{CheatTarget,start_prank,start_warp,stop_warp,stop_prank,declare,ContractClassTrait, start_roll, stop_roll};
+    use snforge_std::{start_cheat_caller_address,start_cheat_block_timestamp,stop_cheat_block_timestamp,stop_cheat_caller_address,declare,ContractClassTrait, start_cheat_block_number, stop_cheat_block_number};
     use core::dict::{Felt252Dict, Felt252DictTrait, SquashedFelt252Dict};
     use kurosawa_akira::LayerAkira::LayerAkira;
     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait,IERC20Dispatcher};
@@ -1178,9 +1178,9 @@ mod tests_quote_qty_router_trade_02 {
     use super::test_common_trade:: {prepare, get_maker_taker_fees, get_swap_gas_cost,spawn_order, spawn_double_qty_order, get_zero_router_fee, zero_router,register_router};
     
     fn grant_allowances(akira:ILayerAkiraDispatcher, trader:ContractAddress, token:ContractAddress, amount:u256) {
-        start_prank(CheatTarget::One(token), trader);
+        start_cheat_caller_address((token), trader);
         IERC20Dispatcher{contract_address:token}.increaseAllowance(akira.contract_address,amount);
-        stop_prank(CheatTarget::One(token));
+        stop_cheat_caller_address((token));
     }
 
     // router ones
@@ -1225,10 +1225,10 @@ mod tests_quote_qty_router_trade_02 {
         let taker = sell_order_01.order.maker;
         let (eth_b, usdc_b, router_b) = (eth_erc.balanceOf(taker), usdc_erc.balanceOf(taker), akira.balance_of_router(router, usdc));
 
-        start_prank(CheatTarget::One(akira.contract_address), get_fee_recipient_exchange());
+        start_cheat_caller_address(akira.contract_address, get_fee_recipient_exchange());
         assert(akira.apply_single_execution_step(sell_order_01, array![(buy_order,0)],  base_qty / 2, 100, get_swap_gas_cost(), false), 'FAILED_MATCH');
         assert(akira.apply_single_execution_step(sell_order_02, array![(buy_order,0)],  base_qty / 2, 100, get_swap_gas_cost(), false), 'FAILED_MATCH');
-        stop_prank(CheatTarget::One(akira.contract_address));
+        stop_cheat_caller_address(akira.contract_address);
          
         assert(akira.balanceOf(sell_order_01.order.maker, eth) == 0, 'WRONG_ROUTER_T_BALANCE_ETH');
         assert(akira.balanceOf(sell_order_01.order.maker, usdc) == 0, 'WRONG_ROUTER_T_BALANCE_USDC');
@@ -1240,10 +1240,10 @@ mod tests_quote_qty_router_trade_02 {
         assert(akira.balanceOf(buy_order.order.maker, usdc) == 0, 'WRONG_SEND_USDC');
 
 
-        start_prank(CheatTarget::One(akira.contract_address), router);
+        start_cheat_caller_address(akira.contract_address, router);
         akira.router_withdraw(usdc, router_fee, router);
         assert(usdc_erc.balanceOf(router) == router_fee, 'WRONG_ROUTER_WITHDRAW');
-        stop_prank(CheatTarget::One(akira.contract_address));
+        stop_cheat_caller_address(akira.contract_address);
     }  
 
 
