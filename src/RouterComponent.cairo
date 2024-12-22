@@ -7,9 +7,8 @@ use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
 
 #[starknet::interface]
 trait IRouter<TContractState> {
-    // For first iteration we will accept orders from those routers that registered and reliable for us
-    // At second iteration, any router who have enough money deposited to router component is legit provider and we happily accept orders from them
-
+    fn get_base_token(self:@TContractState)-> ContractAddress;
+        
 
     // same semantic as in deposit component
     fn router_deposit(ref self:TContractState, router:ContractAddress, coin:ContractAddress, amount:u256);
@@ -134,19 +133,19 @@ mod router_component {
 
     #[storage]
     struct Storage {
-        pending_unregister:LegacyMap::<felt252, SlowModeDelay>,
-        delay: SlowModeDelay, // set by exchange, can be updated but no more then original
+        pending_unregister:starknet::storage::Map::<felt252, SlowModeDelay>,
+        r_delay: SlowModeDelay, // set by exchange, can be updated but no more then original
         min_to_route:u256,
-        token_to_user:LegacyMap::<(ContractAddress,ContractAddress),u256>,
-        registered:LegacyMap::<ContractAddress,bool>,
+        token_to_user:starknet::storage::Map::<(ContractAddress,ContractAddress),u256>,
+        registered:starknet::storage::Map::<ContractAddress,bool>,
         native_base_token:ContractAddress,
-        signer_to_router:LegacyMap<ContractAddress,ContractAddress>,
+        signer_to_router:starknet::storage::Map<ContractAddress,ContractAddress>,
         punishment_bips:u16
     }
 
     #[embeddable_as(Routable)]
     impl RoutableImpl<TContractState, +HasComponent<TContractState>> of super::IRouter<ComponentState<TContractState>> {
-
+        fn get_base_token(self:@ComponentState<TContractState>)-> ContractAddress {self.native_base_token.read()}
         fn get_router(self:@ComponentState<TContractState>, signer:ContractAddress) -> ContractAddress { self.signer_to_router.read(signer)}
 
         fn get_route_amount(self:@ComponentState<TContractState>) -> u256 { 2 * self.min_to_route.read() }
@@ -223,7 +222,7 @@ mod router_component {
             assert!(self.registered.read(router), "NOT_REGISTERED: not registered router {}", router);
             let ongoing:SlowModeDelay = self.pending_unregister.read(router.into());
             assert!(ongoing.block != 0, "NOT_REQUESTED: router {} has not requested deregistration", router);
-            let delay:SlowModeDelay = self.delay.read();
+            let delay:SlowModeDelay = self.r_delay.read();
             let (block_delta, ts_delta) = (get_block_number() - ongoing.block, get_block_timestamp() - ongoing.ts);
             assert!(block_delta >= delay.block && ts_delta >= delay.ts, "FEW_TIME_PASSED: wait at least {} block and {} ts (for now its {} and {})", delay.block, delay.ts, block_delta, ts_delta);
             
@@ -262,8 +261,9 @@ mod router_component {
             self.min_to_route.write(min_to_route); 
             self.native_base_token.write(wrapped_native_token);
             self.punishment_bips.write(punishment_bips);
-            self.delay.write(delay);            
+            self.r_delay.write(delay);            
         }
+        // burn mint only by executor, alsways stake a tad amount
         fn mint(ref self: ComponentState<TContractState>,router:ContractAddress,token:ContractAddress, amount:u256) {
             // mint on router deposit and when we give reward to router after trade
             let new_balance = self.token_to_user.read((token, router)) + amount;
@@ -277,6 +277,16 @@ mod router_component {
             assert!(balance >= amount, "FEW_TO_BURN_ROUTER: failed balance ({}) >= amount ({})", balance, amount);
             self.token_to_user.write((token, router), balance - amount);
             self.emit(RouterBurn{router, token, amount});
+        }
+        fn burn_and_send(ref self: ComponentState<TContractState>,router:ContractAddress,token:ContractAddress, amount:u256,  
+                            to:ContractAddress) -> u256 {
+            self.burn(router, token, amount);
+            let erc20 = IERC20Dispatcher{contract_address: token};
+            let balance_before = erc20.balanceOf(get_contract_address());
+            erc20.transfer(to, amount);
+            let transferred = balance_before - erc20.balanceOf(get_contract_address());
+            assert!(transferred <= amount, "WRONG_TRANSFER_AMOUNT expected {} actual {}",  amount, transferred);
+            return transferred;
         }
     }
 
