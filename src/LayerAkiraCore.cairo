@@ -11,6 +11,8 @@ trait ILayerAkiraCore<TContractState> {
     fn balancesOf(self: @TContractState, addresses: Span<ContractAddress>, tokens: Span<ContractAddress>) -> Array<Array<u256>>;
     fn get_wrapped_native_token(self: @TContractState) -> ContractAddress;
     fn get_fee_recipient(self: @TContractState) -> ContractAddress;
+    fn get_owner(self: @TContractState) -> ContractAddress;
+    
 
 
 
@@ -204,6 +206,10 @@ mod LayerAkiraCore {
         self.accessor_s.only_owner();
         self.balancer_s.wrapped_native_token.write(new_base_token);
         self.emit(BaseTokenUpdate{new_base_token});
+        // important to reset, to avoid any malicious actions; relevant to Executor contaract; 
+        //not relevant for router since it has no funds of other tokens than base one
+        let (executor, _) = self.get_executor();
+        self.set_executor(executor);
     }
 
     #[external(v0)]

@@ -59,7 +59,8 @@ mod LayerAkiraExternalGrantor{
     
     use kurosawa_akira::RouterComponent::router_component as router_component;
     use kurosawa_akira::AccessorComponent::accessor_logic_component as  accessor_logic_component;
-    
+    use kurosawa_akira::LayerAkiraCore::{ILayerAkiraCoreDispatcherTrait, ILayerAkiraCoreDispatcher};
+
     use router_component::InternalRoutable;
     use accessor_logic_component::InternalAccesorable;
     
@@ -80,7 +81,6 @@ mod LayerAkiraExternalGrantor{
 
         #[substorage(v0)]
         accessor_s: accessor_logic_component::Storage,
-        core_address:ContractAddress,
         max_slow_mode_delay:SlowModeDelay, // upper bound for all delayed actions
     }
 
@@ -88,26 +88,18 @@ mod LayerAkiraExternalGrantor{
 
     #[constructor]
     fn constructor(ref self: ContractState,
-                wrapped_native_token:ContractAddress,
                 max_slow_mode_delay:SlowModeDelay, 
                 min_to_route:u256, // minimum amount neccesary to start to provide 
                 owner:ContractAddress,
                 core_address:ContractAddress
         ) {
         self.max_slow_mode_delay.write(max_slow_mode_delay);
-        self.router_s.initializer(max_slow_mode_delay, wrapped_native_token, min_to_route, 10_000);
+        self.router_s.initializer(max_slow_mode_delay, core_address, min_to_route, 10_000);
         self.accessor_s.owner.write(owner);
         self.accessor_s.executor.write(0.try_into().unwrap());
         self.accessor_s.executor_epoch.write(0);
-        self.core_address.write(core_address);
     }
 
-    #[external(v0)]
-    fn update_base_token(ref self: ContractState, new_base_token:ContractAddress) {
-        self.accessor_s.only_owner();
-        self.router_s.native_base_token.write(new_base_token);
-        self.emit(BaseTokenUpdate{new_base_token});
-    }
 
     #[external(v0)]
     fn update_router_component_params(ref self: ContractState, new_delay:SlowModeDelay, min_amount_to_route:u256, new_punishment_bips:u16) {
@@ -123,23 +115,17 @@ mod LayerAkiraExternalGrantor{
     #[external(v0)]
     fn transfer_to_core(ref self: ContractState, router:ContractAddress,token:ContractAddress, amount:u256) -> u256 {
         self.accessor_s.only_authorized_by_user(router);
-        return self.router_s.burn_and_send(router,token,amount,self.core_address.read());
+        return self.router_s.burn_and_send(router,token,amount,self.router_s.core_address.read());
     }
     
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
         RouterEvent: router_component::Event,
-        UpdateExchangeInvoker: UpdateExchangeInvoker,
-        BaseTokenUpdate: BaseTokenUpdate,
         RouterComponentUpdate: RouterComponentUpdate,
         AccessorEvent: accessor_logic_component::Event,   
     }
 
-    #[derive(Drop, starknet::Event)]
-    struct UpdateExchangeInvoker {#[key] invoker: ContractAddress, enabled: bool}
-    #[derive(Drop, starknet::Event)]
-    struct BaseTokenUpdate {new_base_token: ContractAddress}
     #[derive(Drop, starknet::Event)]
     struct RouterComponentUpdate {new_delay:SlowModeDelay, min_amount_to_route:u256, new_punishment_bips:u16}
 }

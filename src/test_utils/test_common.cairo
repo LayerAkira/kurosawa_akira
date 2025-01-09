@@ -96,7 +96,7 @@
     fn spawn_external_grantor(core_address:ContractAddress) -> ContractAddress {
         let cls = declare("LayerAkiraExternalGrantor").unwrap();
         let mut constructor: Array::<felt252> = ArrayTrait::new();
-        constructor.append(get_eth_addr().into());
+        // constructor.append(get_eth_addr().into());
         
         let mut serialized_slow_mode: Array<felt252> = ArrayTrait::new();
         Serde::serialize(@get_slow_mode(), ref serialized_slow_mode);
@@ -122,9 +122,9 @@
         let mut constructor: Array::<felt252> = ArrayTrait::new();
         constructor.append(core_address.into());
         constructor.append(router_address.into());
-        constructor.append(get_fee_recipient_exchange().into());
-        constructor.append(get_eth_addr().into());
-        constructor.append(get_fee_recipient_exchange().into());
+        // constructor.append(get_fee_recipient_exchange().into());
+        // constructor.append(get_eth_addr().into());
+        // constructor.append(get_fee_recipient_exchange().into());
         let (deployed, _) = cls.deploy(@constructor).unwrap();
         return deployed;
     }

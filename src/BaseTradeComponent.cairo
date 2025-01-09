@@ -33,8 +33,6 @@ mod base_trade_component {
         orders_trade_info: starknet::storage::Map::<felt252, OrderTradeInfo>,
         core_contract:ContractAddress,
         router_contract:ContractAddress,
-        fee_recipient:ContractAddress,
-        base_token:ContractAddress
     }
 
 
@@ -113,7 +111,7 @@ mod base_trade_component {
             let mut first_iter = true;
             assert!(!use_prev_maker, "WRONG_FIRST_ITER");
 
-            let fee_recipient = self.fee_recipient.read();
+            let fee_recipient = core.get_fee_recipient();
 
             loop {
                 match iters.pop_front(){
@@ -157,7 +155,7 @@ mod base_trade_component {
 
                         self.orders_trade_info.write(taker_hash, taker_fill_info);
                         
-                        self.apply_taker_fee_and_gas(taker_order, total_base, total_quote, gas_price, trades, cur_gas_per_action);
+                        self.apply_taker_fee_and_gas(taker_order, total_base, total_quote, gas_price, trades, cur_gas_per_action, fee_recipient);
 
                     },
                     Option::None(_) => {
@@ -175,7 +173,7 @@ mod base_trade_component {
             
             let (exchange, trades): (ContractAddress, u16) = (get_contract_address(), signed_maker_orders.len().try_into().unwrap());
             let core = ILayerAkiraCoreDispatcher {contract_address:self.core_contract.read() };
-            let fee_recipient = self.fee_recipient.read();
+            let fee_recipient = core.get_fee_recipient();
             let (taker_order, taker_hash, mut taker_fill_info) =  if !signed_taker_order.order.flags.external_funds {
                 self.part_safe_validate_taker(signed_taker_order, trades, fee_recipient)
             } else {
@@ -210,7 +208,7 @@ mod base_trade_component {
                         
                         if taker_order.flags.external_funds && failed {
                             self.punish_router_simple(taker_order.fee.gas_fee, taker_order.fee.router_fee.recipient, 
-                                        signed_maker_order.order.maker, taker_order.maker, gas_price, taker_hash, maker_hash, cur_gas_per_action);
+                                        signed_maker_order.order.maker, taker_order.maker, gas_price, taker_hash, maker_hash, cur_gas_per_action, fee_recipient);
 
                             self.emit(Trade{
                                 router_maker:maker_order.fee.router_fee.recipient, router_taker:taker_order.fee.router_fee.recipient,
@@ -251,9 +249,9 @@ mod base_trade_component {
                     (accum_base, expected_amount_spend - accum_quote, accum_quote)
                 };
                 // do the reward and pay for the gas, we accumulate all and consume at once, avoiding repetitive actions
-                self.finalize_router_taker(taker_order, taker_hash, taker_received, unspent, gas_price, trades, cur_gas_per_action, spent);  
+                self.finalize_router_taker(taker_order, taker_hash, taker_received, unspent, gas_price, trades, cur_gas_per_action, spent, fee_recipient);  
             } else  {
-                self.apply_taker_fee_and_gas(taker_order, accum_base, accum_quote, gas_price, trades, cur_gas_per_action);    
+                self.apply_taker_fee_and_gas(taker_order, accum_base, accum_quote, gas_price, trades, cur_gas_per_action, fee_recipient);    
             }
 
             
@@ -310,11 +308,12 @@ mod base_trade_component {
 
         }   
         
-        fn apply_taker_fee_and_gas(ref self: ComponentState<TContractState>, taker_order:Order, base_amount:u256, quote_amount:u256, gas_price:u256, trades:u16, cur_gas_per_action:u32) -> (ContractAddress, u256, u256, u256) {
+        fn apply_taker_fee_and_gas(ref self: ComponentState<TContractState>, taker_order:Order, base_amount:u256, quote_amount:u256, gas_price:u256, trades:u16, 
+                        cur_gas_per_action:u32, fee_recipient:ContractAddress) -> (ContractAddress, u256, u256, u256) {
             let mut core = ILayerAkiraCoreDispatcher {contract_address:self.core_contract.read() };
             let (fee_token, fee_amount, exchange_fee) = self.apply_fixed_fees(taker_order, base_amount, quote_amount, false);
-            let (spent, coin) = super::get_gas_fee_and_coin(taker_order.fee.gas_fee, gas_price, self.base_token.read(), cur_gas_per_action, trades);
-            core.transfer(taker_order.maker, self.fee_recipient.read(), spent, coin);
+            let (spent, coin) = super::get_gas_fee_and_coin(taker_order.fee.gas_fee, gas_price, core.get_wrapped_native_token(), cur_gas_per_action, trades);
+            core.transfer(taker_order.maker, fee_recipient, spent, coin);
             return (fee_token, fee_amount, exchange_fee, spent);
         }
 
@@ -379,7 +378,7 @@ mod base_trade_component {
             let core = ILayerAkiraCoreDispatcher {contract_address:self.core_contract.read() };
 
             if taker_order.constraints.nonce < core.get_nonce(taker_order.maker) { return false;}
-            let (mut spent_gas, gas_token) = super::get_gas_fee_and_coin(taker_order.fee.gas_fee, gas_price, self.base_token.read(), cur_gas_per_action, swaps);
+            let (mut spent_gas, gas_token) = super::get_gas_fee_and_coin(taker_order.fee.gas_fee, gas_price, core.get_wrapped_native_token(), cur_gas_per_action, swaps);
             let (trade_spend_token, trade_receive_token) =  if taker_order.flags.is_sell_side {(base,quote)} else {(quote,base)};
             if trade_spend_token == gas_token  {
                 out_amount += spent_gas; spent_gas = 0;
@@ -398,14 +397,14 @@ mod base_trade_component {
         }
 
         fn finalize_router_taker(ref self:ComponentState<TContractState>, taker_order:Order, taker_hash:felt252, mut received_amount:u256, unspent_amount:u256, gas_price:u256, trades:u16, cur_gas_per_action:u32,
-                    spent_amount:u256) {
+                    spent_amount:u256, fee_recipient:ContractAddress) {
             // Finalize router taker
             // 1) pay for gas, trade, router fee
             // 2) transfer user erc20 tokens that he received + unspent amount of tokens he was selling
             let (b, q) = if taker_order.flags.is_sell_side { (spent_amount, received_amount) } else { (received_amount, spent_amount) };
             let (spending_token, receive_token) = if taker_order.flags.is_sell_side {let (b,q) = taker_order.ticker; (b,q)} else {let (b, q) = taker_order.ticker;(q,b)};
             
-            let (fee_token, router_fee_amount, exchange_fee_amount, mut gas) =  self.apply_taker_fee_and_gas(taker_order, b, q, gas_price, trades, cur_gas_per_action);
+            let (fee_token, router_fee_amount, exchange_fee_amount, mut gas) =  self.apply_taker_fee_and_gas(taker_order, b, q, gas_price, trades, cur_gas_per_action, fee_recipient);
             // we charged him for gas but we need to deduct before sending back in case it was gas currency he received
             if (taker_order.fee.gas_fee.fee_token != receive_token) {gas = 0}
             
@@ -419,15 +418,16 @@ mod base_trade_component {
         }
       
         fn punish_router_simple(ref self: ComponentState<TContractState>, gas_fee:super::GasFee,router_addr:ContractAddress, 
-                    maker:ContractAddress, taker:ContractAddress, gas_px:u256, taker_hash:felt252, maker_hash:felt252, cur_gas_per_action:u32) {
-            let (mut router, mut deposit) = (IExternalGrantorDispatcher {contract_address:self.router_contract.read()},ILayerAkiraCoreDispatcher {contract_address:self.core_contract.read()});
-            let native_base_token = self.base_token.read();
+                    maker:ContractAddress, taker:ContractAddress, gas_px:u256, taker_hash:felt252, maker_hash:felt252, 
+                        cur_gas_per_action:u32, fee_recipient:ContractAddress) {
+            let (mut router, mut core) = (IExternalGrantorDispatcher {contract_address:self.router_contract.read()},ILayerAkiraCoreDispatcher {contract_address:self.core_contract.read()});
+            let native_base_token = core.get_wrapped_native_token();
             let charged_fee = cur_gas_per_action.into() * gas_px * router.get_punishment_factor_bips().into() / 10000;
             if charged_fee == 0 {return;}
             
             router.transfer_to_core(router_addr, native_base_token, 2 * charged_fee);
-            deposit.safe_mint(self.fee_recipient.read(), charged_fee, native_base_token);
-            deposit.safe_mint(maker, charged_fee, native_base_token);
+            core.safe_mint(fee_recipient, charged_fee, native_base_token);
+            core.safe_mint(maker, charged_fee, native_base_token);
             self.emit(Punish{router:router_addr, taker_hash, maker_hash, amount: 2 * charged_fee});
         }
 

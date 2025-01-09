@@ -98,9 +98,5 @@ mod nonce_component {
 
             self.emit(NonceIncrease{ maker: nonce_increase.maker, new_nonce:nonce_increase.new_nonce});
         }
-        fn update_nonce(ref self: ComponentState<TContractState>, maker:ContractAddress, new_nonce:u32 ) {
-            assert!(new_nonce > self.nonces.read(maker), "Wrong nonce (Failed new_nonce ({}) > prev_nonce ({}))", new_nonce, self.nonces.read(maker));
-            self.emit(NonceIncrease{ maker: maker, new_nonce:new_nonce});
-        }
     }
 }

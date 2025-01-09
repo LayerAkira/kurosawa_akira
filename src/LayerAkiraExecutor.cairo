@@ -61,28 +61,22 @@ mod LayerAkiraExecutor {
         #[substorage(v0)]
         sor_trade_s: sor_trade_component::Storage,
         
-        owner:ContractAddress,
         exchange_invokers: starknet::storage::Map::<ContractAddress, bool>,
     }
 
 
     #[constructor]
-    fn constructor(ref self: ContractState,
-                core_address:ContractAddress,
-                router_address:ContractAddress, 
-                fee_recipient:ContractAddress,
-                base_token:ContractAddress, 
-                owner:ContractAddress) {
+    fn constructor(ref self: ContractState, core_address:ContractAddress, router_address:ContractAddress) {
         self.base_trade_s.core_contract.write(core_address);
         self.base_trade_s.router_contract.write(router_address);
-        self.base_trade_s.fee_recipient.write(fee_recipient);
-        self.base_trade_s.base_token.write(base_token);
-        self.owner.write(owner);
-        self.exchange_invokers.write(owner, true);
+        self.exchange_invokers.write(ILayerAkiraCoreDispatcher {contract_address:core_address }.get_owner(), true);
     }
 
     #[external(v0)]
-    fn get_owner(self: @ContractState) -> ContractAddress {self.owner.read()}
+    fn get_owner(self: @ContractState) -> ContractAddress {
+        ILayerAkiraCoreDispatcher {contract_address:self.base_trade_s.core_contract.read()}.get_owner()
+    }
+
     #[external(v0)]
     fn get_core(self: @ContractState) -> ContractAddress {self.base_trade_s.core_contract.read()}
     #[external(v0)]
@@ -91,25 +85,11 @@ mod LayerAkiraExecutor {
 
     #[external(v0)]
     fn update_exchange_invokers(ref self: ContractState, invoker:ContractAddress, enabled:bool) {
-        assert!(self.owner.read() == get_caller_address(), "Access denied: update_exchange_invokers is only for the owner's use");
+        assert!(get_owner(@self) == get_caller_address(), "Access denied: update_exchange_invokers is only for the owner's use");
         self.exchange_invokers.write(invoker, enabled);
         self.emit(UpdateExchangeInvoker{invoker, enabled});
     }
 
-    #[external(v0)]
-    fn update_fee_recipient(ref self: ContractState, new_fee_recipient: ContractAddress) {
-        assert!(self.owner.read() == get_caller_address(), "Access denied: update_fee_recipient is only for the owner's use");
-        assert!(new_fee_recipient != 0.try_into().unwrap(), "NEW_FEE_RECIPIENT_CANT_BE_ZERO");
-        self.base_trade_s.fee_recipient.write(new_fee_recipient);
-        self.emit(FeeRecipientUpdate{new_fee_recipient});
-    }
-
-    #[external(v0)]
-    fn update_base_token(ref self: ContractState, new_base_token:ContractAddress) {
-        assert!(self.owner.read() == get_caller_address(), "Access denied: update_base_token is only for the owner's use");
-        self.base_trade_s.base_token.write(new_base_token);
-        self.emit(BaseTokenUpdate{new_base_token});
-    }
 
     #[external(v0)]
     fn get_order_hash(self: @ContractState, order:Order) -> felt252 { order.get_message_hash(order.maker)}
@@ -237,17 +217,12 @@ mod LayerAkiraExecutor {
         BaseTradeEvent: base_trade_component::Event,
         SORTradeEvent: sor_trade_component::Event,
 
-        UpdateExchangeInvoker: UpdateExchangeInvoker,
-        BaseTokenUpdate: BaseTokenUpdate,
-        FeeRecipientUpdate: FeeRecipientUpdate, 
+        UpdateExchangeInvoker: UpdateExchangeInvoker
     }
 
     #[derive(Drop, starknet::Event)]
     struct UpdateExchangeInvoker {#[key] invoker: ContractAddress, enabled: bool}
-    #[derive(Drop, starknet::Event)]
-    struct BaseTokenUpdate {new_base_token: ContractAddress}
-    #[derive(Drop, starknet::Event)]
-    struct FeeRecipientUpdate {new_fee_recipient: ContractAddress}
+
 
 }
 
