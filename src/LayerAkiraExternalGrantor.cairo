@@ -113,8 +113,8 @@ mod LayerAkiraExternalGrantor{
     }
 
     #[external(v0)]
-    fn transfer_to_core(ref self: ContractState, router:ContractAddress,token:ContractAddress, amount:u256) -> u256 {
-        self.accessor_s.only_authorized_by_user(router);
+    fn transfer_to_core(ref self: ContractState, router:ContractAddress, token:ContractAddress, amount:u256) -> u256 {
+        self.accessor_s.only_executor(); self.accessor_s.only_authorized_by_user(router);
         return self.router_s.burn_and_send(router,token,amount,self.router_s.core_address.read());
     }
     
