@@ -9,7 +9,7 @@ trait ISignerLogic<TContractState> {
     fn bind_to_signer(ref self: TContractState, signer: ContractAddress);
     
     // set expiration time
-    fn set_till_time_approved_scheme(ref self: TContractState, client:ContractAddress, sign_scheme:felt252, expire_at:u32);
+    fn set_till_time_approved_scheme(ref self: TContractState, sign_scheme:felt252, expire_at:u32);
     // return expiration time for approval
     fn get_till_time_approved_scheme(self: @TContractState, client:ContractAddress, sign_scheme:felt252) -> u32;
 
@@ -97,12 +97,12 @@ mod signer_logic_component {
             self.emit(NewBinding { trading_account: caller, signer: signer });
         }
 
-        fn set_till_time_approved_scheme(ref self: ComponentState<TContractState>, client:ContractAddress, sign_scheme:felt252, expire_at:u32) {
+        fn set_till_time_approved_scheme(ref self: ComponentState<TContractState>, sign_scheme:felt252, expire_at:u32) {
             self.use_no_default_scheme(sign_scheme); self.use_defined_scheme(sign_scheme);
-            let (current_expire_at, block_timestamp) = (self.client_to_scheme_to_expiration_time.read((client, sign_scheme)),get_block_timestamp());
+            let (current_expire_at, block_timestamp) = (self.client_to_scheme_to_expiration_time.read((get_caller_address(), sign_scheme)),get_block_timestamp());
             assert(current_expire_at < expire_at, 'NEW EXPIRE MUST BE HIGHER'); assert(expire_at.into() > block_timestamp, 'ALREADY EXPIRED');
-            self.client_to_scheme_to_expiration_time.write((client, sign_scheme), expire_at);
-            self.emit(ApprovalSignScheme{trading_account:client,sign_scheme,expire_at});
+            self.client_to_scheme_to_expiration_time.write((get_caller_address(), sign_scheme), expire_at);
+            self.emit(ApprovalSignScheme{trading_account:get_caller_address(),sign_scheme,expire_at});
         }
         
         fn get_till_time_approved_scheme(self: @ComponentState<TContractState>, client:ContractAddress, sign_scheme:felt252) -> u32 {
