@@ -1,5 +1,4 @@
 
-use core::option::OptionTrait;
 use starknet::ContractAddress;
 use kurosawa_akira::Order::GasFee;
 use kurosawa_akira::ExchangeBalanceComponent::{get_gas_fee_and_coin};
@@ -52,7 +51,6 @@ trait IExternalGrantor<TContractState> {
 
 #[starknet::contract]
 mod LayerAkiraExternalGrantor{
-    use core::starknet::event::EventEmitter;
     use starknet::{ContractAddress, get_caller_address, get_tx_info};
     use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
     use starknet::{get_contract_address};

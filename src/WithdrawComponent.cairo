@@ -1,8 +1,7 @@
 use starknet::ContractAddress;
 use serde::Serde;
-use kurosawa_akira::Order::GasFee;
+use kurosawa_akira::Order::{GasFee, get_gas_fee_and_coin};
 use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
-use kurosawa_akira::Order::{get_gas_fee_and_coin};
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq,Hash)]
 struct Withdraw {

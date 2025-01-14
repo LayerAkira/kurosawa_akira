@@ -1,8 +1,6 @@
 use core::traits::Into;
 use starknet::ContractAddress;
 use serde::Serde;
-use poseidon::poseidon_hash_span;
-use array::ArrayTrait;
 use array::SpanTrait;
 use starknet::{get_block_timestamp};
 use kurosawa_akira::utils::common::{min,DisplayContractAddress};
@@ -69,7 +67,8 @@ struct Constraints {
     stp: TakerSelfTradePreventionMode,
     nonce: u32, // maker nonce, for order be valid this nonce must be >= in Nonce component
     min_receive_amount: u256, // minimal amount that user willing to receive from the full mstching of order, default value 0, for now defined for router takers, serves as slippage that filtered on exchange
-    router_signer: ContractAddress, // if taker order is router aka trader outside of our ecosystem then this is router that router this trader to us
+    router_signer: ContractAddress // if taker order is router aka trader outside of our ecosystem then this is router that router this trader to us
+    //depends_on:felt252 // order on fill of order it depends on
 }
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq,Hash)]

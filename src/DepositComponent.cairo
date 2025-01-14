@@ -65,7 +65,6 @@ mod deposit_component {
             let (before, after) = (b_contract.total_supply(token), erc20.balanceOf(get_contract_address()));
             assert!(after > before && amount <= after - before, "WRONG_AMOUNT: expected {}, got after {}, get before {}", amount, after, before);
             b_contract.mint(receiver, amount, token);
-            // TODO should we fire an deposit event actually?
         }
     }  
 }

@@ -1,8 +1,6 @@
 use kurosawa_akira::Order::{GasFee, get_gas_fee_and_coin};
 use starknet::ContractAddress;
 
-use pedersen::PedersenTrait;
-use hash::{HashStateTrait, HashStateExTrait};
 
 use kurosawa_akira::signature::V0OffchainMessage::{OffchainMessageHashImpl};
 use kurosawa_akira::signature::AkiraV0OffchainMessage::{IncreaseNonceHashImpl, SNIP12MetadataImpl};

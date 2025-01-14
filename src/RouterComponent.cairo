@@ -1,7 +1,4 @@
-use core::option::OptionTrait;
 use starknet::ContractAddress;
-use kurosawa_akira::Order::GasFee;
-use kurosawa_akira::ExchangeBalanceComponent::{get_gas_fee_and_coin};
 use serde::Serde;
 use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
 
