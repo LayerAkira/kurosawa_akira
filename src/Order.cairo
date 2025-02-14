@@ -85,6 +85,16 @@ struct Order {
     sign_scheme:felt252 // sign scheme used to sign order
 }
 
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq,Hash)]
+struct SimpleOrder {
+    price: u256, // price in quote asset raw amount, for taker order serves as protection price, for passive order execution price, might be zero
+    qty: Quantity, // quote qty
+    ticker: (ContractAddress, ContractAddress), // (base asset address, quote asset address) eg ETH/USDC
+    salt: felt252, // random salt for security
+    is_sell_side:bool,
+    number_of_swaps_allowed: u16
+}
+
 #[derive(Copy, Drop, Serde, PartialEq)]
 struct SignedOrder {
     order: Order,
