@@ -134,7 +134,7 @@ mod LayerAkiraExecutor {
     #[external(v0)]
     fn apply_single_execution_step(ref self: ContractState, taker_order:SignedOrder, maker_orders: Array<(SignedOrder,u256)>, total_amount_matched:u256, gas_price:u256, cur_gas_per_action:u32,as_taker_completed:bool, ) -> bool {
         assert_whitelisted_invokers(@self);
-        return self.base_trade_s.apply_single_taker(taker_order, maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed, false);
+        return self.base_trade_s.apply_single_taker(taker_order, maker_orders.span(), total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed, false, maker_orders.len().try_into().unwrap(), taker_order.order.flags.external_funds, true);
     }
 
     #[external(v0)]
@@ -145,7 +145,7 @@ mod LayerAkiraExecutor {
         loop {
             match bulk.pop_front(){
                 Option::Some((taker_order, maker_orders, total_amount_matched, as_taker_completed)) => {
-                    res.append(self.base_trade_s.apply_single_taker(taker_order, maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed, false));
+                    res.append(self.base_trade_s.apply_single_taker(taker_order, maker_orders.span(), total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed, false, maker_orders.len().try_into().unwrap(), taker_order.order.flags.external_funds, true));
 
                 },
                 Option::None(_) => {break;}
