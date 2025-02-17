@@ -34,6 +34,7 @@ mod LayerAkiraExecutor {
 
     use base_trade_component::InternalBaseOrderTradable;
     use sor_trade_component::InternalSORTradable;
+    use kurosawa_akira::SORTradeComponent::BatchDetails;
 
     use kurosawa_akira::LayerAkiraCore::{ILayerAkiraCoreDispatcherTrait, ILayerAkiraCoreDispatcher};
 
@@ -42,7 +43,7 @@ mod LayerAkiraExecutor {
     use kurosawa_akira::NonceComponent::{SignedIncreaseNonce, IncreaseNonce};
     use kurosawa_akira::signature::V0OffchainMessage::{OffchainMessageHashImpl};
     use kurosawa_akira::signature::AkiraV0OffchainMessage::{OrderHashImpl,SNIP12MetadataImpl,IncreaseNonceHashImpl,WithdrawHashImpl};
-    use kurosawa_akira::Order::{SignedOrder, Order};
+    use kurosawa_akira::Order::{SignedOrder, Order, SimpleOrder};
     
     
     component!(path: base_trade_component,storage: base_trade_s, event:BaseTradeEvent);
@@ -70,6 +71,7 @@ mod LayerAkiraExecutor {
         self.base_trade_s.core_contract.write(core_address);
         self.base_trade_s.router_contract.write(router_address);
         self.exchange_invokers.write(ILayerAkiraCoreDispatcher {contract_address:core_address }.get_owner(), true);
+        self.sor_trade_s.core_address.write(core_address);
     }
 
     #[external(v0)]
@@ -165,6 +167,34 @@ mod LayerAkiraExecutor {
     fn fullfillTakerOrder(ref self: ContractState, mut maker_orders:Array<(SignedOrder,u256)>,
                     total_amount_matched:u256, gas_steps:u32, gas_price:u256) {
         assert_whitelisted_invokers(@self); self.sor_trade_s.fullfillTakerOrder(maker_orders, total_amount_matched, gas_steps, gas_price);
+    }
+
+    #[external(v0)]
+    fn placeBatchTakerOrder(ref self: ContractState, orchestrate_order: SimpleOrder, path:Array<SimpleOrder>, router_signature:(felt252, felt252), details: BatchDetails) {
+        let tx_info = get_tx_info().unbox();
+        if (!self.exchange_invokers.read(tx_info.account_contract_address)) {return;}; // shallow termination for client// argent simulation
+        self.sor_trade_s.placeBatchOrder(orchestrate_order, path, router_signature, details);
+    }
+
+    #[external(v0)]
+    fn fulfillBatchAtomic(ref self: ContractState, makers_orders:Array<(SignedOrder,u256)>,
+                        total_amount_matched_and_len:Array<(u256, u8)>, gas_steps:u32, gas_price:u256, batch_id:felt252) {
+        assert_whitelisted_invokers(@self); 
+        self.sor_trade_s.fulfillBatchAtomic(makers_orders, total_amount_matched_and_len, gas_steps, gas_price, batch_id);           
+    }
+
+    #[external(v0)]
+    fn fulfillBatchLeadOrder(ref self: ContractState, batch_id:felt252, makers_orders:Array<(SignedOrder,u256)>,
+            total_amount_matched:u256, gas_steps:u32, gas_price:u256, total_trades:u16) {
+        assert_whitelisted_invokers(@self);
+        self.sor_trade_s.fulfillBatchLeadOrder(batch_id, makers_orders, total_amount_matched, gas_steps, gas_price, total_trades);
+
+    }
+    #[external(v0)]
+    fn fulfillBatchPath(ref self: ContractState, batch_id:felt252, makers_orders:Array<(SignedOrder,u256)>,
+                    total_amount_matched:u256, gas_steps:u32, gas_price:u256, total_trades:u16) {
+        assert_whitelisted_invokers(@self);
+        self.sor_trade_s.fulfillBatchPath(batch_id, makers_orders, total_amount_matched, gas_steps, gas_price, total_trades);
     }
 
     #[derive(Drop, Serde)]
