@@ -147,12 +147,12 @@ mod base_trade_component {
                             total_base += base; total_quote += quote;
                             maker_fill_info.filled_base_amount += base; maker_fill_info.filled_quote_amount += quote; maker_fill_info.last_traded_px = px;
                             taker_fill_info.filled_base_amount += base; taker_fill_info.filled_quote_amount += quote; taker_fill_info.last_traded_px = px;
-                        
+                            maker_fill_info.is_sell_side = !taker_order.flags.is_sell_side;
                             cur += 1;
                         };
                         
                         taker_fill_info.num_trades_happened += trades; taker_fill_info.as_taker_completed = as_taker_completed;
-
+                        taker_fill_info.is_sell_side = taker_order.flags.is_sell_side;
                         self.orders_trade_info.write(taker_hash, taker_fill_info);
                         
                         self.apply_taker_fee_and_gas(taker_order, total_base, total_quote, gas_price, trades, cur_gas_per_action, fee_recipient);
@@ -161,6 +161,7 @@ mod base_trade_component {
                     Option::None(_) => {
                         assert!(taker_orders.len() == 0 && maker_orders.len() == 0 && iters.len() == 0, "MISMATCH");
                         // update state for last maker that gone
+                        
                         self.orders_trade_info.write(maker_hash, maker_fill_info);
                         break();
                     }
@@ -176,7 +177,7 @@ mod base_trade_component {
             // let gas_trades_to_pay = if (skip_gas_pay) {0} else {trades};
             let core = ILayerAkiraCoreDispatcher {contract_address:self.core_contract.read() };
             let fee_recipient = core.get_fee_recipient();
-            let (taker_order, taker_hash, mut taker_fill_info) =  if !signed_taker_order.order.flags.external_funds {
+            let (taker_order, taker_hash, mut __) =  if !signed_taker_order.order.flags.external_funds {
                 self.part_safe_validate_taker(signed_taker_order, trades, fee_recipient)
             } else {
                 let (o, hash, info, available) = self._do_part_external_taker_validate(signed_taker_order, trades, fee_recipient);
@@ -457,6 +458,7 @@ mod base_trade_component {
                         taker_fill_info.filled_base_amount = taker_order.qty.base_qty;
                         taker_fill_info.filled_quote_amount = taker_order.qty.quote_qty;
                         taker_fill_info.as_taker_completed = as_taker_completed;
+                        taker_fill_info.is_sell_side = taker_order.flags.is_sell_side;
                         taker_fill_info.num_trades_happened += signed_maker_orders.len().try_into().unwrap();
                         self.orders_trade_info.write(taker_hash, taker_fill_info);
                         break();
@@ -489,17 +491,28 @@ mod base_trade_component {
                         taker_fill_info.filled_base_amount += amount_base; taker_fill_info.filled_quote_amount += amount_quote; taker_fill_info.last_traded_px = settle_px;
                         self.orders_trade_info.write(maker_hash, maker_fill_info);
                         accum_base += amount_base; accum_quote += amount_quote;
+                        maker_fill_info.is_sell_side = !taker_order.flags.is_sell_side;
                         
                     },
                     Option::None(_) => { 
                         taker_fill_info.as_taker_completed = as_taker_completed;
                         taker_fill_info.num_trades_happened += signed_maker_orders.len().try_into().unwrap();
+                        taker_fill_info.is_sell_side = taker_order.flags.is_sell_side;
                         self.orders_trade_info.write(taker_hash, taker_fill_info);
                         break();
                     }
                 }
             };                      
             (accum_base, accum_quote)
+        }
+
+        fn assert_slippage(self: @ComponentState<TContractState>, taker_hash:felt252, max_spend:u256, min_receive:u256) {
+            let fill_info  = self.get_ecosystem_trade_info(taker_hash);
+            let (spend, received) = if fill_info.is_sell_side {(fill_info.filled_base_amount, fill_info.filled_quote_amount)}
+                                      else {(fill_info.filled_quote_amount,fill_info.filled_base_amount)};
+            assert(max_spend == 0 || spend <= max_spend, 'Failed to max spend');
+            assert(min_receive == 0 || received >= min_receive, 'Failed to min receive');
+            
         }
     }
 

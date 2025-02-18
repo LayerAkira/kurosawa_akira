@@ -87,12 +87,11 @@ struct Order {
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq,Hash)]
 struct SimpleOrder {
-    price: u256, // price in quote asset raw amount, for taker order serves as protection price, for passive order execution price, might be zero
-    qty: Quantity, // quote qty
+    price: u256, // protection price in quote asset raw amount, for security
+    base_asset: u256,  // omit Quantity since inferred by previous orders
     ticker: (ContractAddress, ContractAddress), // (base asset address, quote asset address) eg ETH/USDC
     salt: felt252, // random salt for security
     is_sell_side:bool,
-    number_of_swaps_allowed: u16
 }
 
 #[derive(Copy, Drop, Serde, PartialEq)]
@@ -108,7 +107,8 @@ struct OrderTradeInfo {
     filled_quote_amount: u256, // filled amount in quote qty
     last_traded_px: u256,
     num_trades_happened: u16,
-    as_taker_completed: bool
+    as_taker_completed: bool,
+    is_sell_side:bool
 }
 
 
