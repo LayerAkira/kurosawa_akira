@@ -197,7 +197,7 @@ mod sor_trade_component {
             let (skip_taker_validation, allow_charge_gas_on_receipt, tfer_back_received) = (false, false, false);
             let mut base_trade = get_dep_component_mut!(ref self, BaseTrade);
             
-            let (succ, _) = base_trade.apply_single_taker(
+            let (succ, lead_taker_hash) = base_trade.apply_single_taker(
                         SignedOrder{order:first, sign: array![].span(), router_sign:batch.router_signature_lead},
                         makers_span.slice(0, swaps.try_into().unwrap()), total_amount_matched, gas_price, gas_steps, true, 
                             skip_taker_validation, gas_trades, tfer_back_received, allow_charge_gas_on_receipt);
@@ -207,13 +207,13 @@ mod sor_trade_component {
             let (zero_trade_fee, zero_router_fee) =  self.getTradeAndRouterFees(batch, false);
             // apply all the orders
             let (mut ptr, mut offset, tfer_taker_recieve_back) = (0, swaps.try_into().unwrap(), false);
-            let (ptr1, offset1, __) = self.apply(first, batch.order0, zero_trade_fee, zero_router_fee, ptr, offset, makers_span, span_amount_matched, gas_price, gas_steps, succ, 0, fee_recipient, tfer_taker_recieve_back);
+            let (ptr1, offset1, __) = self.apply(first, batch.order0, zero_trade_fee, zero_router_fee, ptr, offset, makers_span, span_amount_matched, gas_price, gas_steps, succ, 0, fee_recipient, tfer_taker_recieve_back, lead_taker_hash);
             ptr = ptr1; offset = offset1;
-            let (ptr1, offset1, __) = self.apply(first, batch.order1, zero_trade_fee, zero_router_fee, ptr, offset, makers_span, span_amount_matched, gas_price, gas_steps, succ, 0, fee_recipient, tfer_taker_recieve_back);
+            let (ptr1, offset1, __) = self.apply(first, batch.order1, zero_trade_fee, zero_router_fee, ptr, offset, makers_span, span_amount_matched, gas_price, gas_steps, succ, 0, fee_recipient, tfer_taker_recieve_back, lead_taker_hash);
             ptr = ptr1; offset = offset1;
-            let (ptr1, offset1, __) = self.apply(first, batch.order2, zero_trade_fee, zero_router_fee, ptr, offset, makers_span, span_amount_matched, gas_price, gas_steps, succ, 0, fee_recipient, tfer_taker_recieve_back);
+            let (ptr1, offset1, __) = self.apply(first, batch.order2, zero_trade_fee, zero_router_fee, ptr, offset, makers_span, span_amount_matched, gas_price, gas_steps, succ, 0, fee_recipient, tfer_taker_recieve_back, lead_taker_hash);
             ptr = ptr1; offset = offset1;
-            let (ptr1, offset1, __) = self.apply(first, batch.order3, zero_trade_fee, zero_router_fee, ptr, offset, makers_span, span_amount_matched, gas_price, gas_steps, succ, 0, fee_recipient, tfer_taker_recieve_back);
+            let (ptr1, offset1, __) = self.apply(first, batch.order3, zero_trade_fee, zero_router_fee, ptr, offset, makers_span, span_amount_matched, gas_price, gas_steps, succ, 0, fee_recipient, tfer_taker_recieve_back, lead_taker_hash);
             ptr = ptr1; offset = offset1;
             
             let tfer_back_received =  first.flags.external_funds;
@@ -221,7 +221,7 @@ mod sor_trade_component {
             
             
             let (ptr1, offset1, taker_hash) = self.apply(first, Option::Some(last), last_trade_fee, last_router_fee, 
-                    ptr, offset, makers_span, span_amount_matched, gas_price, gas_steps, succ, last_trades, fee_recipient, tfer_back_received);
+                    ptr, offset, makers_span, span_amount_matched, gas_price, gas_steps, succ, last_trades, fee_recipient, tfer_back_received, lead_taker_hash);
             ptr = ptr1; offset = offset1;
             if succ {base_trade.assert_slippage(taker_hash, 0, batch.min_receive_amount);}
 
@@ -300,7 +300,7 @@ mod sor_trade_component {
             let (fee_trade, fee_router) = self.getTradeAndRouterFees(batch, is_last_order && batch.trade_fee.apply_to_receipt_amount);
             let tfer_taker_recieve_back = is_last_order && batch.lead.flags.external_funds;  // last order if batch external need tfer result of batch back
             let gas_trades = if batch.apply_gas_in_first_trade  {0} else {total_trades};
-            let (__, __, taker_hash) = self.apply(batch.lead, order, fee_trade, fee_router, 0, 0, makers_orders.span(), matched, gas_price, gas_steps, succ, gas_trades, fee_recipient, tfer_taker_recieve_back);
+            let (__, __, taker_hash) = self.apply(batch.lead, order, fee_trade, fee_router, 0, 0, makers_orders.span(), matched, gas_price, gas_steps, succ, gas_trades, fee_recipient, tfer_taker_recieve_back, batch_id);
             self.batch_to_ptr.write(batch_id, (head + 1, failed));   
             if is_last_order && succ {
                 let mut base_trade = get_dep_component_mut!(ref self, BaseTrade);
@@ -392,13 +392,13 @@ mod sor_trade_component {
 
 
         fn buildInplaceTakerOrder(self: @ComponentState<TContractState>, minimal_order:super::SimpleOrder, lead: Order, 
-                trade_fee:super::FixedFee, router_fee: super::FixedFee, previous_fill_amount_qty:u256) -> Order {
+                trade_fee:super::FixedFee, router_fee: super::FixedFee, previous_fill_amount_qty:u256, lead_taker_hash:felt252) -> Order {
             // build inplace taker order given lead order and minimal info for new order
             let base_qty =  if minimal_order.is_sell_side {previous_fill_amount_qty} else {0};
             let quote_qty = if !minimal_order.is_sell_side {previous_fill_amount_qty} else {0};
             let qty = super::Quantity{base_asset:minimal_order.base_asset, base_qty,quote_qty};
             Order{maker:lead.maker, qty, price:minimal_order.price, ticker:minimal_order.ticker,
-                salt:0, source: lead.source, sign_scheme: lead.sign_scheme, fee: super::OrderFee{trade_fee, router_fee, gas_fee: lead.fee.gas_fee},
+                salt:lead_taker_hash, source: lead.source, sign_scheme: lead.sign_scheme, fee: super::OrderFee{trade_fee, router_fee, gas_fee: lead.fee.gas_fee},
                 flags: super::OrderFlags{ full_fill_only: true, best_level_only: false, post_only: false, is_sell_side: minimal_order.is_sell_side,
                     is_market_order: true, to_ecosystem_book: lead.flags.to_ecosystem_book, external_funds: false
                 },
@@ -413,7 +413,7 @@ mod sor_trade_component {
                             trade_fee:super::FixedFee, router_fee: super::FixedFee, ptr:u32, offset:u32,
                             makers_orders:Span<(SignedOrder,u256)>, 
                             total_amount_matched_and_len:Span<(u256, u8)>, gas_price:u256, gas_steps:u32, succ:bool, gas_trades_to_pay:u16,
-                            fee_recipient:ContractAddress, transfer_taker_recieve_back:bool) -> (u32, u32, felt252) {
+                            fee_recipient:ContractAddress, transfer_taker_recieve_back:bool, lead_taker_hash:felt252) -> (u32, u32, felt252) {
             // Depending on succ, either punish or settle trades for the option order and return an new offset and new ptr 
             // where offset for makers order slicing and ptr index of processing order
             //  inplace builds intermediary order from lead_order and supplied fees
@@ -431,7 +431,7 @@ mod sor_trade_component {
             let mut base_trade = get_dep_component_mut!(ref self, BaseTrade);
             if option_order.is_some() {
                     let (amount_spent, swaps) = *total_amount_matched_and_len.at(ptr);
-                    let order = self.buildInplaceTakerOrder(option_order.unwrap(), lead_order, trade_fee, router_fee, amount_spent);
+                    let order = self.buildInplaceTakerOrder(option_order.unwrap(), lead_order, trade_fee, router_fee, amount_spent, lead_taker_hash);
                     // TODO: likely need not to calculate message hash?? cause expensive and no point
                     let taker_hash = order.get_message_hash(order.maker);
                     let as_taker_completed = true;
