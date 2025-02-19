@@ -171,7 +171,7 @@ mod base_trade_component {
 
         fn apply_single_taker(ref self: ComponentState<TContractState>, signed_taker_order:SignedOrder, mut signed_maker_orders:Span<(SignedOrder,u256)>,
                     total_amount_matched:u256, gas_price:u256,  cur_gas_per_action:u32, as_taker_completed:bool, 
-                    skip_taker_validation:bool, gas_trades_to_pay:u16, transfer_taker_recieve_back:bool, allow_charge_gas_on_receipt:bool)  -> bool{
+                    skip_taker_validation:bool, gas_trades_to_pay:u16, transfer_taker_recieve_back:bool, allow_charge_gas_on_receipt:bool)  -> (bool, felt252) {
             
             let (exchange, trades): (ContractAddress, u16) = (get_contract_address(), signed_maker_orders.len().try_into().unwrap());
             // let gas_trades_to_pay = if (skip_gas_pay) {0} else {trades};
@@ -199,7 +199,7 @@ mod base_trade_component {
             if failed && taker_order.flags.external_funds {
                 // here use trades instead of gas pay trades
                 self.apply_punishment(taker_order, signed_maker_orders, fee_recipient, taker_hash, gas_price, cur_gas_per_action, as_taker_completed);
-                return false;
+                return (false, taker_hash);
             }
 
             let (accum_base, accum_quote) = self.apply_trades(taker_order, signed_maker_orders, fee_recipient, taker_hash, gas_price, cur_gas_per_action, as_taker_completed);
@@ -217,7 +217,7 @@ mod base_trade_component {
                 gas_trades_to_pay, cur_gas_per_action, spent, fee_recipient, transfer_taker_recieve_back, taker_order.flags.external_funds); 
 
 
-            return true;     
+            return (true, taker_hash);     
         }
 
 

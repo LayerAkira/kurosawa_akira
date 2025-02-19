@@ -92,7 +92,7 @@ mod sor_trade_component {
      #[generate_trait]
     impl InternalSORTradableImpl<TContractState, +HasComponent<TContractState>, +Drop<TContractState> ,
         impl BaseTrade:base_trade_component::HasComponent<TContractState> > of InternalSORTradable<TContractState> {
-
+        
         fn placeTakerOrder(ref self: ComponentState<TContractState>, order: Order, router_sign: (felt252,felt252)) {
             // SNIP-9 place of taker order onchain, rolluper calls account which calls placeTakerOrder
             //  Params:
@@ -119,9 +119,10 @@ mod sor_trade_component {
             let (skip_taker_validation, gas_trades, tfer_taker_recieve_back) = (false, maker_orders.len().try_into().unwrap(), order.flags.external_funds);
             let (_, router_signature) = self.atomic_taker_info.read();
             
-            base_trade.apply_single_taker(SignedOrder{ order, sign: array![].span(), router_sign:router_signature}, maker_orders.span(), 
+            let (succ, taker_hash) = base_trade.apply_single_taker(SignedOrder{ order, sign: array![].span(), router_sign:router_signature}, maker_orders.span(), 
                 total_amount_matched, gas_price, gas_steps, as_taker_filled, skip_taker_validation, gas_trades, tfer_taker_recieve_back, allow_charge_gas_on_receipt);
-            
+            if succ {base_trade.assert_slippage(taker_hash, 0, order.constraints.min_receive_amount);}
+
             self.releaseLock();
         }
 
@@ -196,7 +197,7 @@ mod sor_trade_component {
             let (skip_taker_validation, allow_charge_gas_on_receipt, tfer_back_received) = (false, false, false);
             let mut base_trade = get_dep_component_mut!(ref self, BaseTrade);
             
-            let succ = base_trade.apply_single_taker(
+            let (succ, _) = base_trade.apply_single_taker(
                         SignedOrder{order:first, sign: array![].span(), router_sign:batch.router_signature_lead},
                         makers_span.slice(0, swaps.try_into().unwrap()), total_amount_matched, gas_price, gas_steps, true, 
                             skip_taker_validation, gas_trades, tfer_back_received, allow_charge_gas_on_receipt);
@@ -266,7 +267,7 @@ mod sor_trade_component {
             let (as_taker_completed, tfer_taker_recieve_back) = (true, false); 
             let gas_trades = if batch.apply_gas_in_first_trade {total_trades} else {0};
             
-            let succ = base_trade.apply_single_taker(
+            let (succ, _) = base_trade.apply_single_taker(
                 SignedOrder{order:batch.lead, sign: array![].span(), router_sign:batch.router_signature_lead},
                 makers_orders.span(), total_amount_matched, gas_price, gas_steps, as_taker_completed, 
                 skip_taker_validation, gas_trades, tfer_taker_recieve_back, allow_charge_gas_on_receipt);
