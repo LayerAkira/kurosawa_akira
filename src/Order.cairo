@@ -90,7 +90,6 @@ struct SimpleOrder {
     price: u256, // protection price in quote asset raw amount, for security
     base_asset: u256,  // omit Quantity since inferred by previous orders
     ticker: (ContractAddress, ContractAddress), // (base asset address, quote asset address) eg ETH/USDC
-    salt: felt252, // random salt for security
     is_sell_side:bool,
 }
 
