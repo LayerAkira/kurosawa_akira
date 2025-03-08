@@ -36,7 +36,7 @@ struct SOR {
 #[derive(Copy, Drop, Serde)]
 struct SORDetails { // details supplied with sor sored orders
     lead_qty:Quantity, // forecasted qty by the user
-    last_qty:Quantity, // forecasted qty by the user
+    last_qty:Quantity, // forecasted qty by the user, ignored in case of exact sell
     trade_fee:FixedFee, // same as in Order
     router_fee:FixedFee,// same as in Order
     gas_fee: GasFee,// same as in Order
@@ -222,9 +222,10 @@ mod sor_trade_component {
             let tfer_back_received =  first.flags.external_funds;
             let (last_trade_fee, last_router_fee) = if (sor.trade_fee.apply_to_receipt_amount) {(sor.trade_fee, sor.router_fee)} else {(zero_trade_fee,zero_router_fee)};
             
-            
+            // if exact sell then we need fullfill only otherwise we were doing exact buy amount
+            let last_order_qty = if sor.max_spend_amount != 0 {Option::Some(sor.last_qty)} else {Option::None};
             let (ptr1, offset1, taker_hash) = self.apply(first, Option::Some(last), last_trade_fee, last_router_fee, 
-                    ptr, offset, makers_span, span_amount_matched, gas_price, gas_steps, succ, last_trades, fee_recipient, tfer_back_received, lead_taker_hash, Option::Some(sor.last_qty));
+                    ptr, offset, makers_span, span_amount_matched, gas_price, gas_steps, succ, last_trades, fee_recipient, tfer_back_received, lead_taker_hash, last_order_qty);
             ptr = ptr1; offset = offset1;
             if succ {base_trade.assert_slippage(taker_hash, 0, sor.min_receive_amount);}
 
@@ -234,6 +235,8 @@ mod sor_trade_component {
             }  else {
                 self.releaseLock();
             }
+            // if exact sell last order fullfill only and qty built from previous
+            // if exact buy  but first must be  < -- todo mb not releavnt
             
         }
 
@@ -303,7 +306,8 @@ mod sor_trade_component {
             let (fee_trade, fee_router) = self.getTradeAndRouterFees(sor, is_last_order && sor.trade_fee.apply_to_receipt_amount);
             let tfer_taker_recieve_back = is_last_order && sor.lead.flags.external_funds;  // last order if sor external need tfer result of sor back
             let gas_trades = if sor.apply_gas_in_first_trade  {0} else {total_trades};
-            let overwrite_qty = if (is_last_order) {Option::Some(sor.last_qty)} else {Option::None};
+             // if exact sell then we need fullfill only otherwise we were doing exact buy amount
+            let overwrite_qty = if (is_last_order && sor.max_spend_amount != 0) {Option::Some(sor.last_qty)} else {Option::None};
             let (__, __, taker_hash) = self.apply(sor.lead, order, fee_trade, fee_router, 0, 0, makers_orders.span(), matched, gas_price, gas_steps, succ, gas_trades, fee_recipient, tfer_taker_recieve_back, sor_id, overwrite_qty);
             self.sor_to_ptr.write(sor_id, (head + 1, failed));   
             if is_last_order && succ {
@@ -407,7 +411,7 @@ mod sor_trade_component {
             } else {overwrite_qty.unwrap()};
             Order{maker:lead.maker, qty, price:minimal_order.price, ticker:minimal_order.ticker,
                 salt:lead_taker_hash, source: lead.source, sign_scheme: lead.sign_scheme, fee: super::OrderFee{trade_fee, router_fee, gas_fee: lead.fee.gas_fee},
-                flags: super::OrderFlags{ full_fill_only: true, best_level_only: false, post_only: false, is_sell_side: minimal_order.is_sell_side,
+                flags: super::OrderFlags{ full_fill_only: overwrite_qty.is_none(), best_level_only: false, post_only: false, is_sell_side: minimal_order.is_sell_side,
                     is_market_order: true, to_ecosystem_book: lead.flags.to_ecosystem_book, external_funds: false
                 },
                 constraints: super::Constraints{
