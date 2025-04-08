@@ -309,7 +309,7 @@ mod test_common_trade {
     }
 
     fn register_router(akira:(ILayerAkiraCoreDispatcher,IExternalGrantorDispatcher,ILayerAkiraExecutorDispatcher), funds_account:ContractAddress, signer:ContractAddress, router_address:ContractAddress) {
-        let (_,router,__) = akira;
+        let (_,router,executor) = akira;
         let (route_amount, base) = (router.get_route_amount(), router.get_base_token());
 
         
@@ -325,7 +325,7 @@ mod test_common_trade {
         
         start_cheat_caller_address(router.contract_address, router_address);
         router.register_router();
-        router.grant_access_to_executor();
+        router.grant_access_to_executor(executor.contract_address);
         router.add_router_binding(signer);
 
         stop_cheat_caller_address(router.contract_address);

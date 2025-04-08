@@ -121,7 +121,7 @@ fn get_limit_px(maker_order:Order, maker_fill_info:OrderTradeInfo) ->  u256{  //
     let settle_px = if maker_fill_info.filled_base_amount > 0 || maker_fill_info.filled_quote_amount > 0 {maker_fill_info.last_traded_px} else {maker_order.price};
     return settle_px; 
 }
-
+// TODO
 fn get_available_base_qty(settle_px:u256, qty:Quantity, fill_info: OrderTradeInfo) -> u256 {
     // calculate available qty in base asset that fulfillable
     // if base_qty not specified it is defined by quote_qty
@@ -156,7 +156,8 @@ fn do_taker_price_checks(taker_order:Order, settle_px:u256, taker_fill_info:Orde
         }
     }
     let rem = get_available_base_qty(settle_px, taker_order.qty, taker_fill_info);
-    assert!(rem > 0, "FILLED_TAKER_ORDER");
+    assert!(rem > 0, "FILLED_TAKER_ORDER, settle_px {} base_qty {}, quote_qty {} base_asset {}, fillinfo b {}, q {}",settle_px, taker_order.qty.base_qty, 
+                    taker_order.qty.quote_qty,taker_order.qty.base_asset, taker_fill_info.filled_base_amount,taker_fill_info.filled_quote_amount);
 
     return rem;
 }

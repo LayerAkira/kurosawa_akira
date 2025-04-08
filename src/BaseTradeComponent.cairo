@@ -119,7 +119,7 @@ mod base_trade_component {
                         let (mut total_base, mut total_quote) = (0,0);
             
                         let (signed_taker_order, as_taker_completed) = taker_orders.pop_front().unwrap();
-                        let (taker_order, taker_hash, mut taker_fill_info) =  self.part_safe_validate_taker(signed_taker_order, trades, fee_recipient); 
+                        let (taker_order, taker_hash, mut taker_fill_info) =  self.part_safe_validate_taker(signed_taker_order, trades, fee_recipient, false); 
                         let mut cur = 0;
 
                         loop {
@@ -178,7 +178,7 @@ mod base_trade_component {
             let core = ILayerAkiraCoreDispatcher {contract_address:self.core_contract.read() };
             let fee_recipient = core.get_fee_recipient();
             let (taker_order, taker_hash, mut __) =  if !signed_taker_order.order.flags.external_funds {
-                self.part_safe_validate_taker(signed_taker_order, trades, fee_recipient)
+                self.part_safe_validate_taker(signed_taker_order, trades, fee_recipient, skip_taker_validation)
             } else {
                 let (o, hash, info, available) = self._do_part_external_taker_validate(signed_taker_order, trades, fee_recipient);
                 // prevent exchange trigger reimbure on purpose else we can send 0 and it will trigger failure on checks and trigger router punishment
@@ -231,13 +231,13 @@ mod base_trade_component {
         }
 
 
-        fn part_safe_validate_taker(self: @ComponentState<TContractState>, taker_signed_order:SignedOrder, swaps:u16, fee_recipient:ContractAddress) -> (Order,felt252,OrderTradeInfo) {
+        fn part_safe_validate_taker(self: @ComponentState<TContractState>, taker_signed_order:SignedOrder, swaps:u16, fee_recipient:ContractAddress,  skip_taker_validation:bool) -> (Order,felt252,OrderTradeInfo) {
             let (core, taker_order, sign) = (ILayerAkiraCoreDispatcher {contract_address:self.core_contract.read() }, taker_signed_order.order,  taker_signed_order.sign);
             let taker_order_hash = taker_order.get_message_hash(taker_order.maker);
             let taker_fill_info = self.orders_trade_info.read(taker_order_hash);
             
             assert(!taker_order.flags.external_funds, 'ECOSYSTEM_TAKER_NOT_EXTERNAL');
-            assert!(core.check_sign(taker_order.maker, taker_order_hash, sign, taker_order.sign_scheme), "WRONG_SIGN_TAKER: (taker_order_hash) = ({})", taker_order_hash,);
+            assert!(skip_taker_validation || core.check_sign(taker_order.maker, taker_order_hash, sign, taker_order.sign_scheme), "WRONG_SIGN_TAKER: (taker_order_hash) = ({})", taker_order_hash,);
             super::generic_taker_check(taker_order, taker_fill_info, core.get_nonce(taker_order.maker), swaps, taker_order_hash, fee_recipient);
             return (taker_order, taker_order_hash, taker_fill_info);
         }
@@ -255,15 +255,17 @@ mod base_trade_component {
 
         fn get_settled_amounts(self:@ComponentState<TContractState>, maker_order:Order,taker_order:Order, maker_fill_info:OrderTradeInfo, taker_fill_info:OrderTradeInfo, 
                         oracle_settle_qty:u256, maker_hash:felt252) -> (u256, u256, u256) {
+            super::generic_common_check(maker_order, taker_order);
             let settle_px = get_limit_px(maker_order, maker_fill_info);
+            // TODO edge case
+            // 
             let maker_qty = get_available_base_qty(settle_px, maker_order.qty, maker_fill_info);
             let taker_qty = do_taker_price_checks(taker_order, settle_px, taker_fill_info);
             let mut settle_base_amount = if maker_qty > taker_qty {taker_qty} else {maker_qty};
             if oracle_settle_qty > 0 {
-                assert!(oracle_settle_qty <= settle_base_amount, "WRONG_ORACLE_SETTLE_QTY {} for {}", oracle_settle_qty, maker_hash);
+                assert!(oracle_settle_qty <= settle_base_amount, "WRONG_ORACLE_SETTLE_QTY {} for {} maker {} taker {}", oracle_settle_qty, maker_hash, maker_qty, taker_qty);
                 settle_base_amount = oracle_settle_qty; 
             }
-            super::generic_common_check(maker_order, taker_order);
             let settle_quote_amount = settle_px * settle_base_amount / maker_order.qty.base_asset;
             assert!(settle_quote_amount > 0, "0_QUOTE_AMOUNT");
             return (settle_base_amount, settle_quote_amount, settle_px);
@@ -506,14 +508,7 @@ mod base_trade_component {
             (accum_base, accum_quote)
         }
 
-        fn assert_slippage(self: @ComponentState<TContractState>, taker_hash:felt252, max_spend:u256, min_receive:u256) {
-            let fill_info  = self.get_ecosystem_trade_info(taker_hash);
-            let (spend, received) = if fill_info.is_sell_side {(fill_info.filled_base_amount, fill_info.filled_quote_amount)}
-                                      else {(fill_info.filled_quote_amount,fill_info.filled_base_amount)};
-            assert(max_spend == 0 || spend <= max_spend, 'Failed to max spend');
-            assert(min_receive == 0 || received >= min_receive, 'Failed to min receive');
-            
-        }
+
     }
 
 }

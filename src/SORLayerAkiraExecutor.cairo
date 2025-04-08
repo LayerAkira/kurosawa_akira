@@ -1,16 +1,10 @@
-
-
-
-
 use kurosawa_akira::Order::{SignedOrder,Order,SimpleOrder,get_gas_fee_and_coin, OrderTradeInfo, OrderFee, FixedFee,GasFee, OrderFlags, Constraints, Quantity,
             get_feeable_qty,get_limit_px, do_taker_price_checks, do_maker_checks, get_available_base_qty, generic_taker_check,generic_common_check,TakerSelfTradePreventionMode};
 use starknet::{ContractAddress};
 use core::option::Option;
     
 #[starknet::interface]
-trait ISORTradeLogic<TContractState> {
-    
-}
+trait ISORTradeLogic<TContractState> {}
 
 
 // internal structure used for storing client sored order, up to 5 orders
@@ -56,15 +50,15 @@ struct SORDetails { // details supplied with sor sored orders
     // target_receive: 
 }
 
-#[starknet::component]
-mod sor_trade_component {
+#[starknet::contract]
+mod SORLayerAkiraExecutor {
     use starknet::{get_contract_address, ContractAddress, get_caller_address, get_tx_info, get_block_timestamp};
     use super::{SignedOrder, Order};
-    use kurosawa_akira::BaseTradeComponent::base_trade_component as  base_trade_component;
-    use base_trade_component::{InternalBaseOrderTradable, BaseOrderTradableImpl};
     use kurosawa_akira::signature::V0OffchainMessage::{OffchainMessageHashImpl};
     use kurosawa_akira::signature::AkiraV0OffchainMessage::{OrderHashImpl, SNIP12MetadataImpl};
     use kurosawa_akira::LayerAkiraCore::{ILayerAkiraCoreDispatcherTrait, ILayerAkiraCoreDispatcher};
+    use kurosawa_akira::LayerAkiraBaseExecutor::{ILayerAkiraBaseExecutorDispatcherTrait, ILayerAkiraBaseExecutorDispatcher};
+
     use core::option::Option;
     #[event]
     #[derive(Drop, starknet::Event)]
@@ -78,35 +72,53 @@ mod sor_trade_component {
         order_hash_to_sor:starknet::storage::Map::<felt252, super::SOR>,
         sor_to_ptr:starknet::storage::Map::<felt252, (u8,bool)>, // index and is failed sor
         atomic_sor:super::SOR,
-        core_address:ContractAddress,
+        base_executor_address:ContractAddress
     }
 
+    #[constructor]
+    fn constructor(ref self: ContractState, core_address:ContractAddress, router_address:ContractAddress) {}
 
+    #[external(v0)]
+    fn placeTakerOrder(ref self: ContractState, order: Order, router_sign: (felt252,felt252)) {
+        let tx_info = get_tx_info().unbox();
+        let mut base_trade = ILayerAkiraBaseExecutorDispatcher{contract_address:self.base_executor_address.read()};
+        if (!base_trade.is_wlsted_invoker(tx_info.account_contract_address)) {return;}; // shallow termination for client// argent simulation
+        _placeTakerOrder(ref self, order, router_sign);
+    }
 
+    #[external(v0)]
+    fn fullfillTakerOrder(ref self: ContractState, mut maker_orders:Array<(SignedOrder,u256)>,
+                    total_amount_matched:u256, gas_steps:u32, gas_price:u256) {
+        assert(ILayerAkiraBaseExecutorDispatcher{contract_address:self.base_executor_address.read()}.is_wlsted_invoker(get_caller_address()),'not wlisted');
+        _fullfillTakerOrder(ref self, maker_orders, total_amount_matched, gas_steps, gas_price);
+    }
 
+    #[external(v0)]
+    fn placeSORTakerOrder(ref self: ContractState, orchestrate_order: super::SimpleOrder, path:Array<super::SimpleOrder>, router_signature:(felt252, felt252), details: super::SORDetails) {
+        let tx_info = get_tx_info().unbox();
+        let mut base_trade = ILayerAkiraBaseExecutorDispatcher{contract_address:self.base_executor_address.read()};
+        if (!base_trade.is_wlsted_invoker(tx_info.account_contract_address)) {return;}; // shallow termination for client// argent simulation
+        _placeSOROrder(ref self, orchestrate_order, path, router_signature, details);
+    }
 
+    #[external(v0)]
+    fn fulfillSORAtomic(ref self: ContractState, makers_orders:Array<(SignedOrder,u256)>,
+                        total_amount_matched_and_len:Array<(u256, u8)>, gas_steps:u32, gas_price:u256, sor_id:felt252) {
+        assert(ILayerAkiraBaseExecutorDispatcher{contract_address:self.base_executor_address.read()}.is_wlsted_invoker(get_caller_address()),'not wlisted');
+        _fulfillSORAtomic(ref self, makers_orders, total_amount_matched_and_len, gas_steps, gas_price, sor_id);           
+    }
 
-    #[embeddable_as(SORTradable)]
-    impl SOROrderTradableImpl<TContractState, 
-    +HasComponent<TContractState>,
-    impl BaseTrade:base_trade_component::HasComponent<TContractState>,
-    +Drop<TContractState>> of super::ISORTradeLogic<ComponentState<TContractState>> {}
-
-     #[generate_trait]
-    impl InternalSORTradableImpl<TContractState, +HasComponent<TContractState>, +Drop<TContractState> ,
-        impl BaseTrade:base_trade_component::HasComponent<TContractState> > of InternalSORTradable<TContractState> {
-        
-        fn placeTakerOrder(ref self: ComponentState<TContractState>, order: Order, router_sign: (felt252,felt252)) {
-            // SNIP-9 place of taker order onchain, rolluper calls account which calls placeTakerOrder
-            //  Params:
-            //      order: taker order to be filled
-            //      router_sign: signature of order if any by router that guarantee correctness of the order   
-            assert(order.maker == get_caller_address(), 'Maker must be caller');
-            self.acquireLock(router_sign);
-            self.scheduled_taker_order.write(order);
+    fn _placeTakerOrder(ref self: ContractState, order: Order, router_sign: (felt252,felt252)) {
+        // SNIP-9 place of taker order onchain, rolluper calls account which calls placeTakerOrder
+        //  Params:
+        //      order: taker order to be filled
+        //      router_sign: signature of order if any by router that guarantee correctness of the order   
+        assert(order.maker == get_caller_address(), 'Maker must be caller');
+        acquireLock(ref self, router_sign);
+        self.scheduled_taker_order.write(order);
         }
-
-        fn fullfillTakerOrder(ref self: ComponentState<TContractState>, mut maker_orders:Array<(SignedOrder, u256)>,
+    
+    fn _fullfillTakerOrder(ref self: ContractState, mut maker_orders:Array<(SignedOrder, u256)>,
                         total_amount_matched:u256, gas_steps:u32, gas_price:u256) {
             // SNIP-9 execution of taker order onchain
             // rollup MULTICALL: [approve, ..., approve, placeTakerOrder, fullfillTakerOrder]
@@ -116,20 +128,21 @@ mod sor_trade_component {
             //      gas_steps: actual amount steps to settle 1 trade
             //      gas_price: real gas price per 1 gas
             
-            let mut base_trade = get_dep_component_mut!(ref self, BaseTrade);
+            let mut base_trade = ILayerAkiraBaseExecutorDispatcher{contract_address:self.base_executor_address.read()};
 
             let (order, allow_charge_gas_on_receipt, as_taker_filled) = (self.scheduled_taker_order.read(), true, true); 
-            let (skip_taker_validation, gas_trades, tfer_taker_recieve_back) = (false, maker_orders.len().try_into().unwrap(), order.flags.external_funds);
+            let (skip_taker_validation, gas_trades, tfer_taker_recieve_back) = (true, maker_orders.len().try_into().unwrap(), order.flags.external_funds);
             let (_, router_signature) = self.atomic_taker_info.read();
             
             let (succ, taker_hash) = base_trade.apply_single_taker(SignedOrder{ order, sign: array![].span(), router_sign:router_signature}, maker_orders.span(), 
                 total_amount_matched, gas_price, gas_steps, as_taker_filled, skip_taker_validation, gas_trades, tfer_taker_recieve_back, allow_charge_gas_on_receipt);
-            if succ {base_trade.assert_slippage(taker_hash, 0, order.constraints.min_receive_amount);}
+            if succ {assert_slippage(@self, taker_hash, 0, order.constraints.min_receive_amount);}
 
-            self.releaseLock();
+            releaseLock(ref self);
         }
 
-		fn placeSOROrder(ref self: ComponentState<TContractState>, orchestrate_order:super::SimpleOrder, 
+
+		fn _placeSOROrder(ref self: ContractState, orchestrate_order:super::SimpleOrder, 
                 path:Array<super::SimpleOrder>, router_signature:(felt252, felt252), details:super::SORDetails){
             // SNIP-9 place of sor order (for example, client wants to sell SHIBA for WstETH) and exchange have tickers SHIBA/STRK, ETH/STRK and WstETH/ETH   
             //  Params:
@@ -151,7 +164,7 @@ mod sor_trade_component {
             assert(details.trade_fee.apply_to_receipt_amount == details.router_fee.apply_to_receipt_amount, 'incorrect apply_to_receipt flag');
             
             // no cycles checked in buildSOR
-            let new_sor = self.buildSOR(orchestrate_order, path, router_signature, details);
+            let new_sor = buildSOR(@self, orchestrate_order, path, router_signature, details);
             
             if (details.allow_nonatomic) {
                 let key = new_sor.lead.get_message_hash(new_sor.lead.maker); 
@@ -159,12 +172,12 @@ mod sor_trade_component {
                 assert(sor.lead.maker.try_into().unwrap() == 0, 'sor already existed');
                 self.order_hash_to_sor.write(key, new_sor);
             } else {
-                 self.acquireLock(router_signature); 
+                 acquireLock(ref self, router_signature); 
                  self.atomic_sor.write(new_sor);
             }
         }
 
-        fn fulfillSORAtomic(ref self: ComponentState<TContractState>, makers_orders:Array<(SignedOrder,u256)>,
+        fn _fulfillSORAtomic(ref self: ContractState, makers_orders:Array<(SignedOrder,u256)>,
                         total_amount_matched_and_len:Array<(u256, u8)>, gas_steps:u32, gas_price:u256, sor_id:felt252) {
             // SNIP-9 call
             // Allows to fulfill sored client orders atomically within 1 tx
@@ -197,26 +210,27 @@ mod sor_trade_component {
             // responsibility of layer akira backend if on last order 
             // if some intermediary force to check if have enough; gas charged from the begining, avoid use receive side  
             let (gas_trades, last_trades) = if sor.apply_gas_in_first_trade {(total_trades,0)} else {(0,total_trades)};
-            let (skip_taker_validation, allow_charge_gas_on_receipt, tfer_back_received) = (false, false, false);
-            let mut base_trade = get_dep_component_mut!(ref self, BaseTrade);
+            let (skip_taker_validation, allow_charge_gas_on_receipt, tfer_back_received) = (true, false, false);
+            let mut base_trade = ILayerAkiraBaseExecutorDispatcher{contract_address:self.base_executor_address.read()};
+
             
             let (succ, lead_taker_hash) = base_trade.apply_single_taker(
                         SignedOrder{order:first, sign: array![].span(), router_sign:sor.router_signature_lead},
                         makers_span.slice(0, swaps.try_into().unwrap()), total_amount_matched, gas_price, gas_steps, true, 
                             skip_taker_validation, gas_trades, tfer_back_received, allow_charge_gas_on_receipt);
-            if succ {base_trade.assert_slippage(sor_id, sor.max_spend_amount, 0);}
+            if succ {assert_slippage(@self, sor_id, sor.max_spend_amount, 0);}
 
 
-            let (zero_trade_fee, zero_router_fee) =  self.getTradeAndRouterFees(sor, false);
+            let (zero_trade_fee, zero_router_fee) =  getTradeAndRouterFees(@self, sor, false);
             // apply all the orders
             let (mut ptr, mut offset, tfer_taker_recieve_back) = (0, swaps.try_into().unwrap(), false);
-            let (ptr1, offset1, __) = self.apply(first, sor.order0, zero_trade_fee, zero_router_fee, ptr, offset, makers_span, span_amount_matched, gas_price, gas_steps, succ, 0, fee_recipient, tfer_taker_recieve_back, lead_taker_hash, Option::None);
+            let (ptr1, offset1, __) = apply(ref self, first, sor.order0, zero_trade_fee, zero_router_fee, ptr, offset, makers_span, span_amount_matched, gas_price, gas_steps, succ, 0, fee_recipient, tfer_taker_recieve_back, lead_taker_hash, Option::None);
             ptr = ptr1; offset = offset1;
-            let (ptr1, offset1, __) = self.apply(first, sor.order1, zero_trade_fee, zero_router_fee, ptr, offset, makers_span, span_amount_matched, gas_price, gas_steps, succ, 0, fee_recipient, tfer_taker_recieve_back, lead_taker_hash, Option::None);
+            let (ptr1, offset1, __) = apply(ref self, first, sor.order1, zero_trade_fee, zero_router_fee, ptr, offset, makers_span, span_amount_matched, gas_price, gas_steps, succ, 0, fee_recipient, tfer_taker_recieve_back, lead_taker_hash, Option::None);
             ptr = ptr1; offset = offset1;
-            let (ptr1, offset1, __) = self.apply(first, sor.order2, zero_trade_fee, zero_router_fee, ptr, offset, makers_span, span_amount_matched, gas_price, gas_steps, succ, 0, fee_recipient, tfer_taker_recieve_back, lead_taker_hash, Option::None);
+            let (ptr1, offset1, __) = apply(ref self, first, sor.order2, zero_trade_fee, zero_router_fee, ptr, offset, makers_span, span_amount_matched, gas_price, gas_steps, succ, 0, fee_recipient, tfer_taker_recieve_back, lead_taker_hash, Option::None);
             ptr = ptr1; offset = offset1;
-            let (ptr1, offset1, __) = self.apply(first, sor.order3, zero_trade_fee, zero_router_fee, ptr, offset, makers_span, span_amount_matched, gas_price, gas_steps, succ, 0, fee_recipient, tfer_taker_recieve_back, lead_taker_hash, Option::None);
+            let (ptr1, offset1, __) = apply(ref self, first, sor.order3, zero_trade_fee, zero_router_fee, ptr, offset, makers_span, span_amount_matched, gas_price, gas_steps, succ, 0, fee_recipient, tfer_taker_recieve_back, lead_taker_hash, Option::None);
             ptr = ptr1; offset = offset1;
             
             let tfer_back_received =  first.flags.external_funds;
@@ -224,16 +238,16 @@ mod sor_trade_component {
             
             // if exact sell then we need fullfill only otherwise we were doing exact buy amount
             let last_order_qty = if sor.max_spend_amount != 0 {Option::Some(sor.last_qty)} else {Option::None};
-            let (ptr1, offset1, taker_hash) = self.apply(first, Option::Some(last), last_trade_fee, last_router_fee, 
+            let (ptr1, offset1, taker_hash) = apply(ref self, first, Option::Some(last), last_trade_fee, last_router_fee, 
                     ptr, offset, makers_span, span_amount_matched, gas_price, gas_steps, succ, last_trades, fee_recipient, tfer_back_received, lead_taker_hash, last_order_qty);
             ptr = ptr1; offset = offset1;
-            if succ {base_trade.assert_slippage(taker_hash, 0, sor.min_receive_amount);}
+            if succ {assert_slippage(@self, taker_hash, 0, sor.min_receive_amount);}
 
             assert(offset == total_trades.into(), 'Mismatch orders count');
             if sor_id != 0.try_into().unwrap() {
                 self.sor_to_ptr.write(sor_id, (sor.path_len + 1, !succ)); 
             }  else {
-                self.releaseLock();
+                releaseLock(ref self);
             }
             // if exact sell last order fullfill only and qty built from previous
             // if exact buy  but first must be  < -- todo mb not releavnt
@@ -241,104 +255,42 @@ mod sor_trade_component {
         }
 
 
-        // SHIBA/STRK STRK/USDC 
-        // selling exact SHIBA (specify base)
-        // STRK/SHIBA STRK/USDC 
-        // 
-        //  buy exact
+    fn acquireLock(ref self:ContractState, router_sign:(felt252,felt252)) {
+        //lock defined by tx_hash of ongoing tx
+        let (hash_lock, _) = self.atomic_taker_info.read();
+        assert(hash_lock == 0, 'Lock already acquired');       
+        let tx_info = get_tx_info().unbox();
+        self.atomic_taker_info.write((tx_info.transaction_hash, router_sign));
+    }
+
+    fn releaseLock(ref self:ContractState) {
+        let (hash_lock, _) = self.atomic_taker_info.read();            
+        let tx_info = get_tx_info().unbox();        
+        assert(hash_lock == tx_info.transaction_hash, 'Lock not acquired');
+        self.atomic_taker_info.write((0, (0,0)));
+    }
 
 
-        fn fulfillSORLeadOrder(ref self: ComponentState<TContractState>, sor_id:felt252, makers_orders:Array<(SignedOrder,u256)>,
-                        total_amount_matched:u256, gas_steps:u32, gas_price:u256, total_trades:u16) {
-            // Allows exchange to fulfill lead order in client sor
-            //
-            //  Params:
-            //      sor_id: lead order hash representing cleint sor
-            //      maker_orders: array of tuples -- (maker order, base amount matched) against which lead order was matched
-            //      total_amount_matched: total amount spent by taker in spending token of the trade
-            //      gas_steps: actual amount steps to settle 1 trade
-            //      gas_price: real gas price per 1 gas
-            //      total_trades: total trades that happenned in whole sor
-            
-            let sor = self.order_hash_to_sor.read(sor_id);
-            let (head, _) = self.sor_to_ptr.read(sor_id);
-            assert(head == 0, 'sor already processed');
-            assert(sor.lead.maker != 0x0.try_into().unwrap(), 'sor not initialized');
-            assert(sor.allow_nonatomic_processing, 'this sor atomic only');
-            assert(total_trades.into() <= sor.trades_max, 'Failed max trades');
-            
+    fn assert_slippage(self: @ContractState, taker_hash:felt252, max_spend:u256, min_receive:u256) {
+        let mut base_trade = ILayerAkiraBaseExecutorDispatcher{contract_address:self.base_executor_address.read()};
+        let fill_info  = base_trade.get_ecosystem_trade_info(taker_hash);
+        let (spend, received) = if fill_info.is_sell_side {(fill_info.filled_base_amount, fill_info.filled_quote_amount)}
+                                      else {(fill_info.filled_quote_amount,fill_info.filled_base_amount)};
+        assert(max_spend == 0 || spend <= max_spend, 'Failed to max spend');
+        assert(min_receive == 0 || received >= min_receive, 'Failed to min receive');
+    }
 
-            let mut base_trade = get_dep_component_mut!(ref self, BaseTrade);
-            let (skip_taker_validation, allow_charge_gas_on_receipt) = (true, false); // cause place was directly by user so skip
-            let (as_taker_completed, tfer_taker_recieve_back) = (true, false); 
-            let gas_trades = if sor.apply_gas_in_first_trade {total_trades} else {0};
-            
-            let (succ, _) = base_trade.apply_single_taker(
-                SignedOrder{order:sor.lead, sign: array![].span(), router_sign:sor.router_signature_lead},
-                makers_orders.span(), total_amount_matched, gas_price, gas_steps, as_taker_completed, 
-                skip_taker_validation, gas_trades, tfer_taker_recieve_back, allow_charge_gas_on_receipt);
-            self.sor_to_ptr.write(sor_id, (1, !succ));
-            if succ {base_trade.assert_slippage(sor_id, sor.max_spend_amount, 0);}
-
-        }
-
-        fn fulfillSORPath(ref self: ComponentState<TContractState>, sor_id:felt252, makers_orders:Array<(SignedOrder,u256)>,
-                    total_amount_matched:u256, gas_steps:u32, gas_price:u256, total_trades:u16) {
-            // Non atomically (might be in separate txs) process orders from client sor path (starting after lead order sequentially)
-            // Can only be invoked on sor that supports non atomic execution and after lead order was processed; no double spending
-            //  Params:
-            //      sor_id: lead order hash representing client sor
-            //      maker_orders: array of tuples -- (maker order, base amount matched) against head order was matched
-            //      total_amount_matched: total amount spent by taker in spending token of the trade
-            //      gas_steps: actual amount steps to settle 1 trade
-            //      gas_price: real gas price per 1 gas
-            //      total_trades: total trades that happenned in whole sor
-
-            // head is starts from lead order and points on unprocessed order!           
-            let (sor, (head, failed))  = (self.order_hash_to_sor.read(sor_id), self.sor_to_ptr.read(sor_id));
-
-            assert(head != 0, 'lead not processed yet');
-            assert(head - 1 < sor.path_len, 'sor processed');
-            let (succ, fee_recipient) = (!failed, sor.trade_fee.recipient);
-            let matched = array![(total_amount_matched, makers_orders.len().try_into().unwrap())].span();
-            
-            let (order, is_last_order) = self.getOrderFromsor(sor, head);
-            let (fee_trade, fee_router) = self.getTradeAndRouterFees(sor, is_last_order && sor.trade_fee.apply_to_receipt_amount);
-            let tfer_taker_recieve_back = is_last_order && sor.lead.flags.external_funds;  // last order if sor external need tfer result of sor back
-            let gas_trades = if sor.apply_gas_in_first_trade  {0} else {total_trades};
-             // if exact sell then we need fullfill only otherwise we were doing exact buy amount
-            let overwrite_qty = if (is_last_order && sor.max_spend_amount != 0) {Option::Some(sor.last_qty)} else {Option::None};
-            let (__, __, taker_hash) = self.apply(sor.lead, order, fee_trade, fee_router, 0, 0, makers_orders.span(), matched, gas_price, gas_steps, succ, gas_trades, fee_recipient, tfer_taker_recieve_back, sor_id, overwrite_qty);
-            self.sor_to_ptr.write(sor_id, (head + 1, failed));   
-            if is_last_order && succ {
-                let mut base_trade = get_dep_component_mut!(ref self, BaseTrade);
-                base_trade.assert_slippage(taker_hash, 0, sor.min_receive_amount);
-            }
-         
-        }
-
-        fn getOrderFromsor(self: @ComponentState<TContractState>, sor:super::SOR, cur_head:u8) -> (Option<super::SimpleOrder>, bool) {
-            // returns <option simple order, is order a last order>
-            // if cur_head == 0 it is lead order so an offset of 1
-
-            if (cur_head == sor.path_len) {
-                let order = if (cur_head == 1) {sor.order0} else if (cur_head == 2) {sor.order1} else if (cur_head == 3) {sor.order2} else {sor.order3};
-                return (order, false);
-            } else {
-                return (Option::Some(sor.last_order), true);
-            }            
-        }
-
-        fn buildSOR(self: @ComponentState<TContractState>, orchestrate_order:super::SimpleOrder, 
+    fn buildSOR(self: @ContractState, orchestrate_order:super::SimpleOrder, 
                 path:Array<super::SimpleOrder>, router_signature:(felt252, felt252), details:super::SORDetails) ->super::SOR {
             // building sor that is stored in memory
             // creates inplace lead order from simple orchestrate_order
             // flatten path and store in sor order<i> variables in sor since cant store vectors in contract
 
-            let (zero_trade_fee, zero_router_fee) = self.getZeroFees(details.trade_fee.recipient, details.router_fee.recipient, 
+            let (zero_trade_fee, zero_router_fee) = getZeroFees(self, details.trade_fee.recipient, details.router_fee.recipient, 
                                                                                             details.trade_fee.apply_to_receipt_amount);
                         
             assert(!(details.min_receive_amount > 0 && details.max_spend_amount > 0), 'Both cant be defined');
+            // TODO:
             let full_fill_only = details.max_spend_amount == 0; // if client wants to sell exact -> full_fill_only set to True
             // build lead order inplace
             let lead = Order{maker:get_caller_address(), qty:details.lead_qty, price:orchestrate_order.price, ticker:orchestrate_order.ticker,
@@ -388,25 +340,25 @@ mod sor_trade_component {
             return new_sor;
         }
 
-        fn getTradeAndRouterFees(self: @ComponentState<TContractState>, sor:super::SOR, non_zero_fees:bool) -> (super::FixedFee, super::FixedFee) {
-            if !non_zero_fees {return self.getZeroFees(sor.lead.fee.trade_fee.recipient, sor.lead.fee.router_fee.recipient, sor.lead.fee.trade_fee.apply_to_receipt_amount);}
+        fn getTradeAndRouterFees(self: @ContractState, sor:super::SOR, non_zero_fees:bool) -> (super::FixedFee, super::FixedFee) {
+            if !non_zero_fees {return getZeroFees(self, sor.lead.fee.trade_fee.recipient, sor.lead.fee.router_fee.recipient, sor.lead.fee.trade_fee.apply_to_receipt_amount);}
             return (sor.trade_fee, sor.router_fee);
         }
 
-        fn getZeroFees(self: @ComponentState<TContractState>, trade_fee_recipient:ContractAddress, router_fee_recipient:ContractAddress, apply_to_receipt:bool) -> (super::FixedFee, super::FixedFee) {
+        fn getZeroFees(self: @ContractState, trade_fee_recipient:ContractAddress, router_fee_recipient:ContractAddress, apply_to_receipt:bool) -> (super::FixedFee, super::FixedFee) {
             let zero_trade_fee = super::FixedFee{recipient:trade_fee_recipient, maker_pbips:0, taker_pbips:0, apply_to_receipt_amount: apply_to_receipt};
             let zero_router_fee = super::FixedFee{recipient:router_fee_recipient, maker_pbips:0, taker_pbips:0, apply_to_receipt_amount:apply_to_receipt};
             return (zero_trade_fee, zero_router_fee);
         }
 
 
-        fn buildInplaceTakerOrder(self: @ComponentState<TContractState>, minimal_order:super::SimpleOrder, lead: Order, 
+        fn buildInplaceTakerOrder(self: @ContractState, minimal_order:super::SimpleOrder, lead: Order, 
                 trade_fee:super::FixedFee, router_fee: super::FixedFee, previous_fill_amount_qty:u256, 
                     lead_taker_hash:felt252, overwrite_qty:Option<super::Quantity>) -> Order {
             // build inplace taker order given lead order and minimal info for new order
             let qty = if !overwrite_qty.is_some() {
-                let base_qty =  if minimal_order.is_sell_side {previous_fill_amount_qty} else {0};
-                let quote_qty = if !minimal_order.is_sell_side {previous_fill_amount_qty} else {0};
+                let base_qty =  if minimal_order.is_sell_side {previous_fill_amount_qty + 1} else {0};
+                let quote_qty = if !minimal_order.is_sell_side {previous_fill_amount_qty + 1} else {0};
                 super::Quantity{base_asset:minimal_order.base_asset, base_qty, quote_qty}
             } else {overwrite_qty.unwrap()};
             Order{maker:lead.maker, qty, price:minimal_order.price, ticker:minimal_order.ticker,
@@ -421,7 +373,7 @@ mod sor_trade_component {
             }
         }
 
-        fn apply(ref self: ComponentState<TContractState>, lead_order:Order, option_order: Option<super::SimpleOrder>,
+        fn apply(ref self: ContractState, lead_order:Order, option_order: Option<super::SimpleOrder>,
                             trade_fee:super::FixedFee, router_fee: super::FixedFee, ptr:u32, offset:u32,
                             makers_orders:Span<(SignedOrder,u256)>, 
                             total_amount_matched_and_len:Span<(u256, u8)>, gas_price:u256, gas_steps:u32, succ:bool, gas_trades_to_pay:u16,
@@ -440,47 +392,28 @@ mod sor_trade_component {
             //      ...
             //      succ: if order should be settled or marked as failed
             //      
-            let mut base_trade = get_dep_component_mut!(ref self, BaseTrade);
+            let mut base_trade = ILayerAkiraBaseExecutorDispatcher{contract_address:self.base_executor_address.read()};
+
             if option_order.is_some() {
                     let (amount_spent, swaps) = *total_amount_matched_and_len.at(ptr);
-                    let order = self.buildInplaceTakerOrder(option_order.unwrap(), lead_order, trade_fee, router_fee, amount_spent, lead_taker_hash, overwrite_qty);
+                    let order = buildInplaceTakerOrder(@self, option_order.unwrap(), lead_order, trade_fee, router_fee, amount_spent, lead_taker_hash, overwrite_qty);
                     // TODO: likely need not to calculate message hash?? cause expensive and no point
                     let taker_hash = order.get_message_hash(order.maker);
                     let as_taker_completed = true;
                     if succ {
                         let (accum_base, accum_quote) = base_trade.apply_trades(order, makers_orders.slice(offset, swaps.try_into().unwrap()), lead_order.fee.trade_fee.recipient, 
                                     taker_hash, gas_price, gas_steps, as_taker_completed);
-                        if transfer_taker_recieve_back {
-                            let (taker_received, spent) = if order.flags.is_sell_side { (accum_quote, accum_base) } else {(accum_base, accum_quote)};
+                        let (taker_received, spent) = if order.flags.is_sell_side { (accum_quote, accum_base) } else {(accum_base, accum_quote)};
                             base_trade.finalize_router_taker(order, taker_hash, taker_received, 0, gas_price, 
                                 gas_trades_to_pay, gas_steps, spent, fee_recipient, transfer_taker_recieve_back, false); 
-                        }
+                        
                     } else {
                         base_trade.apply_punishment(order, makers_orders.slice(offset, swaps.try_into().unwrap()), lead_order.fee.trade_fee.recipient, 
                                 taker_hash, gas_price, gas_steps, as_taker_completed);
 
                     }
-                    return (offset + swaps.try_into().unwrap(), ptr + 1, taker_hash);
+                    return (ptr + 1, offset + swaps.try_into().unwrap(),  taker_hash);
                 }
-            return (offset, ptr, 0.try_into().unwrap());
+            return (ptr, offset, 0.try_into().unwrap());
         }
-
-        fn acquireLock(ref self:ComponentState<TContractState>, router_sign:(felt252,felt252)) {
-            //lock defined by tx_hash of ongoing tx
-            let (hash_lock, _) = self.atomic_taker_info.read();
-            assert(hash_lock == 0, 'Lock already acquired');       
-            let tx_info = get_tx_info().unbox();
-            self.atomic_taker_info.write((tx_info.transaction_hash, router_sign));
-        }
-
-        fn releaseLock(ref self:ComponentState<TContractState>) {
-            let (hash_lock, _) = self.atomic_taker_info.read();            
-            let tx_info = get_tx_info().unbox();        
-            assert(hash_lock == tx_info.transaction_hash, 'Lock not acquired');
-            self.atomic_taker_info.write((0, (0,0)));
-        }
-
-
-
-    }
 }

@@ -15,7 +15,7 @@
 
 
     use kurosawa_akira::LayerAkiraExternalGrantor::{IExternalGrantorDispatcher, IExternalGrantorDispatcherTrait};
-    use kurosawa_akira::LayerAkiraExecutor::{ILayerAkiraExecutorDispatcher, ILayerAkiraExecutorDispatcherTrait};
+    // use kurosawa_akira::LayerAkiraExecutor::{ILayerAkiraExecutorDispatcher, ILayerAkiraExecutorDispatcherTrait};
 
 
 
@@ -117,14 +117,12 @@
         return deployed;
     }
 
-    fn spawn_executor(core_address:ContractAddress, router_address:ContractAddress) -> ContractAddress {
-        let cls = declare("LayerAkiraExecutor").unwrap();
+    fn spawn_executor(core_address:ContractAddress, router_address:ContractAddress, owner:ContractAddress) -> ContractAddress {
+        let cls = declare("LayerAkiraBaseExecutor").unwrap();
         let mut constructor: Array::<felt252> = ArrayTrait::new();
         constructor.append(core_address.into());
         constructor.append(router_address.into());
-        // constructor.append(get_fee_recipient_exchange().into());
-        // constructor.append(get_eth_addr().into());
-        // constructor.append(get_fee_recipient_exchange().into());
+        constructor.append(owner.into());
         let (deployed, _) = cls.deploy(@constructor).unwrap();
         return deployed;
     }
@@ -133,13 +131,13 @@
         let core = spawn_core();
         let router = spawn_external_grantor(core);
         let core_contract = ILayerAkiraCoreDispatcher{contract_address:core};
-        let executor_contract = spawn_executor(core, router);
+        let executor_contract = spawn_executor(core, router, core_contract.get_owner());
         if (executor == 0x0.try_into().unwrap()) { executor = executor_contract}
-        start_cheat_caller_address(core, get_fee_recipient_exchange());core_contract.set_executor(executor);stop_cheat_caller_address(core);
-        start_cheat_caller_address(core, get_trader_address_1());core_contract.grant_access_to_executor();stop_cheat_caller_address(core);
-        start_cheat_caller_address(core, get_trader_address_2());core_contract.grant_access_to_executor();stop_cheat_caller_address(core);
+        start_cheat_caller_address(core, get_fee_recipient_exchange());core_contract.update_executor(executor, true);stop_cheat_caller_address(core);
+        start_cheat_caller_address(core, get_trader_address_1());core_contract.grant_access_to_executor(executor);stop_cheat_caller_address(core);
+        start_cheat_caller_address(core, get_trader_address_2());core_contract.grant_access_to_executor(executor);stop_cheat_caller_address(core);
 
-        start_cheat_caller_address(router, get_fee_recipient_exchange());IExternalGrantorDispatcher{contract_address:router}.set_executor(executor);stop_cheat_caller_address(router);
+        start_cheat_caller_address(router, get_fee_recipient_exchange());IExternalGrantorDispatcher{contract_address:router}.update_executor(executor, true);stop_cheat_caller_address(router);
            
         (core, router, executor_contract)
     }

@@ -26,7 +26,6 @@ trait IExternalGrantor<TContractState> {
     // how much one must hold have in balance to be registered as router
     fn get_route_amount(self:@TContractState) -> u256;
 
-
     fn router_deposit(ref self:TContractState, router:ContractAddress, coin:ContractAddress, amount:u256);
     
     //  native  token can be withdrawn up to amount specified to be eligible of being router
@@ -41,8 +40,8 @@ trait IExternalGrantor<TContractState> {
     fn add_router_binding(ref self: TContractState, signer: ContractAddress);
     fn get_base_token(self:@TContractState)-> ContractAddress;
 
-    fn grant_access_to_executor(ref self: TContractState);
-    fn set_executor(ref self: TContractState, new_executor:ContractAddress);
+    fn grant_access_to_executor(ref self: TContractState, executor:ContractAddress);
+    fn update_executor(ref self: TContractState, new_executor:ContractAddress, wlist:bool);
 
 
 
@@ -94,8 +93,7 @@ mod LayerAkiraExternalGrantor{
         self.max_slow_mode_delay.write(max_slow_mode_delay);
         self.router_s.initializer(max_slow_mode_delay, core_address, min_to_route, 10_000);
         self.accessor_s.owner.write(owner);
-        self.accessor_s.executor.write(0.try_into().unwrap());
-        self.accessor_s.executor_epoch.write(0);
+        self.accessor_s.global_executor_epoch.write(1);
     }
 
 
@@ -112,7 +110,7 @@ mod LayerAkiraExternalGrantor{
 
     #[external(v0)]
     fn transfer_to_core(ref self: ContractState, router:ContractAddress, token:ContractAddress, amount:u256) -> u256 {
-        self.accessor_s.only_executor(); self.accessor_s.only_authorized_by_user(router);
+        self.accessor_s.only_executor(); self.accessor_s.only_authorized_by_user(router, get_caller_address());
         return self.router_s.burn_and_send(router,token,amount,self.router_s.core_address.read());
     }
     

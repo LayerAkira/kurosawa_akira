@@ -2,18 +2,19 @@ use starknet::ContractAddress;
 
 #[starknet::interface]
 trait IAccesorableImpl<TContractState> {
-        fn get_approved_executor(self: @TContractState, user:ContractAddress) -> (ContractAddress, u16);
-
-        fn is_approved_executor(self: @TContractState, user:ContractAddress) -> bool;
-
+        // returns executor and user epoch; for the backend use
+        fn get_epochs(self: @TContractState, executor: ContractAddress, user:ContractAddress) -> (u32, u32);
         fn get_owner(self: @TContractState) -> ContractAddress;
-    
-        fn get_executor(self: @TContractState) -> (ContractAddress, u16);
-    
+        // Is client approved the specified executor 
+        fn is_approved_executor(self: @TContractState, executor:ContractAddress, user:ContractAddress) -> bool;
+        
         fn set_owner(ref self: TContractState, new_owner:ContractAddress);
-
-        fn set_executor(ref self: TContractState, new_executor:ContractAddress);
-        fn grant_access_to_executor(ref self: TContractState);
+        // wlist or dewlist executor; in case of dewlist approvals reset for everybody to avoid any malisious actions with reenable later on
+        fn update_executor(ref self: TContractState, new_executor:ContractAddress, wlist:bool);
+        // invoked by client to whitelist current executor to perform actions on his behalf
+        fn grant_access_to_executor(ref self: TContractState, executor:ContractAddress);
+        // invoked by the owner; invalidates all client approvals; eg malicous executor/bug/other stuff
+        fn invalidate_executors(ref self: TContractState);
 }
 
 
@@ -27,29 +28,26 @@ mod accessor_logic_component {
     #[storage]
     struct Storage {
         owner: ContractAddress, // owner of contact that have permissions to grant and revoke role for invokers and update slow mode 
-        executor: ContractAddress,
-        user_to_executor_granted: starknet::storage::Map::<ContractAddress, ContractAddress>, 
-        user_to_executor_epoch: starknet::storage::Map::<ContractAddress, u16>, // prevent re grant logic for old executors
-        executor_epoch:u16   
+        user_to_executor_to_epoch: starknet::storage::Map::<(ContractAddress, ContractAddress), u32>, 
+        wlsted_executors:starknet::storage::Map::<ContractAddress, bool>,
+        global_executor_epoch:u32   
     }
 
 
     #[embeddable_as(Accesorable)]
     impl AccsesorableImpl<TContractState, +HasComponent<TContractState>> of IAccesorableImpl<ComponentState<TContractState>> {
         
-        fn get_approved_executor(self: @ComponentState<TContractState>, user:ContractAddress) -> (ContractAddress, u16) {
-            (self.user_to_executor_granted.read(user), self.user_to_executor_epoch.read(user))
+        fn get_epochs(self: @ComponentState<TContractState>, executor: ContractAddress, user:ContractAddress) -> (u32, u32) {
+            (self.global_executor_epoch.read(), self.user_to_executor_to_epoch.read((user, executor)))
         }
 
-        fn is_approved_executor(self: @ComponentState<TContractState>, user:ContractAddress) -> bool {
-            let (current_executor, current_epoch) = (self.executor.read(), self.executor_epoch.read());
-            let (approved, user_epoch) = (self.user_to_executor_granted.read(user), self.user_to_executor_epoch.read(user));      
-            return (current_executor == approved && current_epoch == user_epoch);
+        fn is_approved_executor(self: @ComponentState<TContractState>, executor:ContractAddress, user:ContractAddress) -> bool {
+            let (actual_epoch, client_epoch) = self.get_epochs(executor, user);
+            actual_epoch == client_epoch && self.wlsted_executors.read(executor)
         }
 
         fn get_owner(self: @ComponentState<TContractState>) -> ContractAddress { self.owner.read()}
     
-        fn get_executor(self: @ComponentState<TContractState>) -> (ContractAddress, u16) { (self.executor.read(), self.executor_epoch.read())}
     
         fn set_owner(ref self: ComponentState<TContractState>, new_owner:ContractAddress) {
             self.only_owner();
@@ -57,19 +55,26 @@ mod accessor_logic_component {
             self.emit(OwnerChanged{new_owner});
         }
 
-        fn set_executor(ref self: ComponentState<TContractState>, new_executor:ContractAddress) {
+        fn update_executor(ref self: ComponentState<TContractState>, new_executor:ContractAddress, wlist:bool) {
             self.only_owner();
-            self.executor.write(new_executor);
-            self.executor_epoch.write(self.executor_epoch.read() + 1);
-            self.emit(ExecutorChanged{new_executor,new_epoch:self.executor_epoch.read()});
+            assert(self.wlsted_executors.read(new_executor) != wlist, 'Executor already added/removed');
+            self.wlsted_executors.write(new_executor, wlist);
+            self.emit(ExecutorChanged{new_executor, new_epoch:self.global_executor_epoch.read(), wlisted:wlist});
+            if (!wlist) {self.invalidate_executors()};
         }
-        fn grant_access_to_executor(ref self: ComponentState<TContractState>) { 
-            // invoked by client to whitelist current executor to perform actions on his behalf
-            let (user, executor) = (get_caller_address(), self.executor.read());
-            assert!(self.user_to_executor_granted.read(user) != executor, "Executor access already granted");
-            self.user_to_executor_granted.write(user, executor);
-            self.user_to_executor_epoch.write(user, self.executor_epoch.read());
-            self.emit(ApprovalGranted{executor, user, epoch:self.executor_epoch.read() })
+
+        fn grant_access_to_executor(ref self: ComponentState<TContractState>, executor:ContractAddress) { 
+            assert(self.wlsted_executors.read(executor), 'Executor not wlsed');
+            let client_epoch = self.user_to_executor_to_epoch.read((get_caller_address(), executor));
+            let global_epoch = self.global_executor_epoch.read();
+            assert(client_epoch < global_epoch, 'Already granted');
+            self.user_to_executor_to_epoch.write((get_caller_address(), executor), global_epoch);
+            self.emit(ApprovalGranted{executor, user:get_caller_address(), epoch:global_epoch })
+        }
+        fn invalidate_executors(ref self: ComponentState<TContractState>) { 
+            self.only_owner();
+            self.global_executor_epoch.write(self.global_executor_epoch.read() + 1);
+            self.emit(GlobalEpoch{epoch:self.global_executor_epoch.read()})
         }
     }
 
@@ -77,15 +82,14 @@ mod accessor_logic_component {
     #[generate_trait]
     impl InternalAccesorableImpl<TContractState, +HasComponent<TContractState>> of InternalAccesorable<TContractState> {
         
-        fn only_authorized_by_user(self: @ComponentState<TContractState>, user:ContractAddress) {
-            let (current_executor, current_epoch) = (self.executor.read(), self.executor_epoch.read());
-            let (approved, user_epoch) = (self.user_to_executor_granted.read(user), self.user_to_executor_epoch.read(user));      
-            assert(approved == current_executor && user_epoch == current_epoch, 'Access denied: not granted');
-        }
-        fn only_owner(self: @ComponentState<TContractState>) { assert!(self.owner.read() == get_caller_address(), "Access denied: only for the owner's use");}
-        fn only_executor(self: @ComponentState<TContractState>) { assert(self.executor.read() == get_caller_address(), 'Access denied: only executor');}
-        fn only_owner_or_executor(self: @ComponentState<TContractState>) {
-             assert!(self.owner.read() == get_caller_address() || self.executor.read() == get_caller_address(), "Access denied: only for the owner's or executor's use");}
+        fn only_authorized_by_user(self: @ComponentState<TContractState>, user:ContractAddress, executor:ContractAddress) {
+            assert!(self.is_approved_executor(executor, user), "Access denied: only authorized by user")}
+        fn only_owner(self: @ComponentState<TContractState>) { 
+            assert!(self.owner.read() == get_caller_address(), "Access denied: only for the owner's use");}
+        fn only_executor(self: @ComponentState<TContractState>) { 
+            assert(self.wlsted_executors.read(get_caller_address()), 'Access denied: only executor');}
+        fn only_owner_or_executor(self: @ComponentState<TContractState> ) {
+            assert!(self.owner.read() == get_caller_address() || self.wlsted_executors.read(get_caller_address()), "Access denied: only for the owner's or executor's use");}
         
     }
 
@@ -94,15 +98,18 @@ mod accessor_logic_component {
     #[derive(Drop, starknet::Event)]
     struct OwnerChanged {new_owner:ContractAddress}
     #[derive(Drop, starknet::Event)]
-    struct ExecutorChanged {new_executor:ContractAddress, new_epoch:u16}
+    struct ExecutorChanged {new_executor:ContractAddress, new_epoch:u32, wlisted:bool}
     #[derive(Drop, starknet::Event)]
-    struct ApprovalGranted {#[key] executor:ContractAddress, user:ContractAddress, epoch:u16}
+    struct ApprovalGranted {#[key] executor:ContractAddress, user:ContractAddress, epoch:u32}
+    #[derive(Drop, starknet::Event)]
+    struct GlobalEpoch {epoch:u32}
 
-        #[event]
+    #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
         OwnerChanged: OwnerChanged,
         ExecutorChanged: ExecutorChanged,
-        ApprovalGranted:ApprovalGranted
+        ApprovalGranted:ApprovalGranted,
+        GlobalEpoch: GlobalEpoch
     }
 }
