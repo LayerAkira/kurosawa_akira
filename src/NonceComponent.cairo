@@ -1,4 +1,4 @@
-use kurosawa_akira::Order::{GasFee, get_gas_fee_and_coin};
+use kurosawa_akira::Order::{GasFee, get_gas_fee_and_coin, GasContext};
 use starknet::ContractAddress;
 
 
@@ -36,7 +36,7 @@ mod nonce_component {
     use kurosawa_akira::ExchangeBalanceComponent::INewExchangeBalance;
     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as balance_component;
     use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
-    use super::{GasFee,ContractAddress};
+    use super::{GasFee,ContractAddress, GasContext};
     use kurosawa_akira::SignerComponent::{ISignerLogic};
     
     #[event]
@@ -89,7 +89,7 @@ mod nonce_component {
             assert!(nonce_increase.new_nonce > self.nonces.read(nonce_increase.maker), "Wrong nonce (Failed new_nonce ({}) > prev_nonce ({}))", nonce_increase.new_nonce, self.nonces.read(nonce_increase.maker));
             
             let mut balancer = get_dep_component_mut!(ref self, Balance);
-            let (gas_fee_amount, coin) = super::get_gas_fee_and_coin(nonce_increase.gas_fee, gas_price, balancer.get_wrapped_native_token(), cur_gas_per_action, 1);
+            let (gas_fee_amount, coin) = super::get_gas_fee_and_coin(nonce_increase.gas_fee, balancer.get_wrapped_native_token(), 1, GasContext{gas_price, cur_gas_per_action});
             balancer.internal_transfer(nonce_increase.maker, balancer.get_fee_recipient(), gas_fee_amount, coin);
             
             self.nonces.write(nonce_increase.maker, nonce_increase.new_nonce);

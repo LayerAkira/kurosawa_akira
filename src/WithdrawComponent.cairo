@@ -1,6 +1,6 @@
 use starknet::ContractAddress;
 use serde::Serde;
-use kurosawa_akira::Order::{GasFee, get_gas_fee_and_coin};
+use kurosawa_akira::Order::{GasFee, get_gas_fee_and_coin, GasContext};
 use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq,Hash)]
@@ -50,7 +50,7 @@ mod withdraw_component {
     use kurosawa_akira::ExchangeBalanceComponent::INewExchangeBalance;
     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as balance_component;
     use balance_component::{InternalExchangeBalancebleImpl,ExchangeBalancebleImpl};
-    use super::{Withdraw, SignedWithdraw, SlowModeDelay, IWithdraw, GasFee};
+    use super::{Withdraw, SignedWithdraw, SlowModeDelay, IWithdraw, GasFee, GasContext};
     use kurosawa_akira::SignerComponent::{ISignerLogic};
     use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait, IERC20Dispatcher};
     use starknet::{get_caller_address, get_contract_address, get_block_timestamp, ContractAddress};
@@ -195,7 +195,7 @@ mod withdraw_component {
             let mut balancer = get_dep_component_mut!(ref self, Balance);
 
              // payment to exchange for gas
-            let (gas_fee_amount, coin) = super::get_gas_fee_and_coin(w_req.gas_fee, gas_price, balancer.get_wrapped_native_token(), cur_gas_per_action, 1);
+            let (gas_fee_amount, coin) = super::get_gas_fee_and_coin(w_req.gas_fee, balancer.get_wrapped_native_token(), 1, GasContext{gas_price, cur_gas_per_action});
             balancer.internal_transfer(w_req.maker, balancer.get_fee_recipient(), gas_fee_amount, coin);
             
             // let gas_fee_amount = contract.validate_and_apply_gas_fee_internal(w_req.maker, w_req.gas_fee, gas_price, 1, cur_gas_per_action, contract.get_wrapped_native_token());

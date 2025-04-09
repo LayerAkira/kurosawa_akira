@@ -1,4 +1,4 @@
-use starknet::ContractAddress;
+use starknet::{ContractAddress, get_caller_address};
 
 #[starknet::interface]
 trait IAccesorableImpl<TContractState> {
@@ -21,7 +21,7 @@ trait IAccesorableImpl<TContractState> {
 
 #[starknet::component]
 mod accessor_logic_component {
-    use starknet::{ContractAddress, get_caller_address};
+    use super::{ContractAddress, get_caller_address};
     use super::{IAccesorableImpl};
 
 
@@ -29,8 +29,8 @@ mod accessor_logic_component {
     struct Storage {
         owner: ContractAddress, // owner of contact that have permissions to grant and revoke role for invokers and update slow mode 
         user_to_executor_to_epoch: starknet::storage::Map::<(ContractAddress, ContractAddress), u32>, 
-        wlsted_executors:starknet::storage::Map::<ContractAddress, bool>,
-        global_executor_epoch:u32   
+        wlsted_executors:starknet::storage::Map::<ContractAddress, bool>, //wlisted executers by the owner
+        global_executor_epoch:u32 // epoch that controls is enabled  
     }
 
 

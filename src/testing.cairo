@@ -11,7 +11,6 @@ mod tests_deposit_and_withdrawal_and_nonce {
     use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
     use serde::Serde;
     use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
-    use kurosawa_akira::FundsTraits::check_sign;
     use kurosawa_akira::NonceComponent::{IncreaseNonce,SignedIncreaseNonce};
     use core::string::StringLiteral;
     use kurosawa_akira::signature::V0OffchainMessage::{OffchainMessageHashImpl};
@@ -19,11 +18,16 @@ mod tests_deposit_and_withdrawal_and_nonce {
 
 
     use kurosawa_akira::LayerAkiraCore::{ILayerAkiraCoreDispatcher, ILayerAkiraCoreDispatcherTrait};
-    
-    
+    use kurosawa_akira::signature::AkiraV0OffchainMessage::{FIXEDFEE_TYPE_HASH, ORDERFEE_TYPE_HASH, ORDER_TYPE_HASH};
+
+    use debug::PrintTrait;
     #[test]
     #[fork("block_based")]
     fn test_eth_deposit() {
+
+        println!("fixedfee:{}",FIXEDFEE_TYPE_HASH);
+        println!("orderfee:{}",ORDERFEE_TYPE_HASH);
+        println!("ordertype{}",ORDER_TYPE_HASH);
         let(core, _, __) = spawn_contracts(get_fee_recipient_exchange());
         let core_contract = ILayerAkiraCoreDispatcher{contract_address:core};
         let (trader,eth_addr,amount_deposit) = (get_trader_address_1(), get_eth_addr(),1_000_000);
@@ -219,7 +223,6 @@ mod test_common_trade {
     use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
     use serde::Serde;
     use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
-    use kurosawa_akira::FundsTraits::check_sign;
     use kurosawa_akira::Order::{SignedOrder, Order,Constraints,Quantity,TakerSelfTradePreventionMode, FixedFee,OrderFee,OrderFlags, get_feeable_qty};
     use kurosawa_akira::signature::V0OffchainMessage::{OffchainMessageHashImpl};
     use kurosawa_akira::signature::AkiraV0OffchainMessage::{OrderHashImpl,SNIP12MetadataImpl,IncreaseNonceHashImpl,WithdrawHashImpl};
@@ -249,7 +252,7 @@ mod test_common_trade {
     fn get_swap_gas_cost()->u32 {100}
 
     fn get_zero_router_fee() -> FixedFee {
-        FixedFee{recipient:0.try_into().unwrap(), maker_pbips:0, taker_pbips: 0,apply_to_receipt_amount:true}
+        FixedFee{recipient:0.try_into().unwrap(), maker_pbips:0, taker_pbips: 0}
     }
 
     fn zero_router() -> ContractAddress { 0.try_into().unwrap()}
@@ -274,8 +277,8 @@ mod test_common_trade {
         let (maker_pbips,taker_pbips) = get_maker_taker_fees();
         let fee_recipient = core.get_fee_recipient();
         let router_fee =  if router_signer != zero_addr { 
-            FixedFee{recipient:router.get_router(router_signer), maker_pbips, taker_pbips,apply_to_receipt_amount}
-        } else { FixedFee{recipient: zero_addr, maker_pbips:0, taker_pbips:0,apply_to_receipt_amount}
+            FixedFee{recipient:router.get_router(router_signer), maker_pbips, taker_pbips}
+        } else { FixedFee{recipient: zero_addr, maker_pbips:0, taker_pbips:0}
         };
         let mut order = Order {
             qty:Quantity{base_qty, quote_qty, base_asset: 1_000_000_000_000_000_000},
@@ -290,9 +293,11 @@ mod test_common_trade {
             },
             maker, price, ticker,  salt,
             fee: OrderFee {
-                trade_fee:  FixedFee{recipient:fee_recipient, maker_pbips, taker_pbips, apply_to_receipt_amount},
+                trade_fee:  FixedFee{recipient:fee_recipient, maker_pbips, taker_pbips},
                 router_fee: router_fee,
-                gas_fee: prepare_double_gas_fee_native(core, get_swap_gas_cost())
+                gas_fee: prepare_double_gas_fee_native(core, get_swap_gas_cost()),
+                integrator_fee: FixedFee{recipient:fee_recipient, maker_pbips:0, taker_pbips:0},
+                apply_to_receipt_amount
             },
             flags,
             source: 'layerakira',
@@ -350,7 +355,6 @@ mod tests_ecosystem_trade {
     use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
     use serde::Serde;
     use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
-    use kurosawa_akira::FundsTraits::check_sign;
     use kurosawa_akira::Order::{SignedOrder, Order, FixedFee,OrderFee,OrderFlags, get_feeable_qty};
     use kurosawa_akira::signature::AkiraV0OffchainMessage::{OrderHashImpl,SNIP12MetadataImpl,IncreaseNonceHashImpl,WithdrawHashImpl};
 
@@ -525,7 +529,6 @@ mod tests_router_trade {
     use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
     use serde::Serde;
     use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
-    use kurosawa_akira::FundsTraits::check_sign;
     use kurosawa_akira::Order::{SignedOrder, Order, FixedFee,OrderFee,OrderFlags, get_feeable_qty};
     use kurosawa_akira::signature::AkiraV0OffchainMessage::{OrderHashImpl,SNIP12MetadataImpl,IncreaseNonceHashImpl,WithdrawHashImpl};
     use kurosawa_akira::signature::V0OffchainMessage::{OffchainMessageHashImpl};
@@ -822,7 +825,6 @@ mod tests_quote_qty_ecosystem_trade_01 {
     use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
     use serde::Serde;
     use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
-    use kurosawa_akira::FundsTraits::check_sign;
     use kurosawa_akira::Order::{SignedOrder, Order, FixedFee,OrderFee,OrderFlags, get_feeable_qty};
     use kurosawa_akira::signature::AkiraV0OffchainMessage::{OrderHashImpl,SNIP12MetadataImpl,IncreaseNonceHashImpl,WithdrawHashImpl};
     use kurosawa_akira::signature::V0OffchainMessage::{OffchainMessageHashImpl};
@@ -951,7 +953,6 @@ mod tests_quote_qty_ecosystem_trade_02 {
     use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
     use serde::Serde;
     use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
-    use kurosawa_akira::FundsTraits::check_sign;
     use kurosawa_akira::Order::{SignedOrder, Order, FixedFee,OrderFee,OrderFlags, get_feeable_qty};
     use kurosawa_akira::signature::AkiraV0OffchainMessage::{OrderHashImpl,SNIP12MetadataImpl,IncreaseNonceHashImpl,WithdrawHashImpl};
 
@@ -1054,7 +1055,6 @@ mod tests_quote_qty_router_trade_01 {
     use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
     use serde::Serde;
     use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
-    use kurosawa_akira::FundsTraits::check_sign;
     use kurosawa_akira::Order::{SignedOrder, Order, FixedFee,OrderFee,OrderFlags, get_feeable_qty};
     use kurosawa_akira::signature::AkiraV0OffchainMessage::{OrderHashImpl,SNIP12MetadataImpl,IncreaseNonceHashImpl,WithdrawHashImpl};
     use kurosawa_akira::signature::V0OffchainMessage::{OffchainMessageHashImpl};
@@ -1150,6 +1150,7 @@ mod tests_quote_qty_router_trade_01 {
         stop_cheat_caller_address(executor.contract_address);
     }  
 
+
     #[test]
     #[fork("block_based")]
     fn test_roter_trade_double_qty_semantic_BUY_maker_01() {
@@ -1224,7 +1225,6 @@ mod tests_quote_qty_router_trade_02 {
     use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
     use serde::Serde;
     use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
-    use kurosawa_akira::FundsTraits::check_sign;
     use kurosawa_akira::Order::{SignedOrder, Order, FixedFee,OrderFee,OrderFlags, get_feeable_qty};
     use kurosawa_akira::signature::AkiraV0OffchainMessage::{OrderHashImpl,SNIP12MetadataImpl,IncreaseNonceHashImpl,WithdrawHashImpl};
     use kurosawa_akira::signature::V0OffchainMessage::{OffchainMessageHashImpl};

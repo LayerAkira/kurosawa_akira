@@ -1,12 +1,14 @@
 
 use kurosawa_akira::NonceComponent::{SignedIncreaseNonce, IncreaseNonce};
-use kurosawa_akira::Order::{SignedOrder, Order, OrderTradeInfo};
+use kurosawa_akira::Order::{SignedOrder, Order, OrderTradeInfo,GasContext};
 use kurosawa_akira::WithdrawComponent::{SignedWithdraw, Withdraw};
 use starknet::{ContractAddress};
-    
+
+
 #[starknet::interface]
 trait ILayerAkiraBaseExecutor<TContractState> {
     fn get_order_hash(self: @TContractState, order:Order) -> felt252;
+    
     fn apply_increase_nonces(ref self: TContractState, signed_nonces: Array<SignedIncreaseNonce>, gas_price:u256);
 
     fn apply_increase_nonce(ref self: TContractState, signed_nonce: SignedIncreaseNonce, gas_price:u256, cur_gas_per_action:u32);
@@ -24,16 +26,16 @@ trait ILayerAkiraBaseExecutor<TContractState> {
     fn apply_single_taker(ref self: TContractState, signed_taker_order:SignedOrder, signed_maker_orders:Span<(SignedOrder,u256)>,
                     total_amount_matched:u256, gas_price:u256,  cur_gas_per_action:u32, as_taker_completed:bool, 
                     skip_taker_validation:bool, gas_trades_to_pay:u16, transfer_taker_recieve_back:bool, allow_charge_gas_on_receipt:bool)  -> (bool, felt252);
-    fn get_ecosystem_trade_info(self: @TContractState, order_hash: felt252) -> OrderTradeInfo;
-        fn apply_trades(ref self:TContractState, 
-                                taker_order:Order, signed_maker_orders:Span<(SignedOrder,u256)>, fee_recipient:ContractAddress,
+    fn get_order_info(self: @TContractState, order_hash: felt252) -> OrderTradeInfo;
+    
+    fn apply_trades(ref self:TContractState, 
+                                taker_order:Order, signed_maker_orders:Span<(SignedOrder,u256)>,
                                 taker_hash:felt252,
-                                gas_price:u256, cur_gas_per_action:u32, as_taker_completed:bool) -> (u256, u256);
-    fn apply_punishment(ref self:TContractState, taker_order:Order, signed_maker_orders:Span<(SignedOrder,u256)>, fee_recipient:ContractAddress,
-                                taker_hash:felt252,
-                                gas_price:u256, cur_gas_per_action:u32, as_taker_completed:bool) ;
-    fn finalize_router_taker(ref self:TContractState, taker_order:Order, taker_hash:felt252, received_amount:u256, unspent_amount:u256, gas_price:u256, trades:u16, cur_gas_per_action:u32,
-                    spent_amount:u256, fee_recipient:ContractAddress, transfer_back_received:bool, tfer_back_unspent:bool);
+                                as_taker_completed:bool) -> (u256, u256);
+    fn apply_punishment(ref self:TContractState, taker_order:Order, signed_maker_orders:Span<(SignedOrder,u256)>, 
+                                taker_hash:felt252, as_taker_completed:bool, gas_ctx:GasContext) ;
+    fn finalize_router_taker(ref self:TContractState, taker_order:Order, taker_hash:felt252, received_amount:u256, unspent_amount:u256, trades:u16,
+                    spent_amount:u256, transfer_back_received:bool, tfer_back_unspent:bool, gas_ctx:GasContext);
     fn is_wlsted_invoker(self:@TContractState, caller:ContractAddress)->bool;
 }
 
@@ -43,7 +45,7 @@ mod LayerAkiraBaseExecutor {
     use starknet::{ContractAddress, get_caller_address, get_tx_info};
 
     use base_trade_component::InternalBaseOrderTradable;
-    
+    use base_trade_component::{TakerMatchContext};
     use kurosawa_akira::LayerAkiraCore::{ILayerAkiraCoreDispatcherTrait, ILayerAkiraCoreDispatcher};
 
     use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
@@ -51,7 +53,7 @@ mod LayerAkiraBaseExecutor {
     use kurosawa_akira::NonceComponent::{SignedIncreaseNonce, IncreaseNonce};
     use kurosawa_akira::signature::V0OffchainMessage::{OffchainMessageHashImpl};
     use kurosawa_akira::signature::AkiraV0OffchainMessage::{OrderHashImpl,SNIP12MetadataImpl,IncreaseNonceHashImpl,WithdrawHashImpl};
-    use kurosawa_akira::Order::{SignedOrder, Order, SimpleOrder};
+    use kurosawa_akira::Order::{SignedOrder, Order, SimpleOrder,GasContext};
     use kurosawa_akira::AccessorComponent::accessor_logic_component as accessor_logic_component;
     use accessor_logic_component::InternalAccesorable;
     
@@ -81,6 +83,7 @@ mod LayerAkiraBaseExecutor {
         self.base_trade_s.router_contract.write(router_address);
         self.exchange_invokers.write(ILayerAkiraCoreDispatcher {contract_address:core_address }.get_owner(), true);
         self.accessor_s.owner.write(owner);
+        self.accessor_s.global_executor_epoch.write(1);
     }
 
     #[external(v0)]
@@ -133,13 +136,16 @@ mod LayerAkiraBaseExecutor {
     #[external(v0)]
     fn apply_ecosystem_trades(ref self: ContractState, taker_orders:Array<(SignedOrder,bool)>, maker_orders: Array<SignedOrder>, iters:Array<(u16, bool)>, oracle_settled_qty:Array<u256>, gas_price:u256, cur_gas_per_action:u32) {
         assert_whitelisted_invokers(@self, get_caller_address());
-        self.base_trade_s.apply_ecosystem_trades(taker_orders, maker_orders, iters, oracle_settled_qty, gas_price, cur_gas_per_action);
+        self.base_trade_s.apply_ecosystem_trades(taker_orders, maker_orders, iters, oracle_settled_qty,  GasContext{gas_price, cur_gas_per_action});
     }
 
     #[external(v0)]
     fn apply_single_execution_step(ref self: ContractState, taker_order:SignedOrder, maker_orders: Array<(SignedOrder,u256)>, total_amount_matched:u256, gas_price:u256, cur_gas_per_action:u32,as_taker_completed:bool, ) -> bool {
         assert_whitelisted_invokers(@self, get_caller_address());
-        let (succ, _) =  self.base_trade_s.apply_single_taker(taker_order, maker_orders.span(), total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed, false, maker_orders.len().try_into().unwrap(), taker_order.order.flags.external_funds, true);
+        let taker_ctx = TakerMatchContext{as_taker_completed, skip_taker_validation:false, gas_trades_to_pay:maker_orders.len().try_into().unwrap(), transfer_taker_recieve_back:taker_order.order.flags.external_funds, allow_charge_gas_on_receipt:true};
+        let (succ, _) =  self.base_trade_s.apply_single_taker(taker_order, maker_orders.span(), total_amount_matched, taker_ctx, GasContext{gas_price, cur_gas_per_action});
+        
+        
         return succ;
     }
 
@@ -147,11 +153,12 @@ mod LayerAkiraBaseExecutor {
     fn apply_execution_steps(ref self: ContractState,  mut bulk:Array<(SignedOrder, Array<(SignedOrder,u256)>, u256, bool)>,  gas_price:u256,  cur_gas_per_action:u32) -> Array<bool> {
         assert_whitelisted_invokers(@self, get_caller_address());
         let mut res: Array<bool> = ArrayTrait::new();
-            
+        
         loop {
             match bulk.pop_front(){
                 Option::Some((taker_order, maker_orders, total_amount_matched, as_taker_completed)) => {
-                    let (succ, _) = self.base_trade_s.apply_single_taker(taker_order, maker_orders.span(), total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed, false, maker_orders.len().try_into().unwrap(), taker_order.order.flags.external_funds, true);
+                    let taker_ctx = TakerMatchContext{as_taker_completed, skip_taker_validation:false, gas_trades_to_pay:maker_orders.len().try_into().unwrap(), transfer_taker_recieve_back:taker_order.order.flags.external_funds, allow_charge_gas_on_receipt:true};
+                    let (succ, _) = self.base_trade_s.apply_single_taker(taker_order, maker_orders.span(), total_amount_matched, taker_ctx, GasContext{gas_price, cur_gas_per_action});
                     res.append(succ);
 
                 },
@@ -167,31 +174,29 @@ mod LayerAkiraBaseExecutor {
                     skip_taker_validation:bool, gas_trades_to_pay:u16, transfer_taker_recieve_back:bool, allow_charge_gas_on_receipt:bool)  -> (bool, felt252) {
         self.accessor_s.only_authorized_by_user(signed_taker_order.order.maker, get_caller_address());
         // no need to check for mm approvals since flags affected flow of the taker
-        self.base_trade_s.apply_single_taker(signed_taker_order, signed_maker_orders, total_amount_matched, gas_price, cur_gas_per_action, as_taker_completed,
-              skip_taker_validation, gas_trades_to_pay, transfer_taker_recieve_back, allow_charge_gas_on_receipt
+        let taker_ctx = TakerMatchContext{as_taker_completed, skip_taker_validation, gas_trades_to_pay, transfer_taker_recieve_back, allow_charge_gas_on_receipt};
+        self.base_trade_s.apply_single_taker(signed_taker_order, signed_maker_orders, total_amount_matched, taker_ctx, GasContext{gas_price, cur_gas_per_action}
         )
     }
 
-    fn apply_trades(ref self:ContractState, 
-                                taker_order:Order, mut signed_maker_orders:Span<(SignedOrder,u256)>, fee_recipient:ContractAddress,
-                                taker_hash:felt252,
-                                gas_price:u256, cur_gas_per_action:u32, as_taker_completed:bool, finalize_taker:bool) -> (u256, u256) {
+    #[external(v0)]
+    fn apply_trades(ref self:ContractState, taker_order:Order, mut signed_maker_orders:Span<(SignedOrder,u256)>,
+                                taker_hash:felt252, as_taker_completed:bool) -> (u256, u256) {
         self.accessor_s.only_authorized_by_user(taker_order.maker, get_caller_address());
-        self.base_trade_s.apply_trades(taker_order, signed_maker_orders, fee_recipient, taker_hash, gas_price, cur_gas_per_action, as_taker_completed)    
+        self.base_trade_s.apply_trades(taker_order, signed_maker_orders, taker_hash, as_taker_completed)    
     }
-
-    fn finalize_router_taker(ref self:ContractState, taker_order:Order, taker_hash:felt252, received_amount:u256, unspent_amount:u256, gas_price:u256, trades:u16, cur_gas_per_action:u32,
-                    spent_amount:u256, fee_recipient:ContractAddress, transfer_back_received:bool, tfer_back_unspent:bool) {
+    #[external(v0)]
+    fn finalize_router_taker(ref self:ContractState, taker_order:Order, taker_hash:felt252, received_amount:u256, unspent_amount:u256, trades:u16, spent_amount:u256, 
+                    transfer_back_received:bool, tfer_back_unspent:bool, gas_ctx:GasContext) {
         self.accessor_s.only_authorized_by_user(taker_order.maker, get_caller_address());
-        self.base_trade_s.finalize_router_taker(taker_order,taker_hash,received_amount, unspent_amount,gas_price,trades,cur_gas_per_action,spent_amount,fee_recipient,transfer_back_received,tfer_back_unspent)
+        self.base_trade_s.finalize_router_taker(taker_order,taker_hash,received_amount, unspent_amount, trades, spent_amount, transfer_back_received,tfer_back_unspent, gas_ctx)
     }
-    fn apply_punishment(ref self:ContractState, 
-                                taker_order:Order, mut signed_maker_orders:Span<(SignedOrder,u256)>, fee_recipient:ContractAddress,
-                                taker_hash:felt252,
-                                gas_price:u256, cur_gas_per_action:u32, as_taker_completed:bool) {
+    #[external(v0)]
+    fn apply_punishment(ref self:ContractState, taker_order:Order, mut signed_maker_orders:Span<(SignedOrder,u256)>, 
+                                taker_hash:felt252, as_taker_completed:bool,gas_ctx:GasContext) {
         self.accessor_s.only_authorized_by_user(taker_order.maker, get_caller_address());
         //mb also autorized by router?
-        self.base_trade_s.apply_punishment(taker_order, signed_maker_orders,fee_recipient,taker_hash,gas_price, cur_gas_per_action,as_taker_completed);
+        self.base_trade_s.apply_punishment(taker_order, signed_maker_orders, taker_hash, as_taker_completed, gas_ctx);
     
     }
         
