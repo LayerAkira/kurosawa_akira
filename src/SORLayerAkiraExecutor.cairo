@@ -226,16 +226,16 @@ mod SORLayerAkiraExecutor {
             if succ {assert_slippage(@self, sor_id, sor.max_spend_amount, 0);}
 
 
-            let (zero_trade_fee, zero_router_fee) =  getTradeAndRouterFees(@self, sor, false);
+            let (zero_trade_fee, zero_router_fee, zero_integrator_fee) =  getTradeAndRouterFees(@self, sor, false);
             // apply all the orders
             let (mut ptr, mut offset, tfer_taker_recieve_back) = (0, swaps.try_into().unwrap(), false);
-            let (ptr1, offset1, __) = apply(ref self, first, sor.order0, zero_trade_fee, zero_router_fee, zero_router_fee, ptr, offset, makers_span, span_amount_matched, succ, 0, fee_recipient, tfer_taker_recieve_back, lead_taker_hash, Option::None,sor.apply_to_receipt_amount, gas_ctx);
+            let (ptr1, offset1, __) = apply(ref self, first, sor.order0, zero_trade_fee, zero_router_fee, zero_integrator_fee, ptr, offset, makers_span, span_amount_matched, succ, 0, fee_recipient, tfer_taker_recieve_back, lead_taker_hash, Option::None,sor.apply_to_receipt_amount, gas_ctx);
             ptr = ptr1; offset = offset1;
-            let (ptr1, offset1, __) = apply(ref self, first, sor.order1, zero_trade_fee, zero_router_fee, zero_router_fee, ptr, offset, makers_span, span_amount_matched, succ, 0, fee_recipient, tfer_taker_recieve_back, lead_taker_hash, Option::None,sor.apply_to_receipt_amount, gas_ctx);
+            let (ptr1, offset1, __) = apply(ref self, first, sor.order1, zero_trade_fee, zero_router_fee, zero_integrator_fee, ptr, offset, makers_span, span_amount_matched, succ, 0, fee_recipient, tfer_taker_recieve_back, lead_taker_hash, Option::None,sor.apply_to_receipt_amount, gas_ctx);
             ptr = ptr1; offset = offset1;
             
             let tfer_back_received =  first.flags.external_funds;
-            let (last_trade_fee, last_router_fee,last_integrator_fee) = if (sor.apply_to_receipt_amount) {(sor.trade_fee, sor.router_fee, sor.integrator_fee)} else {(zero_trade_fee,zero_router_fee, zero_router_fee)};
+            let (last_trade_fee, last_router_fee,last_integrator_fee) = if (sor.apply_to_receipt_amount) {(sor.trade_fee, sor.router_fee, sor.integrator_fee)} else {(zero_trade_fee, zero_router_fee, zero_integrator_fee)};
             
             // if exact sell then we need fullfill only otherwise we were doing exact buy amount
             let last_order_qty = if sor.max_spend_amount != 0 {Option::Some(sor.last_qty)} else {Option::None};
@@ -287,7 +287,7 @@ mod SORLayerAkiraExecutor {
             // creates inplace lead order from simple orchestrate_order
             // flatten path and store in sor order<i> variables in sor since cant store vectors in contract
 
-            let (zero_trade_fee, zero_router_fee) = getZeroFees(self, details.trade_fee.recipient, details.router_fee.recipient);
+            let (zero_trade_fee, zero_router_fee, zero_integrator_fee) = getZeroFees(self, details.trade_fee.recipient, details.router_fee.recipient, details.integrator_fee.recipient);
                         
             assert(!(details.min_receive_amount > 0 && details.max_spend_amount > 0), 'Both cant be defined');
             // TODO:
@@ -299,7 +299,7 @@ mod SORLayerAkiraExecutor {
                         trade_fee:  if details.apply_to_receipt_amount {zero_trade_fee} else {details.trade_fee}, 
                         router_fee: if details.apply_to_receipt_amount {zero_router_fee} else {details.router_fee}, 
                         apply_to_receipt_amount:details.apply_to_receipt_amount,
-                        integrator_fee: if details.apply_to_receipt_amount {zero_router_fee} else {details.integrator_fee}, 
+                        integrator_fee: if details.apply_to_receipt_amount {zero_integrator_fee} else {details.integrator_fee}, 
                         gas_fee: details.gas_fee
                     },
                 flags: super::OrderFlags{ full_fill_only, best_level_only: false, post_only: false, is_sell_side: orchestrate_order.is_sell_side,
@@ -344,15 +344,16 @@ mod SORLayerAkiraExecutor {
             return new_sor;
         }
 
-        fn getTradeAndRouterFees(self: @ContractState, sor:super::SOR, non_zero_fees:bool) -> (super::FixedFee, super::FixedFee) {
-            if !non_zero_fees {return getZeroFees(self, sor.lead.fee.trade_fee.recipient, sor.lead.fee.router_fee.recipient);}
-            return (sor.trade_fee, sor.router_fee);
+        fn getTradeAndRouterFees(self: @ContractState, sor:super::SOR, non_zero_fees:bool) -> (super::FixedFee, super::FixedFee, super::FixedFee) {
+            if !non_zero_fees {return getZeroFees(self, sor.lead.fee.trade_fee.recipient, sor.lead.fee.router_fee.recipient,  sor.lead.fee.integrator_fee.recipient);}
+            return (sor.trade_fee, sor.router_fee, sor.integrator_fee);
         }
 
-        fn getZeroFees(self: @ContractState, trade_fee_recipient:ContractAddress, router_fee_recipient:ContractAddress) -> (super::FixedFee, super::FixedFee) {
-            let zero_trade_fee = super::FixedFee{recipient:trade_fee_recipient, maker_pbips:0, taker_pbips:0};
-            let zero_router_fee = super::FixedFee{recipient:router_fee_recipient, maker_pbips:0, taker_pbips:0};
-            return (zero_trade_fee, zero_router_fee);
+        fn getZeroFees(self: @ContractState, exchange:ContractAddress, router:ContractAddress, integrator:ContractAddress) -> (super::FixedFee, super::FixedFee, super::FixedFee) {
+            let zero_trade_fee = super::FixedFee{recipient:exchange, maker_pbips:0, taker_pbips:0};
+            let zero_router_fee = super::FixedFee{recipient:router, maker_pbips:0, taker_pbips:0};
+            let zero_integrator_fee = super::FixedFee{recipient:integrator, maker_pbips:0, taker_pbips:0};
+            return (zero_trade_fee, zero_router_fee, zero_integrator_fee);
         }
 
 
@@ -403,7 +404,7 @@ mod SORLayerAkiraExecutor {
                     let (amount_spent, swaps) = *total_amount_matched_and_len.at(ptr);
                     let order = buildInplaceTakerOrder(@self, option_order.unwrap(), lead_order, trade_fee, router_fee, integrator_fee, amount_spent, lead_taker_hash, overwrite_qty, apply_to_receipt_amount);
                     // TODO: likely need not to calculate message hash?? cause expensive and no point
-                    let taker_hash = order.get_message_hash(order.maker);
+                    let taker_hash = base_trade.get_order_hash(order);
                     let as_taker_completed = true;
                     if succ {
                         let (accum_base, accum_quote) = base_trade.apply_trades(order, makers_orders.slice(offset, swaps.try_into().unwrap()),

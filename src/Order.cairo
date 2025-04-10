@@ -4,29 +4,15 @@ use serde::Serde;
 use array::SpanTrait;
 use starknet::{get_block_timestamp};
 use kurosawa_akira::utils::common::{min,DisplayContractAddress};
-
-
-#[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Hash)]
-struct GasFee {
-    gas_per_action: u32,
-    fee_token: ContractAddress,
-    max_gas_price: u256,
-    conversion_rate: (u256, u256),
-}
-
-#[derive(Copy, Drop, Serde, starknet::Store, PartialEq,Hash)]
-struct FixedFee {
-    recipient: ContractAddress,
-    maker_pbips: u32,
-    taker_pbips: u32,
-    apply_to_receipt_amount:bool
-}
+use kurosawa_akira::Fees::{GasFee, GasContext, FixedFee, get_feeable_qty, get_gas_fee_and_coin};
 
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq,Hash)]
 struct OrderFee {
     trade_fee: FixedFee,
     router_fee: FixedFee,
+    integrator_fee:FixedFee,
+    apply_to_receipt_amount:bool,
     gas_fee: GasFee,
 }
 
@@ -85,12 +71,25 @@ struct Order {
     sign_scheme:felt252 // sign scheme used to sign order
 }
 
+
+
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq,Hash)]
 struct SimpleOrder {
     price: u256, // protection price in quote asset raw amount, for security
     base_asset: u256,  // omit Quantity since inferred by previous orders
     ticker: (ContractAddress, ContractAddress), // (base asset address, quote asset address) eg ETH/USDC
     is_sell_side:bool,
+}
+
+#[generate_trait]
+impl OrderImpl of OrderTrait {
+    fn spend_token(self: @Order) -> ContractAddress { let (b,q) = *self.ticker; if *self.flags.is_sell_side {b} else {q}}
+    fn receive_token(self: @Order) -> ContractAddress { let (b,q) = *self.ticker; if !*self.flags.is_sell_side {b} else {q}}
+}
+#[generate_trait]
+impl SimpleOrderImpl of SimpleOrderTrait {
+    fn spend_token(self: @SimpleOrder) -> ContractAddress { let (b,q) = *self.ticker; if *self.is_sell_side {b} else {q}}
+    fn receive_token(self: @SimpleOrder) -> ContractAddress { let (b,q) = *self.ticker; if !*self.is_sell_side {b} else {q}}
 }
 
 #[derive(Copy, Drop, Serde, PartialEq)]
@@ -111,17 +110,13 @@ struct OrderTradeInfo {
 }
 
 
-fn get_feeable_qty(fixed_fee: FixedFee, feeable_qty: u256, is_maker:bool) -> u256 {
-    let pbips = if is_maker {fixed_fee.maker_pbips} else {fixed_fee.taker_pbips};
-    if pbips == 0 { return 0;}
-    return (feeable_qty * pbips.into() - 1) / 1_000_000 + 1;
-}
 
 fn get_limit_px(maker_order:Order, maker_fill_info:OrderTradeInfo) ->  u256{  //TODO: and qty rename
     let settle_px = if maker_fill_info.filled_base_amount > 0 || maker_fill_info.filled_quote_amount > 0 {maker_fill_info.last_traded_px} else {maker_order.price};
     return settle_px; 
 }
-// TODO
+
+
 fn get_available_base_qty(settle_px:u256, qty:Quantity, fill_info: OrderTradeInfo) -> u256 {
     // calculate available qty in base asset that fulfillable
     // if base_qty not specified it is defined by quote_qty
@@ -162,8 +157,7 @@ fn do_taker_price_checks(taker_order:Order, settle_px:u256, taker_fill_info:Orde
     return rem;
 }
 
-fn do_maker_checks(maker_order:Order, maker_fill_info:OrderTradeInfo, nonce:u32,fee_recipient:ContractAddress)-> (u256, u256) {
-    assert!(maker_order.fee.trade_fee.recipient == fee_recipient, "WRONG_MAKER_FEE_RECIPIENT: expected {} got {}", fee_recipient, maker_order.fee.trade_fee.recipient);
+fn do_maker_checks(maker_order:Order, maker_fill_info:OrderTradeInfo, nonce:u32)-> (u256, u256) {
     assert!(!maker_order.flags.is_market_order, "WRONG_MARKET_TYPE");
     let settle_px = get_limit_px(maker_order, maker_fill_info);
     let remaining = get_available_base_qty(settle_px, maker_order.qty, maker_fill_info);
@@ -179,8 +173,7 @@ fn do_maker_checks(maker_order:Order, maker_fill_info:OrderTradeInfo, nonce:u32,
 }
 
 
-fn generic_taker_check(taker_order:Order, taker_fill_info:OrderTradeInfo, nonce:u32, swaps:u16, taker_order_hash:felt252, fee_recipient:ContractAddress) {
-    assert!(taker_order.fee.trade_fee.recipient == fee_recipient, "WRONG_TAKER_FEE_RECIPIENT: expected {} got {}", fee_recipient, taker_order.fee.trade_fee.recipient);
+fn generic_taker_check(taker_order:Order, taker_fill_info:OrderTradeInfo, nonce:u32, swaps:u16, taker_order_hash:felt252) {
     assert!(taker_order.constraints.number_of_swaps_allowed >= taker_fill_info.num_trades_happened + swaps, "HIT_SWAPS_ALLOWED");
     assert!(!taker_order.flags.post_only, "WRONG_TAKER_FLAG");
     assert!(taker_order.constraints.nonce >= nonce, "OLD_TAKER_NONCE");
@@ -193,22 +186,4 @@ fn generic_common_check(maker_order:Order, taker_order:Order) {
     assert!(taker_order.ticker == maker_order.ticker, "MISMATCH_TICKER");
     assert!(taker_order.flags.to_ecosystem_book == maker_order.flags.to_ecosystem_book, "MISMATCH_BOOK_DESTINATION");
     assert!(taker_order.qty.base_asset == maker_order.qty.base_asset, "WRONG_ASSET_AMOUNT");
-}
-
-
-fn get_gas_fee_and_coin(gas_fee: GasFee, cur_gas_price: u256, native_token:ContractAddress, cur_gas_per_action:u32, times:u16) -> (u256, ContractAddress) {
-    if cur_gas_price == 0 { return (0, native_token);}
-    if gas_fee.gas_per_action == 0 { return (0, native_token);}
-    assert!(gas_fee.max_gas_price >= cur_gas_price, "Failed: max_gas_price ({}) >= cur_gas_price ({})", gas_fee.max_gas_price, cur_gas_price);
-    assert!(gas_fee.gas_per_action >= cur_gas_per_action, "Failed: gas_per_action ({}) >= cur_gas_per_action ({})", gas_fee.gas_per_action, cur_gas_per_action);
-    
-    let spend_native = cur_gas_per_action.into() * cur_gas_price;
-    
-    if gas_fee.fee_token == native_token {
-        return (spend_native, native_token);
-    }
-
-    let (r0, r1) = gas_fee.conversion_rate;
-    let spend_converted = spend_native * r1 / r0;
-    return (spend_converted * times.into(), gas_fee.fee_token);
 }
