@@ -40,10 +40,12 @@ fn get_gas_fee_and_coin(gas_fee: GasFee, native_token:ContractAddress, times:u16
     assert!(gas_fee.max_gas_price >= gas_ctx.gas_price, "Failed: max_gas_price ({}) >= cur_gas_price ({})", gas_fee.max_gas_price, gas_ctx.gas_price);
     assert!(gas_fee.gas_per_action >= gas_ctx.cur_gas_per_action, "Failed: gas_per_action ({}) >= cur_gas_per_action ({})", gas_fee.gas_per_action, gas_ctx.cur_gas_per_action);
     
+    if times == 0 { return (0, gas_fee.fee_token);}
+    
     let spend_native = gas_ctx.cur_gas_per_action.into() * gas_ctx.gas_price;
     
     if gas_fee.fee_token == native_token {
-        return (spend_native, native_token);
+        return (spend_native * times.into(), native_token);
     }
 
     let (r0, r1) = gas_fee.conversion_rate;
