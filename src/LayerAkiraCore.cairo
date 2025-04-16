@@ -16,8 +16,8 @@ trait ILayerAkiraCore<TContractState> {
 
 
 
-    fn set_executor(ref self: TContractState, new_executor:ContractAddress);
-    fn grant_access_to_executor(ref self: TContractState);
+    fn update_executor(ref self: TContractState, new_executor:ContractAddress, wlist:bool);
+    fn grant_access_to_executor(ref self: TContractState, executor:ContractAddress);
 
     fn deposit(ref self: TContractState, receiver:ContractAddress, token:ContractAddress, amount:u256);
 
@@ -30,7 +30,7 @@ trait ILayerAkiraCore<TContractState> {
     fn bind_to_signer(ref self: TContractState, signer: ContractAddress);
 
     
-    fn is_approved_executor(self: @TContractState, user: ContractAddress) -> bool;
+    fn is_approved_executor(self: @TContractState, executor:ContractAddress, user: ContractAddress) -> bool;
     fn get_withdraw_hash(self: @TContractState, withdraw: Withdraw) -> felt252;
     fn get_increase_nonce_hash(self: @TContractState, increase_nonce: IncreaseNonce) -> felt252;
     fn get_nonce(self: @TContractState, user:ContractAddress) -> u32;
@@ -133,8 +133,7 @@ mod LayerAkiraCore {
         self.balancer_s.initializer(fee_recipient, wrapped_native_token);
         self.withdraw_s.initializer(max_slow_mode_delay, withdraw_action_cost);
         self.accessor_s.owner.write(owner);
-        self.accessor_s.executor.write(0.try_into().unwrap());
-        self.accessor_s.executor_epoch.write(0);
+        self.accessor_s.global_executor_epoch.write(1);
     }
 
     
@@ -161,7 +160,7 @@ mod LayerAkiraCore {
 
     #[external(v0)]
     fn transfer(ref self: ContractState, from: ContractAddress, to: ContractAddress, amount: u256, token: ContractAddress) {
-        self.accessor_s.only_executor(); self.accessor_s.only_authorized_by_user(from);        
+        self.accessor_s.only_executor(); self.accessor_s.only_authorized_by_user(from, get_caller_address());        
         self.balancer_s.internal_transfer(from, to, amount, token);
     }
     
@@ -173,14 +172,15 @@ mod LayerAkiraCore {
 
     #[external(v0)]
     fn safe_burn(ref self: ContractState, to: ContractAddress, amount: u256, token: ContractAddress) -> u256 {
-        self.accessor_s.only_owner_or_executor(); self.accessor_s.only_authorized_by_user(to); 
+        self.accessor_s.only_owner_or_executor(); self.accessor_s.only_authorized_by_user(to, get_caller_address()); 
         return self.withdraw_s.safe_withdraw(to, amount, token);
     }
 
     #[external(v0)]
     fn rebalance_after_trade(ref self: ContractState, maker:ContractAddress, taker:ContractAddress, ticker:(ContractAddress, ContractAddress),
             amount_base:u256, amount_quote:u256, is_maker_seller:bool) {
-        self.accessor_s.only_executor(); self.accessor_s.only_authorized_by_user(maker); self.accessor_s.only_authorized_by_user(taker);
+        let caller = get_caller_address();
+        self.accessor_s.only_executor(); self.accessor_s.only_authorized_by_user(maker, caller); self.accessor_s.only_authorized_by_user(taker, caller);
         self.balancer_s.rebalance_after_trade(maker,taker,ticker,amount_base,amount_quote, is_maker_seller);          
     }
  
@@ -208,14 +208,13 @@ mod LayerAkiraCore {
         self.emit(BaseTokenUpdate{new_base_token});
         // important to reset, to avoid any malicious actions; relevant to Executor contaract; 
         //not relevant for router since it has no funds of other tokens than base one
-        let (executor, _) = self.get_executor();
-        self.set_executor(executor);
+        self.invalidate_executors();
     }
 
     #[external(v0)]
     fn apply_increase_nonce(ref self: ContractState, signed_nonce: SignedIncreaseNonce, gas_price:u256, cur_gas_per_action:u32) {
         self.accessor_s.only_executor();
-        self.accessor_s.only_authorized_by_user(signed_nonce.increase_nonce.maker);
+        self.accessor_s.only_authorized_by_user(signed_nonce.increase_nonce.maker, get_caller_address());
         self.nonce_s.apply_increase_nonce(signed_nonce, gas_price, cur_gas_per_action);
     }
 
@@ -226,7 +225,7 @@ mod LayerAkiraCore {
         loop {
             match signed_nonces.pop_front(){
                 Option::Some(signed_nonce) => { 
-                    self.accessor_s.only_authorized_by_user(signed_nonce.increase_nonce.maker);
+                    self.accessor_s.only_authorized_by_user(signed_nonce.increase_nonce.maker, get_caller_address());
                     self.nonce_s.apply_increase_nonce(signed_nonce, gas_price, cur_gas_per_action);
                     },
                 Option::None(_) => {break;}
@@ -237,7 +236,7 @@ mod LayerAkiraCore {
     #[external(v0)]
     fn apply_withdraw(ref self: ContractState, signed_withdraw: SignedWithdraw, gas_price:u256, cur_gas_per_action:u32) {
         self.accessor_s.only_executor();
-        self.accessor_s.only_authorized_by_user(signed_withdraw.withdraw.maker);
+        self.accessor_s.only_authorized_by_user(signed_withdraw.withdraw.maker, get_caller_address());
         self.withdraw_s.apply_withdraw(signed_withdraw, gas_price, cur_gas_per_action);
         self.withdraw_s.gas_steps.write(cur_gas_per_action);
     }
@@ -248,7 +247,7 @@ mod LayerAkiraCore {
         loop {
             match signed_withdraws.pop_front(){
                 Option::Some(signed_withdraw) => {
-                    self.accessor_s.only_authorized_by_user(signed_withdraw.withdraw.maker);
+                    self.accessor_s.only_authorized_by_user(signed_withdraw.withdraw.maker, get_caller_address());
                     self.withdraw_s.apply_withdraw(signed_withdraw, gas_price, cur_gas_per_action)
                 },
                 Option::None(_) => {break;}
