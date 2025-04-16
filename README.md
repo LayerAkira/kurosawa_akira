@@ -175,3 +175,9 @@ The LayerAkiraExternalGrantor contract is a core module responsible for managing
 It ensures that routers maintain required balances to be able to route orders to exchange.
 
 Note that transfer_to_core designed to avoid giving explicit access for executor contract to mint tokens in LayerAkiraCore
+
+
+# General flow
+
+Clients sign ofchain typed messages that represent trading actions and submit them to LayerAkira exchange (offchain matching engine).
+Matching engine process events and publish results of actions into the smart contracts.
