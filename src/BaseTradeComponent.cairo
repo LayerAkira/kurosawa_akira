@@ -7,11 +7,11 @@ use kurosawa_akira::Order::{SignedOrder,Order,get_gas_fee_and_coin, OrderTradeIn
 
 #[derive(Copy, Drop, Serde)]
 struct TakerMatchContext{
-    as_taker_completed:bool, 
-    skip_taker_validation:bool, 
-    gas_trades_to_pay:u16, 
-    transfer_taker_recieve_back:bool, 
-    allow_charge_gas_on_receipt:bool
+    as_taker_completed:bool, // if taker order should be marked as completed
+    skip_taker_validation:bool,  // should signature check for the taker order be omitted
+    gas_trades_to_pay:u16,  // for what amount of trades in fact taker would be paid
+    transfer_taker_recieve_back:bool, // should funds be tferred back upon received by the taker or not 
+    allow_charge_gas_on_receipt:bool // is gas amount can be charged on what taker would receive (eg he receive during trade eth and set gas token as eth) or not
 }
 
 #[starknet::interface]
@@ -108,7 +108,6 @@ mod base_trade_component {
     impl InternalOrderTradableImpl<TContractState, +HasComponent<TContractState>,
     +Drop<TContractState>, > of InternalBaseOrderTradable<TContractState> {
 
-        // exposed only in contract user apply ecosystem trades
         fn apply_ecosystem_trades(ref self: ComponentState<TContractState>, mut taker_orders:Array<(SignedOrder, bool)>, mut maker_orders:Array<SignedOrder>, mut iters:Array<(u16, bool)>,
                     mut oracle_settled_qty:Array<u256>, gas_ctx: super::GasContext) {
             let mut maker_order = *maker_orders.at(0).order;
@@ -377,21 +376,21 @@ mod base_trade_component {
         fn finalize_router_taker(ref self:ComponentState<TContractState>, taker_order:Order, taker_hash:felt252, mut received_amount:u256, unspent_amount:u256, trades:u16,
                     spent_amount:u256, transfer_back_received:bool, tfer_back_unspent:bool, gas_ctx:GasContext) {
             // Finalize router taker
-            // 1) pay for gas, trade, router fee
+            // 1) pay for gas, trade, router fee, integrator fee
             // 2) transfer user erc20 tokens that he received + unspent amount of tokens he was selling
             let (b, q) = if taker_order.flags.is_sell_side { (spent_amount, received_amount) } else { (received_amount, spent_amount) };
             
-            let (fee_token, router_fee_amount, exchange_fee_amount,integrator_fee, mut gas) =  self.apply_taker_fee_and_gas(taker_order, b, q, trades, gas_ctx);
+            let (fee_token, router_fee_amount, exchange_fee_amount, integrator_fee, mut gas) =  self.apply_taker_fee_and_gas(taker_order, b, q, trades, gas_ctx);
             
             // we charged him for gas but we need to deduct before sending back in case it was gas currency he received
-            let (spending_token, receive_token) = (taker_order.spend_token(),taker_order.receive_token());
-            if (taker_order.fee.gas_fee.fee_token != receive_token) {gas = 0}
+            let (spending_token, receive_token) = (taker_order.spend_token(), taker_order.receive_token());
+            if (taker_order.fee.gas_fee.fee_token != receive_token) {gas = 0} // should be exclusive with allow_charge_gas_on_receipt
             
             if (spending_token == fee_token) { //if fees was in token user spend we deduct them from spend to return remaining else from recieve before sending back
                 if transfer_back_received {self.transfer_back(receive_token, taker_order.maker, received_amount - gas);}
                 if tfer_back_unspent {self.transfer_back(spending_token, taker_order.maker, unspent_amount - router_fee_amount - exchange_fee_amount - integrator_fee);}
             } else {
-                if transfer_back_received { self.transfer_back(receive_token, taker_order.maker, received_amount - router_fee_amount - exchange_fee_amount - gas);}
+                if transfer_back_received { self.transfer_back(receive_token, taker_order.maker, received_amount - router_fee_amount - exchange_fee_amount - integrator_fee - gas);}
                 if tfer_back_unspent {self.transfer_back(spending_token, taker_order.maker, unspent_amount);} // tfer unspent amount
             }
         }

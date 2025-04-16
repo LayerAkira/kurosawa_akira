@@ -2,14 +2,15 @@ use starknet::{ContractAddress, get_caller_address};
 
 #[starknet::interface]
 trait IAccesorableImpl<TContractState> {
-        // returns executor and user epoch; for the backend use
+        // returns global and user epoch; for the backend use
         fn get_epochs(self: @TContractState, executor: ContractAddress, user:ContractAddress) -> (u32, u32);
+        // returns owner of the contract
         fn get_owner(self: @TContractState) -> ContractAddress;
         // Is client approved the specified executor 
         fn is_approved_executor(self: @TContractState, executor:ContractAddress, user:ContractAddress) -> bool;
-        
+        // only owner can update owner
         fn set_owner(ref self: TContractState, new_owner:ContractAddress);
-        // wlist or dewlist executor; in case of dewlist approvals reset for everybody to avoid any malisious actions with reenable later on
+        // wlist or dewlist executor; in case of dewlist approvals reset for everybody to avoid any malisious actions with renewable later on
         fn update_executor(ref self: TContractState, new_executor:ContractAddress, wlist:bool);
         // invoked by client to whitelist current executor to perform actions on his behalf
         fn grant_access_to_executor(ref self: TContractState, executor:ContractAddress);
@@ -27,7 +28,7 @@ mod accessor_logic_component {
 
     #[storage]
     struct Storage {
-        owner: ContractAddress, // owner of contact that have permissions to grant and revoke role for invokers and update slow mode 
+        owner: ContractAddress, // owner of contact that have permissions to grant and revoke role for executors 
         user_to_executor_to_epoch: starknet::storage::Map::<(ContractAddress, ContractAddress), u32>, 
         wlsted_executors:starknet::storage::Map::<ContractAddress, bool>, //wlisted executers by the owner
         global_executor_epoch:u32 // epoch that controls is enabled  
@@ -71,6 +72,7 @@ mod accessor_logic_component {
             self.user_to_executor_to_epoch.write((get_caller_address(), executor), global_epoch);
             self.emit(ApprovalGranted{executor, user:get_caller_address(), epoch:global_epoch })
         }
+        
         fn invalidate_executors(ref self: ComponentState<TContractState>) { 
             self.only_owner();
             self.global_executor_epoch.write(self.global_executor_epoch.read() + 1);

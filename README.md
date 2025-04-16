@@ -8,11 +8,10 @@ Manages ownership, executor roles, and user-delegated permissions.
 Supports secure ownership transfer, executor assignment with epoch validation, and user-to-executor delegation, 
 ensuring outdated access is prevented using an epoch counter. 
 
-Emits events like OwnerChanged, ExecutorChanged, and ApprovalGranted for seamless integration with monitoring systems. 
-Built-in methods enforce strict access control for the owner, executor, or both, ensuring reliable permission management. 
+Emits events like OwnerChanged, ExecutorChanged, GlobalEpoch and ApprovalGranted for seamless integration with monitoring systems. 
+Built-in methods enforce strict access control for the owner, executors, or both, ensuring reliable permission management.
 
-Once user approval is granted, it remains valid until the executor is explicitly changed by the owner. 
-Assumes the executor's contract logic cannot be upgraded without modifying its contract address.
+Assumes the executor's contract logic cannot be upgraded without modifying its contract address
 
 # ExchangeBalanceLogicComponent
 This component supports efficient balance management across multiple tokens and users and is designed to integrate seamlessly with exchange-related smart contracts.
@@ -80,7 +79,7 @@ This approach ensures a robust, secure, and flexible mechanism for managing sign
 safeguarding the interests of both the exchange and its clients.
 
 # LayerAkiraCore
-The LayerAkiraCore contract is a modular StarkNet smart contract designed to manage the core operations of a decentralized exchange. 
+The LayerAkiraCore contract is a modular smart contract designed to manage the core operations of a decentralized exchange. 
 It integrates various components, including balance management, signer logic, deposit handling, withdrawal management, nonce tracking, and access control.
 
 Clients must explicitly authorize the current executor in the smart contract to allow the exchange's executor contract 
@@ -91,13 +90,13 @@ This ensures that only approved executors can perform actions on behalf of the c
 
 The BaseTradeComponent is a critical module for managing trade execution and settlement within the LayerAkira ecosystem. 
 It facilitates efficient handling of both ecosystem and external trades, enforces rigorous trade validation, and applies associated fees while maintaining security and transparency. 
-This component seamlessly interact with the LayerAkiraCore and LayerAKIRAExternalGrantor.
+This component seamlessly interact with the LayerAkiraCore and LayerAkiraExternalGrantor.
 
 It provides two key internal methods for the executor contract:
 
 * apply_ecosystem_trades: 
 Enables the executor to match ecosystem takers with ecosystem makers. 
-(Ecosystem refers to trades where funds originate from the LayerAkiraCore contract, and the signature scheme is deterministic.)
+(Ecosystem refers to trades where funds originate from the LayerAkiraCore contract, and the signature scheme is rather deterministic.
 
 * apply_single_taker: 
 Allows the executor to match external and ecosystem takers with ecosystem makers.
@@ -105,12 +104,12 @@ Allows the executor to match external and ecosystem takers with ecosystem makers
 ### Fees and Gas Costs
 * Gas Fees:
  Every trade incurs gas fees, which can be paid in the native STRK token or any other token specified in the order. 
-The conversion rate for non-native tokens is provided by the user in the signed order.
-* Exchange and Router Fees: 
+The conversion rate for non-native tokens is provided by the user in the signed action.
+* Exchange and Router, and integrator fees: 
 Each trade includes exchange fees for both makers and takers, 
-along with optional router fees. 
+along with optional router fees and integrator fees. 
 Routers act as intermediaries that relay client orders to the LayerAkira exchange (e.g., aggregators, frontends, or individual parties).
-
+Integrators act as smth that built on top of routers. For example, router is aggregator service while integrator is a wallet.
 ### Handling External Trades
 
 In the case of external trades, there is a possibility of trade failure due to malicious taker behavior. Instead of reverting the transaction, the contract:
@@ -126,9 +125,9 @@ In such cases, no further validation is necessary.
 This ensures that the system remains efficient and secure, while providing flexibility for both ecosystem and external trades.
 
 
-# SORTradeComponent
+# SORLayerAkiraExecutor
 
-The SORTradeComponent (Smart Order Routing) module provides advanced trade execution capabilities for multi-step and snip-9  trades. 
+The SORLayerAkiraExecutor (Smart Order Routing) module provides advanced trade execution capabilities for multi-step and snip-9 trades. 
 It is designed to handle both atomic taker orders and multi-order routing scenarios, enabling efficient and secure order fulfillment.
 
 This component extends the functionality of the BaseTradeComponent, integrating seamlessly with its trade execution logic while adding features specific to multi-step trades and snip-9. 
@@ -147,12 +146,27 @@ This component extends the functionality of the BaseTradeComponent, integrating 
 Both the client multicall and fullfillTakerOrder are enforced to occur within the same transaction, maintained by a locking mechanism to ensure atomicity and prevent state conflicts.
 Leverage of snip-9 allows to avoid separate approval from order signing
 
+### Synthetic matching on LayerAkira
+
+leverage snip-9 to allow atomic execution for multileg match (detailed explanation: https://github.com/LayerAkira/kurosawa_akira/pull/30)
+* Client Multicall:
+   * Approve
+   * Additional approves...
+   * placeSORTakerOrder
+
+* Exchange multicall:
+   * Client multcall
+   * fulfillSORAtomic
+     * Executes the locked taker order with the necessary maker orders and ensures completion.
+
 # LayerAkiraExecutor
 
 The LayerAkiraExecutor contract is designed to handle the execution layer of the LayerAkira decentralized exchange. 
 It provides functionality to manage order execution, 
 including both single and bulk trades, nonce updates, withdrawals, and ecosystem-based trade flows. 
-The contract ensures security and efficiency through its integration with other core components like BaseTradeComponent and SORTradeComponent
+The contract ensures security and efficiency through its integration with other core components like BaseTradeComponent.
+Additionally provides matching primitives for settling trades for addons/extensions -- contracts that would extend funtionality like SORLayerAkiraExecutor.
+Serves as an extension as well as bypassing contract size limitations in Starknet.
 
 
 # LayerAkiraExternalGrantor

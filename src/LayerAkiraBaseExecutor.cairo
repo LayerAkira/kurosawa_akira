@@ -28,12 +28,15 @@ trait ILayerAkiraBaseExecutor<TContractState> {
                     skip_taker_validation:bool, gas_trades_to_pay:u16, transfer_taker_recieve_back:bool, allow_charge_gas_on_receipt:bool)  -> (bool, felt252);
     fn get_order_info(self: @TContractState, order_hash: felt252) -> OrderTradeInfo;
     
+    // finalize router taker by settling trades,  can only by invoked by executor approved by the user
     fn apply_trades(ref self:TContractState, 
                                 taker_order:Order, signed_maker_orders:Span<(SignedOrder,u256)>,
                                 taker_hash:felt252,
                                 as_taker_completed:bool) -> (u256, u256);
+    // finalize router taker by settling failed trades, can only by invoked by executor approved by the user
     fn apply_punishment(ref self:TContractState, taker_order:Order, signed_maker_orders:Span<(SignedOrder,u256)>, 
                                 taker_hash:felt252, as_taker_completed:bool, gas_ctx:GasContext) ;
+    // finalize router taker by applying gas and fixed fees, can only by invoked by executor approved by the user
     fn finalize_router_taker(ref self:TContractState, taker_order:Order, taker_hash:felt252, received_amount:u256, unspent_amount:u256, trades:u16,
                     spent_amount:u256, transfer_back_received:bool, tfer_back_unspent:bool, gas_ctx:GasContext);
     fn is_wlsted_invoker(self:@TContractState, caller:ContractAddress)->bool;
@@ -173,7 +176,7 @@ mod LayerAkiraBaseExecutor {
                     total_amount_matched:u256, gas_price:u256,  cur_gas_per_action:u32, as_taker_completed:bool, 
                     skip_taker_validation:bool, gas_trades_to_pay:u16, transfer_taker_recieve_back:bool, allow_charge_gas_on_receipt:bool)  -> (bool, felt252) {
         self.accessor_s.only_authorized_by_user(signed_taker_order.order.maker, get_caller_address());
-        // no need to check for mm approvals since flags affected flow of the taker
+        // no need to check for mm approvals since flags affected flow of the taker only
         let taker_ctx = TakerMatchContext{as_taker_completed, skip_taker_validation, gas_trades_to_pay, transfer_taker_recieve_back, allow_charge_gas_on_receipt};
         self.base_trade_s.apply_single_taker(signed_taker_order, signed_maker_orders, total_amount_matched, taker_ctx, GasContext{gas_price, cur_gas_per_action}
         )
