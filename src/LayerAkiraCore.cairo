@@ -27,7 +27,7 @@ trait ILayerAkiraCore<TContractState> {
     fn apply_onchain_withdraw(ref self: TContractState, token:ContractAddress, key:felt252);
 
 
-    fn bind_to_signer(ref self: TContractState, signer: ContractAddress);
+    fn bind_to_signer(ref self: TContractState, signer: felt252);
 
     
     fn is_approved_executor(self: @TContractState, executor:ContractAddress, user: ContractAddress) -> bool;
