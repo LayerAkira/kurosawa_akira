@@ -1,6 +1,8 @@
 use starknet::ContractAddress;
 use kurosawa_akira::utils::account::{AccountABIDispatcherTrait, AccountABIDispatcher};
 
+const EC_ORDER:u256 =0x800000000000010ffffffffffffffffb781126dcae7b2321e66a241adc64d2f;
+
 fn check_sign(account: ContractAddress, hash: felt252, sign: Span<felt252>) -> bool {
     let mut calldata = ArrayTrait::new();
     calldata.append_span(sign);
@@ -143,6 +145,8 @@ mod signer_logic_component {
                 assert(signature.len() == 2,'WRONG SIGN SIZE SIMPLE');
                 let (sig_r, sig_s) = (signature.at(0).deref(), signature.at(1).deref());
                 assert!(signer != 0.try_into().unwrap(), "UNDEFINED_SIGNER: no signer for this trader {}", trader);
+                assert!(sig_r.into() < super::EC_ORDER, "SIG_R_OUT_OF_ORDER");
+                assert!(sig_s.into() < super::EC_ORDER, "SIG_S_OUT_OF_ORDER");
                 return check_ecdsa_signature(message, signer.into(), sig_r, sig_s);
             }
             if (sign_scheme == 'account') { return super::check_sign(trader, message, signature);}
