@@ -2,6 +2,8 @@ use starknet::ContractAddress;
 use serde::Serde;
 use kurosawa_akira::utils::SlowModeLogic::SlowModeDelay;
 
+const EC_ORDER:u256 =0x800000000000010ffffffffffffffffb781126dcae7b2321e66a241adc64d2f;
+
 #[starknet::interface]
 trait IRouter<TContractState> {
     fn get_base_token(self:@TContractState)-> ContractAddress;
@@ -239,6 +241,9 @@ mod router_component {
             if actual_router != router {return false;}
             assert!(self.registered.read(router), "NOT_REGISTERED: not registered router {}", router); // this one should be controlled by exchange, if fails, exchage screwed
             let (sig_r, sig_s) = signature;
+            assert!(sig_r.into() < super::EC_ORDER, "SIG_R_OUT_OF_ORDER");
+            assert!(sig_s.into() < super::EC_ORDER, "SIG_S_OUT_OF_ORDER");
+                
             return check_ecdsa_signature(message, signer.into(), sig_r, sig_s);
         }
 

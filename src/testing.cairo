@@ -25,9 +25,6 @@ mod tests_deposit_and_withdrawal_and_nonce {
     #[fork("block_based")]
     fn test_eth_deposit() {
 
-        println!("fixedfee:{}",FIXEDFEE_TYPE_HASH);
-        println!("orderfee:{}",ORDERFEE_TYPE_HASH);
-        println!("ordertype{}",ORDER_TYPE_HASH);
         let(core, _, __) = spawn_contracts(get_fee_recipient_exchange());
         let core_contract = ILayerAkiraCoreDispatcher{contract_address:core};
         let (trader,eth_addr,amount_deposit) = (get_trader_address_1(), get_eth_addr(),1_000_000);
@@ -164,7 +161,7 @@ mod tests_deposit_and_withdrawal_and_nonce {
 
     #[test]
     #[fork("block_based")]
-    #[should_panic(expected: ("ALREADY_COMPLETED: withdraw (hash = 957201278841670640498632393349450727444268037161897304282096904719289985567)",))]
+    #[should_panic(expected: ("ALREADY_COMPLETED: withdraw (hash = 905543679955676065246994118673349479668889004857323480626923725486027135771)",))]
     fn test_withdraw_eth_indirect_twice() {
         let(core, _, __) = spawn_contracts(get_fee_recipient_exchange());
         let akira = ILayerAkiraCoreDispatcher{contract_address:core};

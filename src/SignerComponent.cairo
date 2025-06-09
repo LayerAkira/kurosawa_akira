@@ -1,6 +1,8 @@
 use starknet::ContractAddress;
 use kurosawa_akira::utils::account::{AccountABIDispatcherTrait, AccountABIDispatcher};
 
+const EC_ORDER:u256 =0x800000000000010ffffffffffffffffb781126dcae7b2321e66a241adc64d2f;
+
 fn check_sign(account: ContractAddress, hash: felt252, sign: Span<felt252>) -> bool {
     let mut calldata = ArrayTrait::new();
     calldata.append_span(sign);
@@ -12,7 +14,7 @@ fn check_sign(account: ContractAddress, hash: felt252, sign: Span<felt252>) -> b
 trait ISignerLogic<TContractState> {
     // Binds caller contract address (trading account) to signer.
     // Signer is responsible for generating signature on behalf of caller address
-    fn bind_to_signer(ref self: TContractState, signer: ContractAddress);
+    fn bind_to_signer(ref self: TContractState, signer: felt252);
     
     // set expiration time
     fn set_till_time_approved_scheme(ref self: TContractState, sign_scheme:felt252, expire_at:u32);
@@ -22,9 +24,9 @@ trait ISignerLogic<TContractState> {
     // Validates that trader's  signer is correct signer of the message
     fn check_sign(self: @TContractState, trader: ContractAddress, message: felt252, signature: Span<felt252>, sign_scheme:felt252) -> bool;
     //  returns zero address in case of no binding
-    fn get_signer(self: @TContractState, trader: ContractAddress) -> ContractAddress;
+    fn get_signer(self: @TContractState, trader: ContractAddress) -> felt252;
     //  returns zero address in case of no binding
-    fn get_signers(self: @TContractState, traders: Span<ContractAddress>) -> Array<ContractAddress>;
+    fn get_signers(self: @TContractState, traders: Span<ContractAddress>) -> Array<felt252>;
     // get address of verifier for sign_scheme
     fn get_verifier_address(self: @TContractState, sign_scheme:felt252) -> ContractAddress;
     
@@ -34,7 +36,7 @@ trait ISignerLogic<TContractState> {
 
 #[starknet::interface]
 trait SignatureVerifier<TContractState> {
-    fn verify(self: @TContractState, signer: ContractAddress, message: felt252,  signature: Span<felt252>, account: ContractAddress,)->bool;
+    fn verify(self: @TContractState, signer: felt252, message: felt252,  signature: Span<felt252>, account: ContractAddress,)->bool;
     fn alias(self: @TContractState)->felt252;
 }
 
@@ -62,7 +64,7 @@ mod signer_logic_component {
         #[key]
         trading_account: ContractAddress,
         #[key]
-        signer: ContractAddress,
+        signer: felt252,
     }
     #[derive(Drop, starknet::Event)]
     struct NewSignScheme {
@@ -83,7 +85,7 @@ mod signer_logic_component {
 
     #[storage]
     struct Storage {
-        trader_to_signer: starknet::storage::Map::<ContractAddress, ContractAddress>,
+        trader_to_signer: starknet::storage::Map::<ContractAddress, felt252>,
         signer_scheme_to_verifier: starknet::storage::Map::<felt252, ContractAddress>,
         client_to_scheme_to_expiration_time: starknet::storage::Map::<(ContractAddress,felt252), u32>
     }
@@ -92,7 +94,7 @@ mod signer_logic_component {
     impl SignableImpl<
         TContractState, +HasComponent<TContractState>
     > of ISignerLogic<ComponentState<TContractState>> {
-        fn bind_to_signer(ref self: ComponentState<TContractState>, signer: ContractAddress) {
+        fn bind_to_signer(ref self: ComponentState<TContractState>, signer: felt252) {
             let caller = get_caller_address();
             assert!(self.trader_to_signer.read(caller) == 0.try_into().unwrap(), "ALREADY BINDED: signer = {}", self.trader_to_signer.read(caller));
             assert!(signer != 0.try_into().unwrap(), "SIGNER_CANT_BE_SET_TO_ZERO");
@@ -114,13 +116,13 @@ mod signer_logic_component {
         }
 
 
-        fn get_signer(self: @ComponentState<TContractState>, trader: ContractAddress) -> ContractAddress {
+        fn get_signer(self: @ComponentState<TContractState>, trader: ContractAddress) -> felt252 {
             return self.trader_to_signer.read(trader);
         }
 
-        fn get_signers(self: @ComponentState<TContractState>, traders: Span<ContractAddress>) -> Array<ContractAddress> {
+        fn get_signers(self: @ComponentState<TContractState>, traders: Span<ContractAddress>) -> Array<felt252> {
             //Note traders should not be empty
-            let mut res: Array<ContractAddress> = ArrayTrait::new();
+            let mut res: Array<felt252> = ArrayTrait::new();
             let sz = traders.len();
             let mut idx = 0;
             loop {
@@ -138,11 +140,13 @@ mod signer_logic_component {
 
         fn check_sign(self: @ComponentState<TContractState>, trader: ContractAddress, message: felt252, signature: Span<felt252>, 
             sign_scheme:felt252) -> bool {
-            let signer: ContractAddress = self.trader_to_signer.read(trader);
+            let signer = self.trader_to_signer.read(trader);
             if (sign_scheme == 'ecdsa curve') {
                 assert(signature.len() == 2,'WRONG SIGN SIZE SIMPLE');
                 let (sig_r, sig_s) = (signature.at(0).deref(), signature.at(1).deref());
                 assert!(signer != 0.try_into().unwrap(), "UNDEFINED_SIGNER: no signer for this trader {}", trader);
+                assert!(sig_r.into() < super::EC_ORDER, "SIG_R_OUT_OF_ORDER");
+                assert!(sig_s.into() < super::EC_ORDER, "SIG_S_OUT_OF_ORDER");
                 return check_ecdsa_signature(message, signer.into(), sig_r, sig_s);
             }
             if (sign_scheme == 'account') { return super::check_sign(trader, message, signature);}
