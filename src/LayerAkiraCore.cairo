@@ -46,7 +46,7 @@ trait ILayerAkiraCore<TContractState> {
     fn apply_withdraws(ref self: TContractState, signed_withdraws: Array<SignedWithdraw>, gas_price: u256, cur_gas_per_action: u32);
     
     fn check_sign(self: @TContractState, trader: ContractAddress, message: felt252, signature: Span<felt252>, sign_scheme:felt252) -> bool;
-    fn get_signer(self: @TContractState, trader: ContractAddress);
+    fn get_signer(self: @TContractState, trader: ContractAddress) -> felt252;
 }
 
 
