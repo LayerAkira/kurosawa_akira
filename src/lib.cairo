@@ -17,5 +17,6 @@ mod BaseTradeComponent;
 mod LayerAkiraExecutor;
 mod SORLayerAkiraExecutor;
 mod LayerAkiraBaseExecutor;
+mod HashVerifierByApprove;
 // mod LayerAkiraLimitExecutor;
 mod Fees;
