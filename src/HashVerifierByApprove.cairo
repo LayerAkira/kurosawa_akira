@@ -142,6 +142,6 @@ mod HashVerifierByApproval {
             return expire_at > now;
         }
 
-        fn alias(self: @ContractState) -> felt252 { 'hash_approve'}
+        fn alias(self: @ContractState) -> felt252 { 'web_limit_order'}
     }
 }
