@@ -1336,3 +1336,254 @@ mod tests_quote_qty_router_trade_02 {
     }  
 }
 
+
+
+#[cfg(test)]
+mod tests_core_migration_and_safe_withdraw {
+    use kurosawa_akira::test_utils::test_common::{
+        deposit, get_eth_addr, tfer_eth_funds_to, get_trader_address_1, get_fee_recipient_exchange,
+        spawn_contracts,spawn_cores
+    };
+    use core::{array::ArrayTrait, option::OptionTrait, traits::{Into, TryInto}};
+    use starknet::ContractAddress;
+    use snforge_std::{start_cheat_caller_address, stop_cheat_caller_address};
+    use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait, IERC20Dispatcher};
+    use kurosawa_akira::LayerAkiraCore::{ILayerAkiraCoreDispatcher, ILayerAkiraCoreDispatcherTrait};
+
+    fn as_core(addr: ContractAddress) -> ILayerAkiraCoreDispatcher {
+        ILayerAkiraCoreDispatcher { contract_address: addr }
+    }
+
+    #[test]
+    #[fork("block_based")]
+    fn test_set_new_core_and_getter() {
+        // spawn two cores
+        let(old_core_addr,new_core_addr) = spawn_cores();
+        let old_core = as_core(old_core_addr);
+
+        // only owner can set
+        start_cheat_caller_address(old_core.contract_address, get_fee_recipient_exchange());
+        old_core.set_new_core_address(new_core_addr);
+        stop_cheat_caller_address(old_core.contract_address);
+
+        assert(old_core.get_new_core_address() == new_core_addr, 'NEW_CORE_GETTER_FAILED');
+    }
+
+    #[test]
+    #[should_panic]
+    #[fork("block_based")]
+    fn test_migrate_revert_new_core_undefined() {
+        let (old_core_addr, _, __) = spawn_contracts(get_fee_recipient_exchange());
+        let old_core = as_core(old_core_addr);
+        let token = get_eth_addr();
+        let trader = get_trader_address_1();
+
+        // even without a balance, should fail first on undefined new_core
+        start_cheat_caller_address(old_core.contract_address, trader);
+        old_core.migrateFundsToNewCore(token);
+        stop_cheat_caller_address(old_core.contract_address);
+    }
+
+    #[test]
+    #[fork("block_based")]
+    #[should_panic]
+    fn test_migrate_revert_token_zero() {
+        let(old_core_addr,new_core_addr) = spawn_cores();
+        let old_core = as_core(old_core_addr);
+        let zero_token: ContractAddress = 0.try_into().unwrap();
+
+        start_cheat_caller_address(old_core.contract_address, get_fee_recipient_exchange());
+        old_core.set_new_core_address(new_core_addr);
+        stop_cheat_caller_address(old_core.contract_address);
+
+        let trader = get_trader_address_1();
+        start_cheat_caller_address(old_core.contract_address, trader);
+        old_core.migrateFundsToNewCore(zero_token);
+        stop_cheat_caller_address(old_core.contract_address);
+    }
+
+    #[test]
+    #[fork("block_based")]
+    #[should_panic]
+    fn test_migrate_revert_zero_balance() {
+        let(old_core_addr,new_core_addr) = spawn_cores();
+        let old_core = as_core(old_core_addr);
+        let token = get_eth_addr();
+
+        start_cheat_caller_address(old_core.contract_address, get_fee_recipient_exchange());
+        old_core.set_new_core_address(new_core_addr);
+        stop_cheat_caller_address(old_core.contract_address);
+
+        let trader = get_trader_address_1();
+        start_cheat_caller_address(old_core.contract_address, trader);
+        old_core.migrateFundsToNewCore(token);
+        stop_cheat_caller_address(old_core.contract_address);
+    }
+
+    #[test]
+    #[fork("block_based")]
+    fn test_migrate_success_pull_based() {
+        let(old_core_addr,new_core_addr) = spawn_cores();
+        let old_core = as_core(old_core_addr);
+        let new_core = as_core(new_core_addr);
+
+        // configure new core (owner)
+        start_cheat_caller_address(old_core.contract_address, get_fee_recipient_exchange());
+        old_core.set_new_core_address(new_core_addr);
+        stop_cheat_caller_address(old_core.contract_address);
+
+        // user funds on old core
+        let trader = get_trader_address_1();
+        let token = get_eth_addr();
+        let amount: u256 = 1_000_000;
+        tfer_eth_funds_to(trader, amount);
+        deposit(trader, amount, token, old_core);
+
+        // prechecks
+        assert(old_core.balanceOf(trader, token) == amount, 'PRE_BAL_OLD');
+        assert(new_core.balanceOf(trader, token) == 0, 'PRE_BAL_NEW');
+
+        // run migration as trader
+        start_cheat_caller_address(old_core.contract_address, trader);
+        old_core.migrateFundsToNewCore(token);
+        stop_cheat_caller_address(old_core.contract_address);
+
+        // post: internal balances moved to new core
+        assert(old_core.balanceOf(trader, token) == 0, 'POST_BAL_OLD_NONZERO');
+        assert!(new_core.balanceOf(trader, token) == amount, "POST_BAL_NEW_WRONG {} {}",new_core.balanceOf(trader, token), amount);
+
+        // optional: external ERC20 balances (old core should end at 0 after deposit pulls)
+        let erc = IERC20Dispatcher { contract_address: token };
+        assert!(erc.balanceOf(old_core_addr) == 0, "OLD_CORE_ERC20_RESIDUAL");
+        assert!(erc.balanceOf(new_core_addr) >= amount, "NEW_CORE_ERC20_NOT_FUNDED"); // deposit pulls here
+    }
+
+    #[test]
+    #[fork("block_based")]
+    fn test_safe_withdraw_toggle_and_flow() {
+        let (core_addr, _, __) = spawn_contracts(get_fee_recipient_exchange());
+        let core = as_core(core_addr);
+        let token = get_eth_addr();
+        let trader = get_trader_address_1();
+        let amount: u256 = 777_000;
+
+        // initially disabled
+        assert!(core.get_safe_withdraw_enabled() == false, "INIT_TOGGLE_MUST_BE_FALSE");
+
+        // deposit user funds into core
+        tfer_eth_funds_to(trader, amount);
+        deposit(trader, amount, token, core);
+
+        // enable by owner and check getter
+        start_cheat_caller_address(core.contract_address, get_fee_recipient_exchange());
+        core.set_safe_withdraw(true);
+        stop_cheat_caller_address(core.contract_address);
+        assert!(core.get_safe_withdraw_enabled() == true, "TOGGLE_TRUE");
+
+        // track external ERC20 balance
+        let erc = IERC20Dispatcher { contract_address: token };
+        let before_ext = erc.balanceOf(trader);
+
+        // user withdraws all
+        start_cheat_caller_address(core.contract_address, trader);
+        core.safe_withdraw(token);
+        stop_cheat_caller_address(core.contract_address);
+
+        // checks: external increased, internal zeroed
+        let after_ext = erc.balanceOf(trader);
+        assert!(after_ext - before_ext == amount, "SAFE_WITHDRAW_WRONG_AMOUNT");
+        assert!(core.balanceOf(trader, token) == 0, "SAFE_WITHDRAW_INTERNAL_NONZERO");
+    }
+
+    #[test]
+    #[fork("block_based")]
+    #[should_panic]
+    fn test_safe_withdraw_revert_when_disabled() {
+        let (core_addr, _, __) = spawn_contracts(get_fee_recipient_exchange());
+        let core = as_core(core_addr);
+        let token = get_eth_addr();
+        let trader = get_trader_address_1();
+        let amount: u256 = 111_000;
+
+        tfer_eth_funds_to(trader, amount);
+        deposit(trader, amount, token, core);
+
+        // still disabled: should revert with your exact string
+        start_cheat_caller_address(core.contract_address, trader);
+        core.safe_withdraw(token);
+        stop_cheat_caller_address(core.contract_address);
+    }
+
+    #[test]
+    #[fork("block_based")]
+    #[should_panic] // only-owner guard; component decides exact message
+    fn test_set_safe_withdraw_only_owner() {
+        let (core_addr, _, __) = spawn_contracts(get_fee_recipient_exchange());
+        let core = as_core(core_addr);
+
+        // non-owner tries to toggle
+        start_cheat_caller_address(core.contract_address, get_trader_address_1());
+        core.set_safe_withdraw(true);
+        stop_cheat_caller_address(core.contract_address);
+    }
+
+    #[test]
+    #[fork("block_based")]
+    #[should_panic] // only-owner guard; component decides exact message
+    fn test_set_new_core_only_owner() {
+        let(old_core_addr,new_core_addr) = spawn_cores();
+        let old_core = as_core(old_core_addr);
+
+        // non-owner tries to set
+        start_cheat_caller_address(old_core.contract_address, get_trader_address_1());
+        old_core.set_new_core_address(new_core_addr);
+        stop_cheat_caller_address(old_core.contract_address);
+    }
+
+    #[test]
+    #[fork("block_based")]
+    #[should_panic] // zero internal balance after first migration
+    fn test_migrate_twice_reverts_zero_balance() {
+        let(old_core_addr,new_core_addr) = spawn_cores();
+        let old_core = as_core(old_core_addr);
+
+        start_cheat_caller_address(old_core.contract_address, get_fee_recipient_exchange());
+        old_core.set_new_core_address(new_core_addr);
+        stop_cheat_caller_address(old_core.contract_address);
+
+        let trader = get_trader_address_1();
+        let token = get_eth_addr();
+        let amount: u256 = 42_000;
+        tfer_eth_funds_to(trader, amount);
+        deposit(trader, amount, token, old_core);
+
+        start_cheat_caller_address(old_core.contract_address, trader);
+        old_core.migrateFundsToNewCore(token); // first ok
+        old_core.migrateFundsToNewCore(token); // should panic: zero balance
+        stop_cheat_caller_address(old_core.contract_address);
+    }
+
+    #[test]
+    #[fork("block_based")]
+    #[should_panic] // second withdraw hits zero balance
+    fn test_safe_withdraw_twice_reverts_zero_balance() {
+        let (core_addr, _, __) = spawn_contracts(get_fee_recipient_exchange());
+        let core = as_core(core_addr);
+        let token = get_eth_addr();
+        let trader = get_trader_address_1();
+        let amount: u256 = 999_999;
+
+        // enable toggle
+        start_cheat_caller_address(core.contract_address, get_fee_recipient_exchange());
+        core.set_safe_withdraw(true);
+        stop_cheat_caller_address(core.contract_address);
+
+        tfer_eth_funds_to(trader, amount);
+        deposit(trader, amount, token, core);
+
+        start_cheat_caller_address(core.contract_address, trader);
+        core.safe_withdraw(token);   // drains all
+        core.safe_withdraw(token);   // should panic
+        stop_cheat_caller_address(core.contract_address);
+    }
+}
