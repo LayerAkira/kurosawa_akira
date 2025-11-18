@@ -46,7 +46,15 @@ trait ILayerAkiraCore<TContractState> {
     fn apply_withdraws(ref self: TContractState, signed_withdraws: Array<SignedWithdraw>, gas_price: u256, cur_gas_per_action: u32);
     
     fn check_sign(self: @TContractState, trader: ContractAddress, message: felt252, signature: Span<felt252>, sign_scheme:felt252) -> bool;
-    fn get_signer(self: @TContractState, trader: ContractAddress);
+    fn get_signer(self: @TContractState, trader: ContractAddress) -> felt252;
+
+    fn set_new_core_address(ref self: TContractState, new_core: ContractAddress);
+    fn set_safe_withdraw(ref self: TContractState, value: bool);
+    fn migrateFundsToNewCore(ref self: TContractState, token: ContractAddress);
+    fn safe_withdraw(ref self: TContractState, token: ContractAddress);
+    fn get_safe_withdraw_enabled(self: @TContractState) -> bool;
+    fn get_new_core_address(self: @TContractState) -> ContractAddress;
+
 }
 
 
@@ -54,6 +62,9 @@ trait ILayerAkiraCore<TContractState> {
 
 #[starknet::contract]
 mod LayerAkiraCore {
+    use super::{ILayerAkiraCoreDispatcherTrait,ILayerAkiraCoreDispatcher};
+    use kurosawa_akira::utils::erc20::{IERC20DispatcherTrait, IERC20Dispatcher};
+    
     use kurosawa_akira::ExchangeBalanceComponent::exchange_balance_logic_component as  exchange_balance_logic_component;
     use kurosawa_akira::SignerComponent::signer_logic_component as  signer_logic_component;
     use kurosawa_akira::DepositComponent::deposit_component as  deposit_component;
@@ -74,7 +85,7 @@ mod LayerAkiraCore {
     use kurosawa_akira::NonceComponent::{SignedIncreaseNonce, IncreaseNonce};
     use kurosawa_akira::signature::V0OffchainMessage::{OffchainMessageHashImpl};
     use kurosawa_akira::signature::AkiraV0OffchainMessage::{OrderHashImpl,SNIP12MetadataImpl,IncreaseNonceHashImpl,WithdrawHashImpl};
-    use starknet::{ContractAddress, get_caller_address};
+    use starknet::{ContractAddress, get_caller_address, get_contract_address};
     
     
     component!(path: exchange_balance_logic_component,storage: balancer_s, event:BalancerEvent);
@@ -118,6 +129,8 @@ mod LayerAkiraCore {
         
         
         max_slow_mode_delay:SlowModeDelay, // upper bound for all delayed actions
+        new_core:ContractAddress,
+        allow_safe_withdraw:bool
     }
 
 
@@ -134,7 +147,14 @@ mod LayerAkiraCore {
         self.withdraw_s.initializer(max_slow_mode_delay, withdraw_action_cost);
         self.accessor_s.owner.write(owner);
         self.accessor_s.global_executor_epoch.write(1);
+        self.new_core.write(0.try_into().unwrap());
+        self.allow_safe_withdraw.write(false);
     }
+
+    #[external(v0)]
+    fn get_safe_withdraw_enabled(self: @ContractState) -> bool { self.allow_safe_withdraw.read()}
+    #[external(v0)]
+    fn get_new_core_address(self: @ContractState) -> ContractAddress { self.new_core.read()}
 
     
     #[external(v0)]
@@ -212,6 +232,56 @@ mod LayerAkiraCore {
     }
 
     #[external(v0)]
+    fn set_new_core_address(ref self: ContractState, new_core:ContractAddress) {
+        // in case of migration, owner of contract can set new core address which enables migrateFundsToNewCore invocation by users
+        self.accessor_s.only_owner();
+        self.new_core.write(new_core);
+        self.emit(NewCoreSet { new_core }); 
+    }
+
+    #[external(v0)]
+    fn set_safe_withdraw(ref self: ContractState, value:bool) {
+        // owner can provide support for safe withdraw
+        self.accessor_s.only_owner();
+        self.allow_safe_withdraw.write(value);
+        self.emit(SafeWithdrawToggled { enabled: value });
+    }
+
+    #[external(v0)]
+    fn migrateFundsToNewCore(ref self:ContractState, token:ContractAddress) {
+        // once new core contract set, migration possible => client can directly tfer funds from this to new contract
+        let new_core:ContractAddress = self.new_core.read();
+        assert(new_core.into() != 0, 'new core undefined');
+        assert(token.into() != 0, 'token undefined');
+        
+        let (user, core) = (get_caller_address(), get_contract_address());
+        let balance = self.balancer_s.balanceOf(user, token);
+
+        assert(balance != 0, 'zero balance');
+
+        self.balancer_s.internal_transfer(user, core, balance, token);
+        let out = self.withdraw_s.safe_withdraw(core, balance, token);
+
+        IERC20Dispatcher { contract_address: token }.approve(new_core, out);
+        let balance_before = IERC20Dispatcher { contract_address: token }.balanceOf(core);
+        ILayerAkiraCoreDispatcher{contract_address:new_core}.deposit(user, token, out);
+        IERC20Dispatcher { contract_address: token }.approve(new_core, 0);
+        assert(balance_before - IERC20Dispatcher { contract_address: token }.balanceOf(core) <= balance, 'few left');
+        self.emit(FundsMigrated { user, token, amount: out }); 
+    }
+
+    #[external(v0)]
+    fn safe_withdraw(ref self:ContractState, token:ContractAddress) {
+        // when contract became obsolete -> owner set safe withdraw and ppl can easily withdraw the money
+        let user = get_caller_address();
+        assert(self.allow_safe_withdraw.read(),'not allowed');
+        let balance = self.balancer_s.balanceOf(user, token);
+        assert(balance != 0, 'zero balance');
+        self.withdraw_s.safe_withdraw(user, balance, token);
+    }
+
+
+    #[external(v0)]
     fn apply_increase_nonce(ref self: ContractState, signed_nonce: SignedIncreaseNonce, gas_price:u256, cur_gas_per_action:u32) {
         self.accessor_s.only_executor();
         self.accessor_s.only_authorized_by_user(signed_nonce.increase_nonce.maker, get_caller_address());
@@ -255,6 +325,8 @@ mod LayerAkiraCore {
         };
         self.withdraw_s.gas_steps.write(cur_gas_per_action);
     }
+    
+
 
 
     #[event]
@@ -269,6 +341,10 @@ mod LayerAkiraCore {
         BaseTokenUpdate: BaseTokenUpdate,
         FeeRecipientUpdate: FeeRecipientUpdate,
         WithdrawComponentUpdate: WithdrawComponentUpdate,
+
+        FundsMigrated: FundsMigrated,             
+        SafeWithdrawToggled: SafeWithdrawToggled,  
+        NewCoreSet: NewCoreSet,       
     }
 
     #[derive(Drop, starknet::Event)]
@@ -278,6 +354,15 @@ mod LayerAkiraCore {
     
     #[derive(Drop, starknet::Event)]
     struct WithdrawComponentUpdate {new_delay:SlowModeDelay}
+
+    #[derive(Drop, starknet::Event)]
+    struct FundsMigrated { user: ContractAddress, token: ContractAddress, amount: u256 } 
+
+    #[derive(Drop, starknet::Event)]
+    struct SafeWithdrawToggled { enabled: bool }       
+
+    #[derive(Drop, starknet::Event)]
+    struct NewCoreSet { new_core: ContractAddress }  
 
 }
 

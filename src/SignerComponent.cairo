@@ -35,7 +35,7 @@ trait ISignerLogic<TContractState> {
 }
 
 #[starknet::interface]
-trait SignatureVerifier<TContractState> {
+pub trait SignatureVerifier<TContractState> {
     fn verify(self: @TContractState, signer: felt252, message: felt252,  signature: Span<felt252>, account: ContractAddress,)->bool;
     fn alias(self: @TContractState)->felt252;
 }
@@ -179,4 +179,3 @@ mod signer_logic_component {
         }
     }
 }
-

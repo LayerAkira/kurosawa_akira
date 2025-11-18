@@ -93,6 +93,28 @@
         return deployed;
     }
 
+    fn spawn_cores() -> (ContractAddress,ContractAddress) {
+        let cls = declare("LayerAkiraCore").unwrap();
+        let mut constructor: Array::<felt252> = ArrayTrait::new();
+        constructor.append(get_eth_addr().into());
+        constructor.append(get_fee_recipient_exchange().into());
+        
+        let mut serialized_slow_mode: Array<felt252> = ArrayTrait::new();
+        Serde::serialize(@get_slow_mode(), ref serialized_slow_mode);
+        loop {
+            match serialized_slow_mode.pop_front() {
+                Option::Some(felt) => { constructor.append(felt);},
+                Option::None(_) => {break();}
+            }
+        };
+        constructor.append(get_withdraw_action_cost().into());
+        constructor.append(get_fee_recipient_exchange().into());
+        let (deployed, _) = cls.deploy(@constructor).unwrap();
+        let (deployed2, _) = cls.deploy(@constructor).unwrap();
+        
+        return (deployed, deployed2);
+    }
+
     fn spawn_external_grantor(core_address:ContractAddress) -> ContractAddress {
         let cls = declare("LayerAkiraExternalGrantor").unwrap();
         let mut constructor: Array::<felt252> = ArrayTrait::new();

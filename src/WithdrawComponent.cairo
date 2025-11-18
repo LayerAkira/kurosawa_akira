@@ -236,8 +236,11 @@ mod withdraw_component {
 
         fn safe_withdraw(ref self: ComponentState<TContractState>, to:ContractAddress, amount:u256, token:ContractAddress) -> u256 {
             let (erc20, mut contract, exchange) = (IERC20Dispatcher { contract_address: token },get_dep_component_mut!(ref self, Balance), get_contract_address());
+            contract.burn(to, amount, token);
+            if to == exchange {return amount;}
+
             let balance_before = erc20.balanceOf(exchange);
-            contract.burn(to, amount, token); erc20.transfer(to, amount);
+            erc20.transfer(to, amount);
             let transferred = balance_before - erc20.balanceOf(exchange);
             assert!(transferred <= amount, "WRONG_TRANSFER_AMOUNT expected {} actual {}",  amount, transferred);
             return transferred;
